@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#e50914">
+  <title>TMDb Import - CINE STREAM</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+  <style>
+    .import-page { padding: calc(var(--nav-height) + 32px) 4% 60px; }
+    .import-header { margin-bottom: 32px; }
+    .import-title { font-family: var(--font-display); font-size: 36px; letter-spacing: 2px; }
+    .import-title span { color: var(--accent); }
+
+    .import-tabs {
+      display: flex; gap: 4px; background: var(--bg-secondary);
+      border-radius: var(--radius-lg); padding: 6px; margin-bottom: 28px;
+      border: 1px solid var(--border); flex-wrap: wrap;
+    }
+    .import-tab {
+      padding: 10px 20px; border-radius: var(--radius); border: none;
+      background: none; color: var(--text-secondary); cursor: pointer;
+      font-size: 14px; font-weight: 500; transition: var(--transition);
+      font-family: var(--font-body);
+    }
+    .import-tab.active { background: var(--accent); color: #fff; }
+    .import-tab:hover:not(.active) { background: var(--bg-hover); color: var(--text-primary); }
+
+    .type-toggle { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .type-btn {
+      padding: 8px 20px; border-radius: 20px; border: 1px solid var(--border);
+      background: var(--bg-secondary); color: var(--text-secondary);
+      cursor: pointer; font-size: 13px; transition: var(--transition);
+      font-family: var(--font-body);
+    }
+    .type-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .search-bar { display: flex; gap: 12px; margin-bottom: 24px; }
+    .search-bar input {
+      flex: 1; background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 16px; color: var(--text-primary);
+      font-size: 15px; font-family: var(--font-body); outline: none;
+    }
+    .search-bar input:focus { border-color: var(--accent); }
+    .search-bar button {
+      padding: 12px 24px; background: var(--accent); color: #fff;
+      border: none; border-radius: var(--radius); cursor: pointer;
+      font-size: 14px; font-weight: 600; transition: var(--transition);
+      white-space: nowrap; font-family: var(--font-body);
+    }
+    .search-bar button:hover { background: #c8000f; }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+    }
+
+    .result-card {
+      background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); overflow: hidden;
+      transition: var(--transition); position: relative;
+    }
+    .result-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-card); }
+    .result-card.already-imported { opacity: 0.6; }
+
+    .imported-badge {
+      position: absolute; top: 8px; left: 8px;
+      background: rgba(16,185,129,0.9); color: #fff;
+      font-size: 10px; font-weight: 700; padding: 3px 8px;
+      border-radius: 20px; backdrop-filter: blur(4px);
+    }
+
+    .result-poster {
+      width: 100%; aspect-ratio: 2/3; object-fit: cover;
+      background: var(--bg-card); display: block;
+    }
+    .result-info { padding: 12px; }
+    .result-title {
+      font-size: 13px; font-weight: 600; margin-bottom: 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .result-meta {
+      font-size: 11px; color: var(--text-muted); margin-bottom: 10px;
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    }
+    .result-rating { color: var(--gold); font-weight: 600; }
+
+    .import-btn {
+      width: 100%; padding: 8px; border-radius: var(--radius);
+      border: none; cursor: pointer; font-size: 12px; font-weight: 600;
+      font-family: var(--font-body); transition: var(--transition);
+    }
+    .import-btn.pending  { background: var(--accent); color: #fff; }
+    .import-btn.pending:hover { background: #c8000f; }
+    .import-btn.loading  { background: var(--bg-card); color: var(--text-muted); cursor: not-allowed; }
+    .import-btn.done     { background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); cursor: default; }
+    .import-btn.dupe     { background: rgba(245,197,24,0.1); color: var(--gold); border: 1px solid rgba(245,197,24,0.3); cursor: default; }
+
+    .bulk-card {
+      background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 24px; margin-bottom: 20px;
+    }
+    .bulk-section-title {
+      font-size: 15px; font-weight: 700; margin-bottom: 14px;
+      display: flex; align-items: center; gap: 8px;
+      color: var(--text-primary);
+    }
+    .bulk-section-title::before {
+      content: ''; display: block; width: 3px; height: 16px;
+      background: var(--accent); border-radius: 2px;
+    }
+    .bulk-presets { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+    .preset-btn {
+      padding: 10px 18px; background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text-secondary); cursor: pointer;
+      font-size: 13px; font-weight: 600; transition: var(--transition);
+      font-family: var(--font-body);
+    }
+    .preset-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+    .preset-btn.active { background: rgba(229,9,20,0.12); border-color: var(--accent); color: var(--accent); }
+
+    .bulk-actions {
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+      padding-top: 16px; border-top: 1px solid var(--border);
+    }
+    .start-import-btn {
+      padding: 12px 28px; background: var(--accent); color: #fff;
+      border: none; border-radius: var(--radius); cursor: pointer;
+      font-size: 14px; font-weight: 700; transition: var(--transition);
+      font-family: var(--font-body); display: flex; align-items: center; gap: 8px;
+    }
+    .start-import-btn:hover { background: #c8000f; }
+    .start-import-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .import-log {
+      background: #0a0a10; border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px; height: 300px;
+      overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px;
+      line-height: 1.8; display: none; margin-top: 16px;
+    }
+    .import-log.visible { display: block; }
+    .log-success { color: #10b981; }
+    .log-skip    { color: #f5c518; }
+    .log-fail    { color: #e50914; }
+    .log-info    { color: #6b7280; }
+    .log-header  { color: #a78bfa; font-weight: bold; }
+
+    /* Progress bar inside bulk log */
+    .bulk-progress {
+      height: 4px; background: var(--border); border-radius: 2px;
+      margin-top: 12px; overflow: hidden; display: none;
+    }
+    .bulk-progress.visible { display: block; }
+    .bulk-progress-fill {
+      height: 100%; background: var(--accent);
+      border-radius: 2px; transition: width 0.3s;
+    }
+
+    .pagination {
+      display: flex; gap: 8px; justify-content: center;
+      align-items: center; margin-top: 24px; flex-wrap: wrap;
+    }
+    .page-btn {
+      padding: 8px 16px; background: var(--bg-secondary);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text-secondary); cursor: pointer; font-size: 13px;
+      font-family: var(--font-body); transition: var(--transition);
+    }
+    .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--text-primary); }
+    .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .page-info { color: var(--text-muted); font-size: 13px; padding: 0 8px; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .empty-msg {
+      text-align: center; padding: 60px 20px;
+      color: var(--text-muted); font-size: 15px;
+    }
+
+    /* Stats bar */
+    .stats-bar {
+      display: flex; gap: 16px; margin-bottom: 20px;
+      font-size: 13px; color: var(--text-muted); flex-wrap: wrap;
+    }
+    .stats-bar span { display: flex; align-items: center; gap: 5px; }
+    .stats-bar .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-green  { background: #10b981; }
+    .dot-yellow { background: #f5c518; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar solid">
+  <a href="index.html" class="nav-logo">CINE<span>STREAM</span></a>
+  <div class="nav-right">
+    <a href="admin.html" class="btn btn-outline" style="padding:8px 16px;font-size:13px;">
+      <i class="ri-arrow-left-line"></i> Admin
+    </a>
+    <a href="anilist-import.html" class="btn btn-outline" style="padding:8px 16px;font-size:13px;">
+      ⚡ AniList Import
+    </a>
+    <button class="btn-nav" id="logoutBtn">Logout</button>
+  </div>
+</nav>
+
+<div class="import-page">
+
+  <div class="import-header">
+    <h1 class="import-title">🎬 <span>TMDb</span> Import</h1>
+    <p style="color:var(--text-muted);margin-top:6px;font-size:14px;">
+      Import movies &amp; web series from The Movie Database
+    </p>
+  </div>
+
+  <!-- TABS -->
+  <div class="import-tabs">
+    <button class="import-tab active" data-tab="search">🔍 Search</button>
+    <button class="import-tab" data-tab="trending">🔥 Trending</button>
+    <button class="import-tab" data-tab="popular">⭐ Popular</button>
+    <button class="import-tab" data-tab="toprated">🏆 Top Rated</button>
+    <button class="import-tab" data-tab="bulk">📦 Bulk Import</button>
+  </div>
+
+  <!-- ══ SEARCH TAB ══ -->
+  <div class="tab-content active" id="tab-search">
+    <div class="type-toggle" id="searchTypeToggle">
+      <button class="type-btn active" data-type="movie">🎬 Movies</button>
+      <button class="type-btn"        data-type="tv">📺 Web Series / TV</button>
+    </div>
+    <div class="search-bar">
+      <input type="text" id="searchInput"
+             placeholder="Search movies, web series... (e.g. Avengers, Breaking Bad)">
+      <button id="searchBtn"><i class="ri-search-line"></i> Search</button>
+    </div>
+    <div id="searchStats" class="stats-bar" style="display:none;"></div>
+    <div id="searchResults" class="results-grid"></div>
+    <div class="pagination" id="searchPagination" style="display:none;">
+      <button class="page-btn" id="searchPrevBtn">← Prev</button>
+      <span   class="page-info" id="searchPageInfo"></span>
+      <button class="page-btn" id="searchNextBtn">Next →</button>
+    </div>
+  </div>
+
+  <!-- ══ TRENDING TAB ══ -->
+  <div class="tab-content" id="tab-trending">
+    <div class="type-toggle" id="trendingTypeToggle">
+      <button class="type-btn active" data-type="movie">🎬 Movies</button>
+      <button class="type-btn"        data-type="tv">📺 Web Series</button>
+      <button class="type-btn"        data-type="all">🌐 All</button>
+    </div>
+    <div id="trendingResults" class="results-grid"></div>
+  </div>
+
+  <!-- ══ POPULAR TAB ══ -->
+  <div class="tab-content" id="tab-popular">
+    <div class="type-toggle" id="popularTypeToggle">
+      <button class="type-btn active" data-type="movie">🎬 Movies</button>
+      <button class="type-btn"        data-type="tv">📺 Web Series</button>
+    </div>
+    <div id="popularResults" class="results-grid"></div>
+  </div>
+
+  <!-- ══ TOP RATED TAB ══ -->
+  <div class="tab-content" id="tab-toprated">
+    <div class="type-toggle" id="topratedTypeToggle">
+      <button class="type-btn active" data-type="movie">🎬 Movies</button>
+      <button class="type-btn"        data-type="tv">📺 Web Series</button>
+    </div>
+    <div id="topratedResults" class="results-grid"></div>
+  </div>
+
+  <!-- ══ BULK IMPORT TAB ══ -->
+  <div class="tab-content" id="tab-bulk">
+    <div class="bulk-card">
+
+      <div class="bulk-section-title">🎬 Movie Presets</div>
+      <div class="bulk-presets">
+        <button class="preset-btn" data-preset="popular-movies">⭐ Top 20 Popular</button>
+        <button class="preset-btn" data-preset="toprated-movies">🏆 Top 20 Rated</button>
+        <button class="preset-btn" data-preset="trending-movies">🔥 Trending Now</button>
+        <button class="preset-btn" data-preset="bollywood">🇮🇳 Bollywood Top 20</button>
+        <button class="preset-btn" data-preset="action-movies">💥 Top Action</button>
+        <button class="preset-btn" data-preset="scifi-movies">🚀 Top Sci-Fi</button>
+      </div>
+
+      <div class="bulk-section-title">📺 Web Series Presets</div>
+      <div class="bulk-presets">
+        <button class="preset-btn" data-preset="popular-tv">⭐ Top 20 Popular</button>
+        <button class="preset-btn" data-preset="toprated-tv">🏆 Top 20 Rated</button>
+        <button class="preset-btn" data-preset="trending-tv">🔥 Trending Now</button>
+        <button class="preset-btn" data-preset="netflix">🔴 Netflix Originals</button>
+        <button class="preset-btn" data-preset="action-tv">💥 Top Action Series</button>
+      </div>
+
+      <div class="bulk-actions">
+        <button class="start-import-btn" id="startBulkBtn" disabled>
+          <i class="ri-download-cloud-line"></i> Start Import
+        </button>
+        <span id="selectedPresetLabel" style="color:var(--text-muted);font-size:13px;">
+          Select a preset above
+        </span>
+      </div>
+
+      <div class="bulk-progress" id="bulkProgress">
+        <div class="bulk-progress-fill" id="bulkProgressFill" style="width:0%"></div>
+      </div>
+
+      <div class="import-log" id="importLog"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+<script src="../js/config.js"></script>
+<script src="../js/app.js"></script>
+<script>
+
+// ══════════════════════════════════════════
+// AUTH CHECK
+// ══════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  const user  = JSON.parse(localStorage.getItem('user') || 'null');
+  const token = localStorage.getItem('token');
+
+  if (!token || !user || user.role !== 'admin') {
+    window.location.href = 'login.html';
+    return;
+  }
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = 'login.html';
+  });
+
+  setupTabs();
+  setupTypeToggles();
+  setupSearch();
+  setupBulk();
+
+  loadTrending('movie');
+  loadPopular('movie');
+  loadTopRated('movie');
+});
+
+// ══════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════
+function setupTabs() {
+  document.querySelectorAll('.import-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(`tab-${tab.dataset.tab}`)?.classList.add('active');
+    });
+  });
+}
+
+// ══════════════════════════════════════════
+// TYPE TOGGLES — one handler per group
+// FIX: Old code attached listeners inside loop which could stack
+// ══════════════════════════════════════════
+function setupTypeToggles() {
+  const groups = {
+    'searchTypeToggle':   (type) => { currentSearchType = type; if (currentSearchQuery) doSearch(currentSearchQuery, 1); },
+    'trendingTypeToggle': (type) => loadTrending(type),
+    'popularTypeToggle':  (type) => loadPopular(type),
+    'topratedTypeToggle': (type) => loadTopRated(type),
+  };
+
+  Object.entries(groups).forEach(([id, handler]) => {
+    const toggle = document.getElementById(id);
+    if (!toggle) return;
+    toggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('.type-btn');
+      if (!btn) return;
+      toggle.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      handler(btn.dataset.type);
+    });
+  });
+}
+
+// ══════════════════════════════════════════
+// SEARCH
+// ══════════════════════════════════════════
+let currentSearchType  = 'movie';
+let currentSearchQuery = '';
+let searchCurrentPage  = 1;
+let searchTotalPages   = 1;
+
+function setupSearch() {
+  const input = document.getElementById('searchInput');
+  const btn   = document.getElementById('searchBtn');
+
+  btn.addEventListener('click', () => {
+    const q = input.value.trim();
+    if (!q) { toast('Enter a search term', 'error'); return; }
+    currentSearchQuery = q;
+    searchCurrentPage  = 1;
+    doSearch(q, 1);
+  });
+
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') btn.click(); });
+
+  // Auto-search after 600ms of no typing
+  let debounceTimer;
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    const q = input.value.trim();
+    if (q.length >= 3) {
+      debounceTimer = setTimeout(() => {
+        currentSearchQuery = q;
+        searchCurrentPage  = 1;
+        doSearch(q, 1);
+      }, 600);
+    }
+  });
+
+  document.getElementById('searchPrevBtn').addEventListener('click', () => {
+    if (searchCurrentPage > 1) doSearch(currentSearchQuery, --searchCurrentPage);
+  });
+  document.getElementById('searchNextBtn').addEventListener('click', () => {
+    if (searchCurrentPage < searchTotalPages) doSearch(currentSearchQuery, ++searchCurrentPage);
+  });
+}
+
+async function parseResponse(res, fallbackMessage = 'Request failed') {
+  const payload = await res.json().catch(() => ({}));
+  const data = payload && typeof payload === 'object' && payload.data && typeof payload.data === 'object'
+    ? { ...payload.data, success: payload.success, message: payload.message, error: payload.error }
+    : payload;
+  if (!res.ok || data.success === false) {
+    throw new Error(data.message || fallbackMessage);
+  }
+  return data;
+}
+
+function getResultsPayload(data) {
+  return {
+    results: data.results || [],
+    pagination: data.pagination || { page: 1, totalPages: 1, total: 0 },
+  };
+}
+
+async function doSearch(q, page = 1) {
+  const grid = document.getElementById('searchResults');
+  const stats = document.getElementById('searchStats');
+  showGridSpinner(grid);
+  stats.style.display = 'none';
+
+  try {
+    const res  = await apiFetch(`/tmdb/search?q=${encodeURIComponent(q)}&type=${currentSearchType}&page=${page}`);
+    const data = getResultsPayload(await parseResponse(res, 'Search failed'));
+
+    searchTotalPages  = data.pagination.totalPages;
+    searchCurrentPage = page;
+
+    // FIX: Show stats bar — how many already imported
+    const total    = data.results.length;
+    const imported = data.results.filter(r => r.alreadyImported).length;
+    if (total > 0) {
+      stats.style.display = 'flex';
+      stats.innerHTML = `
+        <span><span class="dot dot-green"></span> ${imported} already imported</span>
+        <span><span class="dot" style="background:var(--accent);"></span> ${total - imported} available to import</span>
+        <span style="margin-left:auto;">${data.pagination.total?.toLocaleString() || total} total results</span>`;
+    }
+
+    renderResults(grid, data.results, currentSearchType);
+    updatePagination('search', page, searchTotalPages, data.pagination.total);
+
+  } catch (e) {
+    grid.innerHTML = `<div class="empty-msg">❌ ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════
+// TRENDING / POPULAR / TOP RATED
+// ══════════════════════════════════════════
+async function loadTrending(type) {
+  const grid = document.getElementById('trendingResults');
+  showGridSpinner(grid);
+  try {
+    const res  = await apiFetch(`/tmdb/trending?type=${type}`);
+    const data = getResultsPayload(await parseResponse(res, 'Trending titles failed to load'));
+    renderResults(grid, data.results, type);
+  } catch (e) {
+    grid.innerHTML = `<div class="empty-msg">❌ ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function loadPopular(type) {
+  const grid = document.getElementById('popularResults');
+  showGridSpinner(grid);
+  try {
+    const res  = await apiFetch(`/tmdb/popular?type=${type}`);
+    const data = getResultsPayload(await parseResponse(res, 'Popular titles failed to load'));
+    renderResults(grid, data.results, type);
+  } catch (e) {
+    grid.innerHTML = `<div class="empty-msg">❌ ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function loadTopRated(type) {
+  const grid = document.getElementById('topratedResults');
+  showGridSpinner(grid);
+  try {
+    const res  = await apiFetch(`/tmdb/top-rated?type=${type}`);
+    const data = getResultsPayload(await parseResponse(res, 'Top rated titles failed to load'));
+    renderResults(grid, data.results, type);
+  } catch (e) {
+    grid.innerHTML = `<div class="empty-msg">❌ ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════
+// RENDER RESULTS
+// FIX: alreadyImported flag now shown as badge + disabled button
+// FIX: referrerpolicy added to all poster images
+// FIX: escapeHtml on title to prevent XSS
+// ══════════════════════════════════════════
+const POSTER_PH = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM0NDQiPvCfjpg8L3RleHQ+PC9zdmc+';
+
+function renderResults(container, results, type) {
+  if (!results || results.length === 0) {
+    container.innerHTML = '<div class="empty-msg">No results found</div>';
+    return;
+  }
+
+  container.innerHTML = results.map(item => `
+    <div class="result-card ${item.alreadyImported ? 'already-imported' : ''}"
+         id="card-${item.tmdbId}">
+      ${item.alreadyImported
+        ? '<div class="imported-badge">✅ Imported</div>'
+        : ''}
+      <img class="result-poster"
+           src="${item.posterUrl || POSTER_PH}"
+           alt="${escapeHtml(item.title)}"
+           loading="lazy"
+           referrerpolicy="no-referrer">
+      <div class="result-info">
+        <div class="result-title" title="${escapeHtml(item.title)}">
+          ${escapeHtml(item.title)}
+        </div>
+        <div class="result-meta">
+          <span>${item.releaseYear || '—'}</span>
+          <span class="result-rating">⭐ ${item.averageRating || 'N/A'}</span>
+        </div>
+        ${item.alreadyImported
+          ? '<button class="import-btn dupe">✅ Already imported</button>'
+          : `<button class="import-btn pending"
+                     data-id="${item.tmdbId}"
+                     data-type="${type === 'all' ? (item.type || 'movie') : type}">
+               <i class="ri-download-line"></i> Import
+             </button>`
+        }
+      </div>
+    </div>`).join('');
+
+  // Bind import buttons via delegation
+  container.querySelectorAll('.import-btn.pending').forEach(btn => {
+    btn.addEventListener('click', () =>
+      importSingle(btn.dataset.id, btn.dataset.type, btn));
+  });
+
+  container.querySelectorAll('.result-poster').forEach((img) => {
+    if (img.dataset.bound === 'true') return;
+    img.dataset.bound = 'true';
+    img.addEventListener('error', () => {
+      if (img.dataset.fallbackApplied === 'true') return;
+      img.dataset.fallbackApplied = 'true';
+      img.src = POSTER_PH;
+    });
+  });
+}
+
+// ══════════════════════════════════════════
+// IMPORT SINGLE
+// ══════════════════════════════════════════
+async function importSingle(tmdbId, type, btn) {
+  btn.className = 'import-btn loading';
+  btn.innerHTML = '<i class="ri-loader-4-line"></i> Importing...';
+  btn.disabled  = true;
+
+  try {
+    const res  = await apiFetch('/tmdb/import', {
+      method:  'POST',
+      body:    JSON.stringify({ tmdbId, type }),
+    });
+    const data = await parseResponse(res, 'Import failed');
+
+    if (data.imported) {
+      btn.className = 'import-btn done';
+      btn.innerHTML = '✅ Imported!';
+      btn.disabled  = true;
+      // Add imported badge to card
+      const card = document.getElementById(`card-${tmdbId}`);
+      if (card && !card.querySelector('.imported-badge')) {
+        const badge = document.createElement('div');
+        badge.className   = 'imported-badge';
+        badge.textContent = '✅ Imported';
+        card.prepend(badge);
+      }
+      toast(`"${data.movie.title}" imported!`, 'success');
+    } else {
+      btn.className = 'import-btn dupe';
+      btn.innerHTML = '✅ Already exists';
+      btn.disabled  = true;
+    }
+  } catch (e) {
+    btn.className = 'import-btn pending';
+    btn.innerHTML = '❌ Retry';
+    btn.disabled  = false;
+    toast('Import failed — check console', 'error');
+  }
+}
+
+// ══════════════════════════════════════════
+// PAGINATION HELPER
+// ══════════════════════════════════════════
+function updatePagination(id, page, totalPages, total) {
+  const pag  = document.getElementById(`${id}Pagination`);
+  const info = document.getElementById(`${id}PageInfo`);
+  const prev = document.getElementById(`${id}PrevBtn`);
+  const next = document.getElementById(`${id}NextBtn`);
+  if (!pag) return;
+
+  if (totalPages > 1) {
+    pag.style.display  = 'flex';
+    info.textContent   = `Page ${page} of ${totalPages}${total ? ` · ${total.toLocaleString()} results` : ''}`;
+    prev.disabled      = page <= 1;
+    next.disabled      = page >= totalPages;
+  } else {
+    pag.style.display = 'none';
+  }
+}
+
+// ══════════════════════════════════════════
+// BULK IMPORT
+// ══════════════════════════════════════════
+let selectedPreset = null;
+
+// Preset definitions
+const PRESETS = {
+  'popular-movies':  { label:'⭐ Top 20 Popular Movies',   type:'movie', url:'/tmdb/popular?type=movie' },
+  'toprated-movies': { label:'🏆 Top 20 Rated Movies',     type:'movie', url:'/tmdb/top-rated?type=movie' },
+  'trending-movies': { label:'🔥 Trending Movies',         type:'movie', url:'/tmdb/trending?type=movie' },
+  'bollywood':       { label:'🇮🇳 Bollywood Top 20',       type:'movie', url:'/tmdb/popular?type=movie&region=IN' },
+  'action-movies':   { label:'💥 Top Action Movies',       type:'movie', url:'/tmdb/top-rated?type=movie&genre=28' },
+  'scifi-movies':    { label:'🚀 Top Sci-Fi Movies',       type:'movie', url:'/tmdb/top-rated?type=movie&genre=878' },
+  'popular-tv':      { label:'⭐ Top 20 Popular Series',   type:'tv',    url:'/tmdb/popular?type=tv' },
+  'toprated-tv':     { label:'🏆 Top 20 Rated Series',     type:'tv',    url:'/tmdb/top-rated?type=tv' },
+  'trending-tv':     { label:'🔥 Trending Series',         type:'tv',    url:'/tmdb/trending?type=tv' },
+  'netflix':         { label:'🔴 Netflix Originals',       type:'tv',    url:'/tmdb/popular?type=tv&network=213' },
+  'action-tv':       { label:'💥 Top Action Series',       type:'tv',    url:'/tmdb/top-rated?type=tv&genre=10759' },
+};
+
+function setupBulk() {
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedPreset = btn.dataset.preset;
+      const label = PRESETS[selectedPreset]?.label || selectedPreset;
+      document.getElementById('selectedPresetLabel').textContent = `Selected: ${label}`;
+      document.getElementById('startBulkBtn').disabled = false;
+    });
+  });
+
+  document.getElementById('startBulkBtn').addEventListener('click', runBulkImport);
+}
+
+async function pollBulkJob(jobId, fill) {
+  while (true) {
+    const res = await apiFetch(`/tmdb/bulk-import/${jobId}`);
+    const data = await parseResponse(res, 'Failed to read import progress');
+
+    fill.style.width = `${data.progress || 0}%`;
+
+    if (data.status === 'completed') return data;
+    if (data.status === 'failed') throw new Error(data.error || 'Bulk import failed');
+
+    await new Promise(resolve => setTimeout(resolve, 1200));
+  }
+}
+
+async function runBulkImport() {
+  if (!selectedPreset || !PRESETS[selectedPreset]) return;
+
+  const btn      = document.getElementById('startBulkBtn');
+  const log      = document.getElementById('importLog');
+  const progress = document.getElementById('bulkProgress');
+  const fill     = document.getElementById('bulkProgressFill');
+  const preset   = PRESETS[selectedPreset];
+
+  btn.disabled  = true;
+  btn.innerHTML = '<i class="ri-loader-4-line"></i> Importing...';
+  log.innerHTML = '';
+  log.classList.add('visible');
+  progress.classList.add('visible');
+  fill.style.width = '0%';
+
+  logLine('header', `━━━ ${preset.label} ━━━`);
+  logLine('info',   'Fetching from TMDb...');
+
+  try {
+    // Fetch list from preset URL
+    const listRes  = await apiFetch(preset.url);
+    const listData = getResultsPayload(await parseResponse(listRes, 'Preset fetch failed'));
+    const results  = listData.results || [];
+
+    if (results.length === 0) {
+      logLine('fail', 'No results from TMDb');
+      return;
+    }
+
+    logLine('info', `Found ${results.length} titles — starting import...`);
+
+    // FIX: Show already-imported count upfront
+    const alreadyDone = results.filter(r => r.alreadyImported).length;
+    if (alreadyDone > 0) {
+      logLine('skip', `${alreadyDone} already in database — will skip`);
+    }
+
+    const items = results.slice(0, 20).map(r => ({
+      tmdbId: r.tmdbId,
+      type:   preset.type,
+    }));
+
+    fill.style.width = '20%';
+
+    const res  = await apiFetch('/tmdb/bulk-import', {
+      method: 'POST',
+      body:   JSON.stringify({ items }),
+    });
+    const data = await parseResponse(res, 'Bulk import failed to start');
+    const finalJob = await pollBulkJob(data.jobId, fill);
+
+    fill.style.width = '100%';
+
+    logLine('header', '━━━ Results ━━━');
+    logLine('success', `✅ Imported:  ${finalJob.results.imported.length}`);
+    logLine('skip',    `⏭️ Skipped:   ${finalJob.results.skipped.length}`);
+    logLine('fail',    `❌ Failed:    ${finalJob.results.failed.length}`);
+
+    if (finalJob.results.imported.length > 0) {
+      logLine('header', '━━━ Imported ━━━');
+      finalJob.results.imported.forEach(t => logLine('success', `  ✅ ${t}`));
+    }
+    if (finalJob.results.skipped.length > 0) {
+      logLine('header', '━━━ Skipped ━━━');
+      finalJob.results.skipped.forEach(t => logLine('skip', `  ⏭️ ${t}`));
+    }
+    if (finalJob.results.failed.length > 0) {
+      logLine('header', '━━━ Failed ━━━');
+      finalJob.results.failed.forEach(t => logLine('fail', `  ❌ ${t}`));
+    }
+
+    toast(`${finalJob.results.imported.length} imported successfully!`, 'success');
+
+  } catch (e) {
+    logLine('fail', `❌ Error: ${e.message}`);
+    toast('Bulk import failed', 'error');
+  }
+
+  btn.disabled  = false;
+  btn.innerHTML = '<i class="ri-download-cloud-line"></i> Start Import';
+}
+
+function logLine(type, text) {
+  const log  = document.getElementById('importLog');
+  const line = document.createElement('div');
+  line.className   = `log-${type}`;
+  line.textContent = text;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ══════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════
+function showGridSpinner(grid) {
+  grid.innerHTML =
+    '<div class="empty-msg" style="grid-column:1/-1"><div class="spinner" style="margin:0 auto;"></div></div>';
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  const d = document.createElement('div');
+  d.appendChild(document.createTextNode(str));
+  return d.innerHTML;
+}
+
+// FIX: Use app.js showToast — old code had a broken check
+// `if (typeof window.showToast === 'function') return;`
+// which returned BEFORE showing the toast
+function toast(msg, type = 'success') {
+  if (typeof showToast === 'function') showToast(msg, type);
+}
+
+</script>
+</body>
+</html>

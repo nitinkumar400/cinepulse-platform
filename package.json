@@ -1,0 +1,35 @@
+{
+  "name": "cine-stream-platform",
+  "version": "1.0.0",
+  "description": "CINE STREAM - Movies, Anime and Series Streaming Platform",
+  "main": "backend/server.js",
+  "scripts": {
+    "check": "node --check backend/server.js",
+    "dev": "nodemon backend/server.js",
+    "start": "node backend/server.js",
+    "start:windows": "node backend/server.js"
+  },
+  "dependencies": {
+    "axios": "^1.13.6",
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^1.41.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.3.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^7.0.0",
+    "multer": "^1.4.5-lts.1",
+    "multer-storage-cloudinary": "^4.0.0",
+    "winston": "^3.19.0",
+    "youtube-captions-scraper": "^2.0.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

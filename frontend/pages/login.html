@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#e50914">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CineStream">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <title>Login - CINE STREAM</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <h1>CINE<span>STREAM</span></h1>
+        <p>Admin control center</p>
+      </div>
+
+      <h2 class="auth-title">Admin Sign In</h2>
+      <p class="auth-subtitle">Only admin accounts can access the platform</p>
+      <div id="alertBox" style="display:none;"></div>
+
+      <form id="loginForm">
+        <div class="form-group">
+          <label>Email Address</label>
+          <div class="input-with-icon">
+            <i class="ri-mail-line input-icon"></i>
+            <input type="email" id="email" placeholder="your@email.com" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Password</label>
+          <div class="input-with-icon">
+            <i class="ri-lock-line input-icon"></i>
+            <input type="password" id="password" placeholder="Enter your password" required>
+            <i class="ri-eye-line password-toggle" id="togglePassword"></i>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-full" id="loginBtn">
+          <i class="ri-login-box-line"></i>
+          <span>Sign In</span>
+        </button>
+      </form>
+
+      <div class="auth-footer">Public signup is disabled.</div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="../js/config.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/api.js"></script>
+  <script src="../js/pwa.js"></script>
+  <script>
+    if (localStorage.getItem('token')) {
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      if (user?.role === 'admin') {
+        window.location.href = 'admin.html';
+      } else {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+    }
+
+    document.getElementById('togglePassword').addEventListener('click', function () {
+      const passwordInput = document.getElementById('password');
+      passwordInput.type = passwordInput.type === 'password' ? 'text' : 'password';
+      this.className = passwordInput.type === 'text'
+        ? 'ri-eye-off-line password-toggle'
+        : 'ri-eye-line password-toggle';
+    });
+
+    function showAlert(message, type = 'error') {
+      const box = document.getElementById('alertBox');
+      const icon = type === 'error' ? 'ri-error-warning-line' : 'ri-checkbox-circle-line';
+      box.innerHTML = `
+        <div class="alert alert-${type}">
+          <i class="${icon}"></i> ${message}
+        </div>`;
+      box.style.display = 'block';
+      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const button = document.getElementById('loginBtn');
+
+      if (!email || !password) {
+        showAlert('Please enter email and password');
+        return;
+      }
+
+      button.innerHTML = '<i class="ri-loader-4-line"></i> <span>Signing in...</span>';
+      button.disabled = true;
+
+      try {
+        const payload = await apiRequest('/auth/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (!payload.token || !payload.user) {
+          throw new Error('INVALID_LOGIN_RESPONSE');
+        }
+
+        saveAuth(payload.token, payload.user);
+        showAlert('Login successful! Redirecting...', 'success');
+
+        setTimeout(() => {
+          window.location.href = 'admin.html';
+        }, 1000);
+      } catch (error) {
+        showAlert(
+          error.message === 'INVALID_LOGIN_RESPONSE'
+            ? 'Login succeeded but returned incomplete account data.'
+            : (error.message || 'Cannot connect to server. Is the backend running?')
+        );
+        button.innerHTML = '<i class="ri-login-box-line"></i> <span>Sign In</span>';
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

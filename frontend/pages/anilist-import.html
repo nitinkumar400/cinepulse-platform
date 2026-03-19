@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AniList Import - CINE STREAM</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+  <style>
+    .import-page { min-height:100vh; padding:calc(var(--nav-height)+32px) 4% 60px; }
+    .import-header { margin-bottom:32px; }
+    .import-title { font-family:var(--font-display); font-size:40px; letter-spacing:2px; margin-bottom:8px; }
+    .import-title span { color:var(--accent); }
+
+    /* TABS */
+    .import-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:28px; overflow-x:auto; scrollbar-width:none; }
+    .import-tabs::-webkit-scrollbar { display:none; }
+    .itab { padding:12px 24px; font-size:14px; font-weight:600; color:var(--text-muted); cursor:pointer; border-bottom:2px solid transparent; transition:var(--transition); white-space:nowrap; background:none; border-top:none; border-left:none; border-right:none; font-family:var(--font-body); display:flex; align-items:center; gap:8px; }
+    .itab:hover { color:var(--text-primary); }
+    .itab.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+    /* SEARCH BAR */
+    .anilist-search-wrap { display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap; }
+    .anilist-search-input { flex:1; min-width:200px; padding:12px 18px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius); color:#fff; font-family:var(--font-body); font-size:14px; outline:none; transition:var(--transition); }
+    .anilist-search-input:focus { border-color:var(--accent); }
+    .btn-search { padding:12px 24px; background:var(--accent); border:none; border-radius:var(--radius); color:#fff; font-weight:700; cursor:pointer; font-family:var(--font-body); font-size:14px; display:flex; align-items:center; gap:8px; transition:var(--transition); white-space:nowrap; }
+    .btn-search:hover { background:#c00711; }
+
+    /* SEASON FILTERS */
+    .season-filters { display:flex; gap:10px; margin-bottom:24px; flex-wrap:wrap; align-items:center; }
+    .season-select { padding:10px 14px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius); color:#fff; font-family:var(--font-body); font-size:13px; cursor:pointer; outline:none; }
+
+    /* RESULTS GRID */
+    .anilist-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:20px; }
+
+    /* ANIME CARD */
+    .anilist-card { background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; transition:var(--transition); }
+    .anilist-card:hover { border-color:rgba(229,9,20,0.4); transform:translateY(-3px); box-shadow:var(--shadow-card); }
+    .ac-thumb-wrap { position:relative; aspect-ratio:2/3; overflow:hidden; }
+    .ac-thumb { width:100%; height:100%; object-fit:cover; display:block; background:var(--bg-card); }
+    .ac-score { position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.8); border-radius:20px; padding:3px 10px; font-size:12px; font-weight:700; color:var(--gold); }
+    .ac-status { position:absolute; top:8px; left:8px; border-radius:20px; padding:3px 10px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+    .ac-status.airing   { background:rgba(16,185,129,0.9); color:#fff; }
+    .ac-status.finished { background:rgba(59,130,246,0.9); color:#fff; }
+    .ac-status.upcoming { background:rgba(245,158,11,0.9); color:#fff; }
+    .ac-imported-badge  { position:absolute; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; font-size:36px; }
+    .ac-info { padding:12px; }
+    .ac-title { font-size:13px; font-weight:600; margin-bottom:6px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.4; }
+    .ac-meta { font-size:11px; color:var(--text-muted); margin-bottom:10px; display:flex; gap:8px; flex-wrap:wrap; }
+    .ac-genres { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; }
+    .ac-genre { padding:2px 8px; background:rgba(255,255,255,0.06); border-radius:20px; font-size:10px; color:var(--text-secondary); }
+    .btn-import { width:100%; padding:9px; background:var(--accent); border:none; border-radius:var(--radius); color:#fff; font-weight:700; cursor:pointer; font-family:var(--font-body); font-size:13px; display:flex; align-items:center; justify-content:center; gap:6px; transition:var(--transition); }
+    .btn-import:hover { background:#c00711; }
+    .btn-import:disabled { background:var(--bg-card); color:var(--text-muted); cursor:not-allowed; }
+    .btn-imported { background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.3); cursor:default; }
+
+    /* BULK IMPORT */
+    .bulk-section { background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius-lg); padding:24px; margin-bottom:28px; }
+    .bulk-title { font-size:16px; font-weight:700; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+    .bulk-title i { color:var(--accent); }
+    .bulk-textarea { width:100%; height:120px; padding:12px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); color:#fff; font-family:monospace; font-size:13px; resize:vertical; outline:none; }
+    .bulk-textarea:focus { border-color:var(--accent); }
+
+    /* LOAD MORE */
+    .load-more-wrap { text-align:center; margin-top:32px; }
+
+    /* STATS BAR */
+    .stats-bar { display:flex; gap:20px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 24px; margin-bottom:28px; flex-wrap:wrap; }
+    .stat-item { display:flex; align-items:center; gap:8px; }
+    .stat-dot { width:10px; height:10px; border-radius:50%; }
+    .stat-label { font-size:13px; color:var(--text-muted); }
+    .stat-val { font-size:15px; font-weight:700; }
+
+    /* IMPORT LOG */
+    .import-log { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-top:16px; max-height:200px; overflow-y:auto; font-family:monospace; font-size:12px; display:none; }
+    .log-success { color:#34d399; }
+    .log-error   { color:#f87171; }
+    .log-info    { color:#93c5fd; }
+    .log-skip    { color:var(--text-muted); }
+
+    @media (max-width:768px) {
+      .anilist-grid { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="navbar solid">
+  <a href="index.html" class="nav-logo">CINE<span>STREAM</span></a>
+  <div class="nav-right" style="gap:12px;">
+    <a href="admin.html" class="btn btn-outline" style="padding:8px 16px;font-size:13px;">
+      <i class="ri-arrow-left-line"></i> Back to Admin
+    </a>
+    <a href="index.html" class="btn btn-outline" style="padding:8px 16px;font-size:13px;">
+      <i class="ri-home-line"></i> Home
+    </a>
+    <button class="btn-nav" id="logoutBtn">Logout</button>
+  </div>
+</nav>
+
+<div class="import-page">
+
+  <!-- Header -->
+  <div class="import-header">
+    <h1 class="import-title">
+      <span>AniList</span> Import
+      <span style="font-size:18px;color:var(--text-muted);font-family:var(--font-body);font-weight:400;margin-left:12px;">powered by AniList API</span>
+    </h1>
+    <p style="color:var(--text-secondary);font-size:15px;">
+      Import thousands of anime directly from AniList database — posters, descriptions, ratings included automatically.
+      <br>After importing, upload the video file from the Admin panel.
+    </p>
+  </div>
+
+  <!-- Stats Bar -->
+  <div class="stats-bar">
+    <div class="stat-item">
+      <div class="stat-dot" style="background:var(--accent);"></div>
+      <span class="stat-label">Already Imported:</span>
+      <span class="stat-val" id="importedCount">—</span>
+    </div>
+    <div class="stat-item">
+      <div class="stat-dot" style="background:#10b981;"></div>
+      <span class="stat-label">Search Results:</span>
+      <span class="stat-val" id="resultsCount">—</span>
+    </div>
+    <div class="stat-item">
+      <div class="stat-dot" style="background:#f59e0b;"></div>
+      <span class="stat-label">AniList Database:</span>
+      <span class="stat-val">18,000+ anime</span>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="import-tabs">
+    <button class="itab active" data-tab="search">
+      <i class="ri-search-line"></i> Search
+    </button>
+    <button class="itab" data-tab="trending">
+      <i class="ri-fire-line"></i> Trending
+    </button>
+    <button class="itab" data-tab="top">
+      <i class="ri-trophy-line"></i> Top Rated
+    </button>
+    <button class="itab" data-tab="season">
+      <i class="ri-calendar-line"></i> By Season
+    </button>
+    <button class="itab" data-tab="bulk">
+      <i class="ri-download-cloud-line"></i> Bulk Import
+    </button>
+  </div>
+
+  <!-- TAB: Search -->
+  <div id="tab-search" class="tab-panel active">
+    <div class="anilist-search-wrap">
+      <input type="text" id="searchQuery" class="anilist-search-input"
+             placeholder="Search anime... (e.g. Naruto, Attack on Titan, One Piece)">
+      <button class="btn-search" id="searchBtn">
+        <i class="ri-search-line"></i> Search AniList
+      </button>
+    </div>
+    <div class="anilist-grid" id="searchGrid">
+      <div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text-muted);">
+        <div style="font-size:48px;margin-bottom:12px;">🔍</div>
+        <p style="font-size:15px;">Search for any anime above to import it</p>
+        <p style="font-size:13px;margin-top:8px;">Try: "Naruto", "One Piece", "Attack on Titan"</p>
+      </div>
+    </div>
+    <div class="load-more-wrap" id="searchLoadMore" style="display:none;">
+      <button class="btn btn-outline" id="loadMoreSearchBtn">
+        <i class="ri-arrow-down-line"></i> Load More
+      </button>
+    </div>
+  </div>
+
+  <!-- TAB: Trending -->
+  <div id="tab-trending" class="tab-panel" style="display:none;">
+    <div class="anilist-grid" id="trendingGrid">
+      <div style="grid-column:1/-1;" class="spinner-container"><div class="spinner"></div></div>
+    </div>
+    <div class="load-more-wrap" id="trendingLoadMore" style="display:none;">
+      <button class="btn btn-outline" id="loadMoreTrendingBtn">
+        <i class="ri-arrow-down-line"></i> Load More
+      </button>
+    </div>
+  </div>
+
+  <!-- TAB: Top Rated -->
+  <div id="tab-top" class="tab-panel" style="display:none;">
+    <div class="anilist-grid" id="topGrid">
+      <div style="grid-column:1/-1;" class="spinner-container"><div class="spinner"></div></div>
+    </div>
+    <div class="load-more-wrap" id="topLoadMore" style="display:none;">
+      <button class="btn btn-outline" id="loadMoreTopBtn">
+        <i class="ri-arrow-down-line"></i> Load More
+      </button>
+    </div>
+  </div>
+
+  <!-- TAB: By Season -->
+  <div id="tab-season" class="tab-panel" style="display:none;">
+    <div class="season-filters">
+      <select id="seasonSelect" class="season-select">
+        <option value="WINTER">❄️ Winter</option>
+        <option value="SPRING">🌸 Spring</option>
+        <option value="SUMMER">☀️ Summer</option>
+        <option value="FALL">🍂 Fall</option>
+      </select>
+      <select id="yearSelect" class="season-select"></select>
+      <button class="btn-search" id="loadSeasonBtn">
+        <i class="ri-filter-3-line"></i> Browse Season
+      </button>
+    </div>
+    <div class="anilist-grid" id="seasonGrid">
+      <div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text-muted);">
+        <div style="font-size:48px;margin-bottom:12px;">📅</div>
+        <p>Select a season and year above to browse anime</p>
+      </div>
+    </div>
+    <div class="load-more-wrap" id="seasonLoadMore" style="display:none;">
+      <button class="btn btn-outline" id="loadMoreSeasonBtn">
+        <i class="ri-arrow-down-line"></i> Load More
+      </button>
+    </div>
+  </div>
+
+  <!-- TAB: Bulk Import -->
+  <div id="tab-bulk" class="tab-panel" style="display:none;">
+
+    <div class="bulk-section">
+      <div class="bulk-title">
+        <i class="ri-download-cloud-line"></i>
+        Quick Bulk Import — Popular Anime
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+        Click any preset to instantly import popular anime collections
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-outline bulk-preset-btn" data-preset="top50" style="font-size:13px;">
+          🏆 Top 50 All Time
+        </button>
+        <button class="btn btn-outline bulk-preset-btn" data-preset="trending" style="font-size:13px;">
+          🔥 Top 20 Trending
+        </button>
+        <button class="btn btn-outline bulk-preset-btn" data-preset="shounen" style="font-size:13px;">
+          ⚡ Popular Shounen
+        </button>
+        <button class="btn btn-outline bulk-preset-btn" data-preset="movies" style="font-size:13px;">
+          🎬 Anime Movies
+        </button>
+      </div>
+    </div>
+
+    <div class="bulk-section">
+      <div class="bulk-title">
+        <i class="ri-list-check"></i>
+        Import by AniList IDs
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+        Paste AniList IDs (one per line or comma separated). Find IDs from
+        <a href="https://anilist.co" target="_blank" style="color:var(--accent);">anilist.co</a>
+        (the number in the URL)
+      </p>
+      <textarea class="bulk-textarea" id="bulkIds"
+        placeholder="Example:
+20 (Naruto)
+1535 (Death Note)
+11061 (Hunter x Hunter)
+16498 (Attack on Titan)
+21 (One Piece)"></textarea>
+
+      <div style="margin-top:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="startBulkImportBtn">
+          <i class="ri-download-cloud-line"></i> Start Import
+        </button>
+        <span style="font-size:13px;color:var(--text-muted);">Max 50 at a time</span>
+      </div>
+
+      <div class="import-log" id="importLog"></div>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+<script src="../js/config.js"></script>
+<script src="../js/app.js"></script>
+<script>
+const token = localStorage.getItem('token');
+let importedIds  = new Set();
+let searchPage   = 1;
+let trendingPage = 1;
+let topPage      = 1;
+let seasonPage   = 1;
+let currentSearch = '';
+
+async function parseAniListResponse(res, fallbackMessage = 'Request failed') {
+  const payload = await res.json().catch(() => ({}));
+  const data = payload && typeof payload === 'object' && payload.data && typeof payload.data === 'object'
+    ? { ...payload.data, success: payload.success, message: payload.message, error: payload.error }
+    : payload;
+  if (!res.ok || data?.success === false) {
+    throw new Error(data?.message || fallbackMessage);
+  }
+  return data;
+}
+
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ── PRESET AniList IDs ──
+const PRESETS = {
+  top50:   [5114,9253,11061,2904,820,1535,16498,6702,19815,21,20,32281,15417,97940,101922,113415,1,145,918,2167,1519,30654,10087,33352,108465,131681,99426,108725,114535,112123,104578,96792,99423,100333,101348,106286,108049,108725,110167,112641,113415,114535,115142,116293,117193,118123,119167,120231,121289,122341],
+  trending: [145,820,1535,11061,16498,6702,9253,5114,2904,21,20,6347,1462,19,10620,113415,114535,115142,116293,117193],
+  shounen:  [20,21,1535,11061,16498,9253,5114,6702,2904,820,145,1462,10620,6347,19,13601,31478,32,108465,99426],
+  movies:   [2251,32281,20954,28851,199,35849,32901,22319,4382,43096],
+};
+
+// ── ON LOAD ──
+window.addEventListener('DOMContentLoaded', () => {
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  if (!token || !user || user.role !== 'admin') {
+    alert('Admins only!');
+    window.location.href = 'login.html';
+    return;
+  }
+  document.getElementById('logoutBtn')?.addEventListener('click', logout);
+  document.querySelectorAll('.itab[data-tab]').forEach((button) => {
+    button.addEventListener('click', () => switchTab(button.dataset.tab, button));
+  });
+  document.getElementById('searchBtn')?.addEventListener('click', () => searchAniList());
+  document.getElementById('searchQuery')?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') searchAniList();
+  });
+  document.getElementById('loadMoreSearchBtn')?.addEventListener('click', loadMoreSearch);
+  document.getElementById('loadMoreTrendingBtn')?.addEventListener('click', loadMoreTrending);
+  document.getElementById('loadMoreTopBtn')?.addEventListener('click', loadMoreTop);
+  document.getElementById('loadSeasonBtn')?.addEventListener('click', () => loadSeason());
+  document.getElementById('loadMoreSeasonBtn')?.addEventListener('click', loadMoreSeason);
+  document.querySelectorAll('.bulk-preset-btn[data-preset]').forEach((button) => {
+    button.addEventListener('click', () => bulkPreset(button.dataset.preset));
+  });
+  document.getElementById('startBulkImportBtn')?.addEventListener('click', startBulkImport);
+  buildYearSelect();
+  loadImportedCount();
+  loadTrending();
+  loadTop();
+});
+
+// ── BUILD YEAR SELECT ──
+function buildYearSelect() {
+  const sel = document.getElementById('yearSelect');
+  const now = new Date().getFullYear();
+  for (let y = now; y >= 2000; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    if (y === now) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+// ── LOAD IMPORTED COUNT ──
+async function loadImportedCount() {
+  try {
+    const res  = await fetch(`${API_BASE}/movies?limit=1`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await parseAniListResponse(res, 'Failed to load import count');
+    document.getElementById('importedCount').textContent =
+      data.pagination?.total || 0;
+  } catch(e) {}
+}
+
+// ── SWITCH TAB ──
+function switchTab(tab, btn) {
+  document.querySelectorAll('.itab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+  btn.classList.add('active');
+  document.getElementById(`tab-${tab}`).style.display = 'block';
+}
+
+// ══════════════════════════
+// SEARCH
+// ══════════════════════════
+
+async function searchAniList(append = false) {
+  const q = document.getElementById('searchQuery').value.trim();
+  if (!q) { showToast('Enter a search term', 'error'); return; }
+  currentSearch = q;
+  if (!append) searchPage = 1;
+
+  const grid = document.getElementById('searchGrid');
+  if (!append) grid.innerHTML = '<div class="spinner-container" style="grid-column:1/-1;"><div class="spinner"></div></div>';
+
+  try {
+    const res  = await fetch(`${API_BASE}/anilist/search?q=${encodeURIComponent(q)}&page=${searchPage}&perPage=20`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await parseAniListResponse(res, 'AniList search failed');
+
+    document.getElementById('resultsCount').textContent = data.pagination?.total || data.anime?.length || 0;
+
+    if (!append) grid.innerHTML = '';
+    renderAnimeCards(data.anime || [], grid);
+
+    const lm = document.getElementById('searchLoadMore');
+    lm.style.display = data.pagination?.hasNextPage ? 'block' : 'none';
+
+  } catch(e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted);">
+      <p>❌ Search failed: ${e.message}</p></div>`;
+  }
+}
+
+function loadMoreSearch() { searchPage++; searchAniList(true); }
+
+// ══════════════════════════
+// TRENDING
+// ══════════════════════════
+
+async function loadTrending(append = false) {
+  if (!append) trendingPage = 1;
+  const grid = document.getElementById('trendingGrid');
+  if (!append) grid.innerHTML = '<div class="spinner-container" style="grid-column:1/-1;"><div class="spinner"></div></div>';
+
+  try {
+    const res  = await fetch(`${API_BASE}/anilist/trending?page=${trendingPage}&perPage=20`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await parseAniListResponse(res, 'Failed to load trending anime');
+    if (!append) grid.innerHTML = '';
+    renderAnimeCards(data.anime || [], grid);
+    const lm = document.getElementById('trendingLoadMore');
+    lm.style.display = data.pagination?.hasNextPage ? 'block' : 'none';
+  } catch(e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;color:var(--text-muted);text-align:center;padding:40px;">Failed: ${e.message}</div>`;
+  }
+}
+
+function loadMoreTrending() { trendingPage++; loadTrending(true); }
+
+// ══════════════════════════
+// TOP RATED
+// ══════════════════════════
+
+async function loadTop(append = false) {
+  if (!append) topPage = 1;
+  const grid = document.getElementById('topGrid');
+  if (!append) grid.innerHTML = '<div class="spinner-container" style="grid-column:1/-1;"><div class="spinner"></div></div>';
+
+  try {
+    const res  = await fetch(`${API_BASE}/anilist/top?page=${topPage}&perPage=20`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await parseAniListResponse(res, 'Failed to load top rated anime');
+    if (!append) grid.innerHTML = '';
+    renderAnimeCards(data.anime || [], grid);
+    const lm = document.getElementById('topLoadMore');
+    lm.style.display = data.pagination?.hasNextPage ? 'block' : 'none';
+  } catch(e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;color:var(--text-muted);text-align:center;padding:40px;">Failed: ${e.message}</div>`;
+  }
+}
+
+function loadMoreTop() { topPage++; loadTop(true); }
+
+// ══════════════════════════
+// SEASON
+// ══════════════════════════
+
+async function loadSeason(append = false) {
+  if (!append) seasonPage = 1;
+  const season = document.getElementById('seasonSelect').value;
+  const year   = document.getElementById('yearSelect').value;
+  const grid   = document.getElementById('seasonGrid');
+  if (!append) grid.innerHTML = '<div class="spinner-container" style="grid-column:1/-1;"><div class="spinner"></div></div>';
+
+  try {
+    const res  = await fetch(`${API_BASE}/anilist/season?season=${season}&year=${year}&page=${seasonPage}&perPage=20`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await parseAniListResponse(res, 'Failed to load seasonal anime');
+    if (!append) grid.innerHTML = '';
+    renderAnimeCards(data.anime || [], grid);
+    const lm = document.getElementById('seasonLoadMore');
+    lm.style.display = data.pagination?.hasNextPage ? 'block' : 'none';
+  } catch(e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;color:var(--text-muted);text-align:center;padding:40px;">Failed: ${e.message}</div>`;
+  }
+}
+
+function loadMoreSeason() { seasonPage++; loadSeason(true); }
+
+// ══════════════════════════
+// RENDER CARDS
+// ══════════════════════════
+
+function renderAnimeCards(anime, grid) {
+  if (anime.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text-muted);">
+        <div style="font-size:48px;margin-bottom:12px;">😕</div>
+        <p style="font-size:15px;">No results found</p>
+      </div>`;
+    return;
+  }
+
+  const cards = anime.map(a => {
+    const statusClass = {
+      'Airing':'airing','Completed':'finished','Upcoming':'upcoming'
+    }[a.status] || 'finished';
+
+    const genres = (a.genres || []).slice(0, 3).map(g =>
+      `<span class="ac-genre">${g}</span>`
+    ).join('');
+
+    const score = a.score > 0 ? `⭐ ${a.score}/10` : '';
+
+    return `
+      <div class="anilist-card" id="card-${a.anilistId}">
+        <div class="ac-thumb-wrap">
+          <img class="ac-thumb"
+               src="${a.posterUrl}"
+               alt="${a.title}"
+               loading="lazy"
+               referrerpolicy="no-referrer">
+          ${score ? `<div class="ac-score">${score}</div>` : ''}
+          <div class="ac-status ${statusClass}">${a.status}</div>
+        </div>
+        <div class="ac-info">
+          <div class="ac-title" title="${a.title}">${a.title}</div>
+          <div class="ac-meta">
+            <span>${a.year}</span>
+            ${a.episodes > 0 ? `<span>📺 ${a.episodes} eps</span>` : ''}
+            ${a.duration > 0 ? `<span>⏱ ${a.duration}min</span>` : ''}
+          </div>
+          <div class="ac-genres">${genres}</div>
+          <button class="btn-import import-anime-btn"
+                  id="btn-${a.anilistId}"
+                  data-anilist-id="${a.anilistId}"
+                  data-title="${escapeHtml(a.title)}">
+            <i class="ri-download-line"></i> Import
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+
+  grid.insertAdjacentHTML('beforeend', cards);
+  grid.querySelectorAll('.import-anime-btn').forEach((button) => {
+    if (button.dataset.bound === 'true') return;
+    button.dataset.bound = 'true';
+    button.addEventListener('click', () => {
+      importAnime(Number(button.dataset.anilistId), button.dataset.title || '', button);
+    });
+  });
+  grid.querySelectorAll('.ac-thumb').forEach((img) => {
+    if (img.dataset.bound === 'true') return;
+    img.dataset.bound = 'true';
+    img.addEventListener('error', () => {
+      img.style.background = 'var(--bg-card)';
+      img.style.objectFit = 'contain';
+      img.removeAttribute('src');
+    });
+  });
+
+  // Check which are already imported
+  checkImportedStatus(anime.map(a => a.anilistId));
+}
+
+// ══════════════════════════
+// IMPORT SINGLE
+// ══════════════════════════
+
+async function importAnime(anilistId, title, btn) {
+  btn.innerHTML = '<i class="ri-loader-4-line"></i> Importing...';
+  btn.disabled  = true;
+
+  try {
+    const res  = await fetch(`${API_BASE}/anilist/import`, {
+      method:  'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+      body:    JSON.stringify({ anilistId }),
+    });
+    const data = await parseAniListResponse(res, 'Import failed');
+
+    if (res.ok) {
+      btn.className   = 'btn-import btn-imported';
+      btn.innerHTML   = '<i class="ri-check-line"></i> Imported ✅';
+      importedIds.add(anilistId);
+      showToast(`✅ "${title}" imported! Add video from Admin panel.`, 'success');
+      loadImportedCount();
+    } else {
+      btn.innerHTML = '<i class="ri-download-line"></i> Import';
+      btn.disabled  = false;
+      showToast(data.message, 'error');
+      if (data.message?.includes('already imported')) {
+        btn.className = 'btn-import btn-imported';
+        btn.innerHTML = '<i class="ri-check-line"></i> Already Imported';
+        btn.disabled  = true;
+      }
+    }
+  } catch(e) {
+    btn.innerHTML = '<i class="ri-download-line"></i> Import';
+    btn.disabled  = false;
+    showToast(e.message || 'Import failed', 'error');
+    if ((e.message || '').toLowerCase().includes('already imported')) {
+      btn.className = 'btn-import btn-imported';
+      btn.innerHTML = '<i class="ri-check-line"></i> Already Imported';
+      btn.disabled  = true;
+    }
+  }
+}
+
+// ── Check which anime are already imported ──
+async function checkImportedStatus(anilistIds) {
+  // Simple: fetch our DB and check
+  try {
+    const res  = await fetch(`${API_BASE}/movies?limit=200`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await parseAniListResponse(res, 'Failed to check imported titles');
+    const dbIds = new Set((data.movies || []).map(m => m.anilistId).filter(Boolean));
+
+    anilistIds.forEach(id => {
+      if (dbIds.has(id)) {
+        const btn = document.getElementById(`btn-${id}`);
+        if (btn) {
+          btn.className = 'btn-import btn-imported';
+          btn.innerHTML = '<i class="ri-check-line"></i> Already Imported';
+          btn.disabled  = true;
+        }
+      }
+    });
+  } catch(e) {}
+}
+
+// ══════════════════════════
+// BULK IMPORT
+// ══════════════════════════
+
+async function bulkPreset(preset) {
+  const ids = PRESETS[preset] || [];
+  if (!ids.length) return;
+  document.getElementById('bulkIds').value = ids.join('\n');
+  showToast(`${ids.length} IDs loaded — click Start Import`, 'success');
+}
+
+async function startBulkImport() {
+  const raw    = document.getElementById('bulkIds').value;
+  const ids    = raw.split(/[\n,\s]+/).map(s => s.trim()).filter(s => /^\d+$/.test(s));
+
+  if (ids.length === 0) { showToast('No valid IDs found', 'error'); return; }
+  if (ids.length > 50)  { showToast('Max 50 IDs at a time', 'error'); return; }
+
+  const log = document.getElementById('importLog');
+  log.style.display = 'block';
+  log.innerHTML = `<div class="log-info">🚀 Starting bulk import of ${ids.length} anime...</div>`;
+
+  try {
+    const res  = await fetch(`${API_BASE}/anilist/bulk-import`, {
+      method:  'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+      body:    JSON.stringify({ anilistIds: ids }),
+    });
+    const data = await parseAniListResponse(res, 'Bulk import failed');
+
+    let html = `<div class="log-info">━━━ Import Complete ━━━</div>`;
+    html += `<div class="log-info">✅ Imported: ${data.results?.imported?.length || 0}</div>`;
+    html += `<div class="log-skip">⏭️ Skipped: ${data.results?.skipped?.length || 0}</div>`;
+    html += `<div class="log-error">❌ Failed: ${data.results?.failed?.length || 0}</div>`;
+
+    if (data.results?.imported?.length > 0) {
+      html += `<div class="log-info">━━━ Imported Titles ━━━</div>`;
+      data.results.imported.forEach(t => {
+        html += `<div class="log-success">✅ ${t}</div>`;
+      });
+    }
+    if (data.results?.skipped?.length > 0) {
+      html += `<div class="log-info">━━━ Skipped ━━━</div>`;
+      data.results.skipped.forEach(t => {
+        html += `<div class="log-skip">⏭️ ${t}</div>`;
+      });
+    }
+    if (data.results?.failed?.length > 0) {
+      html += `<div class="log-info">━━━ Failed ━━━</div>`;
+      data.results.failed.forEach(t => {
+        html += `<div class="log-error">❌ ${t}</div>`;
+      });
+    }
+
+    log.innerHTML = html;
+    showToast(data.message, 'success');
+    loadImportedCount();
+
+  } catch(e) {
+    log.innerHTML += `<div class="log-error">❌ ${e.message}</div>`;
+    showToast('Bulk import failed', 'error');
+  }
+}
+
+// ── LOGOUT ──
+function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  window.location.href = 'login.html';
+}
+</script>
+</body>
+</html>

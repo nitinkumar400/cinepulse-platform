@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#e50914">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CineStream">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <title>Search - CINE STREAM</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+  <script src="../js/config.js"></script>
+  <script src="../js/app.js"></script>
+  <style>
+    .search-page { min-height:100vh; padding:calc(var(--nav-height)+32px) 4% 60px; }
+
+    .search-hero { text-align:center; padding:48px 20px 40px; }
+    .search-hero-title {
+      font-family: var(--font-display);
+      font-size: clamp(32px,5vw,56px);
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+    .search-hero-title span { color:var(--accent); }
+    .search-hero-sub { color:var(--text-muted); font-size:15px; margin-bottom:32px; }
+
+    .search-box-wrap { position:relative; max-width:720px; margin:0 auto 16px; }
+    .search-box-big {
+      width: 100%;
+      padding: 18px 60px 18px 56px;
+      background: var(--bg-secondary);
+      border: 2px solid var(--border);
+      border-radius: 50px;
+      color: #fff;
+      font-size: 17px;
+      font-family: var(--font-body);
+      outline: none;
+      transition: var(--transition);
+    }
+    .search-box-big:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(229,9,20,0.12);
+      background: var(--bg-card);
+    }
+    .search-box-icon {
+      position: absolute; left:20px; top:50%;
+      transform: translateY(-50%);
+      font-size: 22px; color:var(--text-muted);
+      pointer-events: none;
+    }
+    .search-box-clear {
+      position: absolute; right:16px; top:50%;
+      transform: translateY(-50%);
+      background: var(--bg-card);
+      border: none; cursor:pointer;
+      color: var(--text-muted); font-size:20px;
+      width:32px; height:32px; border-radius:50%;
+      display: none; align-items:center; justify-content:center;
+      transition: var(--transition);
+    }
+    .search-box-clear:hover { color:var(--accent); background:rgba(229,9,20,0.1); }
+    .search-box-clear.visible { display:flex; }
+
+    .suggestions-dropdown {
+      position: absolute; top:calc(100% + 8px); left:0; right:0;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden; z-index:100; display:none;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    .suggestions-dropdown.visible { display:block; }
+    .suggestion-item {
+      display: flex; align-items:center; gap:14px;
+      padding: 12px 20px; cursor:pointer;
+      transition: var(--transition);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .suggestion-item:last-child { border-bottom:none; }
+    .suggestion-item:hover { background:var(--bg-hover); }
+    .suggestion-thumb {
+      width:40px; height:56px; object-fit:cover;
+      border-radius:4px; background:var(--bg-card); flex-shrink:0;
+    }
+    .suggestion-title { font-size:14px; font-weight:600; }
+    .suggestion-meta  { font-size:12px; color:var(--text-muted); }
+
+    .filter-bar {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px; margin-bottom:28px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px,1fr));
+      gap: 14px; align-items:end;
+    }
+    .filter-group label {
+      display: block; font-size:11px; font-weight:700;
+      text-transform: uppercase; letter-spacing:1px;
+      color: var(--text-muted); margin-bottom:8px;
+    }
+    .filter-select {
+      width: 100%; padding:10px 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: #fff; font-family:var(--font-body);
+      font-size: 13px; cursor:pointer; outline:none;
+      transition: var(--transition);
+    }
+    .filter-select:focus { border-color:var(--accent); }
+    .filter-actions { display:flex; gap:10px; align-items:flex-end; }
+    .btn-apply-filter {
+      flex: 1; padding:10px 16px;
+      background: var(--accent); border:none;
+      border-radius: var(--radius); color:#fff;
+      font-family: var(--font-body); font-size:13px;
+      font-weight: 600; cursor:pointer;
+      transition: var(--transition);
+      display: flex; align-items:center;
+      justify-content: center; gap:6px; white-space:nowrap;
+    }
+    .btn-apply-filter:hover { background:#c00711; }
+    .btn-reset-filter {
+      padding: 10px 14px; background:none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      font-family: var(--font-body);
+      font-size: 13px; cursor:pointer;
+      transition: var(--transition);
+    }
+    .btn-reset-filter:hover { border-color:var(--accent); color:var(--accent); }
+
+    .active-filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+    .active-filter-tag {
+      display: flex; align-items:center; gap:6px;
+      padding: 5px 12px;
+      background: rgba(229,9,20,0.12);
+      border: 1px solid rgba(229,9,20,0.3);
+      border-radius: 20px; font-size:12px; color:var(--accent);
+    }
+    .active-filter-tag button {
+      background: none; border:none; cursor:pointer;
+      color: var(--accent); font-size:14px; padding:0; line-height:1;
+    }
+
+    .results-header {
+      display: flex; align-items:center;
+      justify-content: space-between;
+      margin-bottom: 20px; flex-wrap:wrap; gap:12px;
+    }
+    .results-count { font-size:14px; color:var(--text-muted); }
+    .results-count strong { color:var(--text-primary); font-size:16px; }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px,1fr));
+      gap: 20px;
+    }
+
+    .search-empty { text-align:center; padding:80px 20px; color:var(--text-muted); }
+    .search-empty-icon { font-size:64px; margin-bottom:16px; }
+    .search-empty h3 { font-size:20px; color:var(--text-primary); margin-bottom:8px; }
+
+    .popular-section { text-align:center; margin-top:48px; }
+    .popular-title { font-size:14px; color:var(--text-muted); margin-bottom:14px; text-transform:uppercase; letter-spacing:1px; }
+    .popular-tags { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+    .popular-tag {
+      padding: 8px 18px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 20px; font-size:13px;
+      cursor: pointer; transition:var(--transition);
+      color: var(--text-secondary);
+    }
+    .popular-tag:hover { border-color:var(--accent); color:var(--accent); background:rgba(229,9,20,0.08); }
+
+    .load-more-wrap { text-align:center; margin-top:40px; }
+
+    @media (max-width:768px) {
+      .filter-bar { grid-template-columns:1fr 1fr; }
+      .results-grid { grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); }
+    }
+    @media (max-width:480px) {
+      .filter-bar { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="navbar scrolled" id="navbar">
+  <a href="index.html" class="nav-logo">CINE<span>STREAM</span></a>
+  <div class="nav-links">
+    <a href="index.html">Home</a>
+    <a href="index.html?category=movie">Movies</a>
+    <a href="index.html?category=anime">Anime</a>
+    <a href="index.html?category=series">Series</a>
+  </div>
+  <div class="nav-right" id="userSection"></div>
+</nav>
+
+<div class="search-page">
+
+  <div class="search-hero">
+    <h1 class="search-hero-title">Find Your Next <span>Watch</span></h1>
+    <p class="search-hero-sub">Search across all movies, anime, series, and more</p>
+
+    <div class="search-box-wrap">
+      <i class="ri-search-line search-box-icon"></i>
+      <input type="text" id="mainSearchInput" class="search-box-big"
+             placeholder="Search movies, anime, genres..."
+             autocomplete="off">
+      <button class="search-box-clear" id="clearSearchBtn">
+        <i class="ri-close-line"></i>
+      </button>
+      <div class="suggestions-dropdown" id="suggestionsDropdown"></div>
+    </div>
+
+    <div class="popular-section" id="popularSection">
+      <div class="popular-title">Popular Searches</div>
+      <div class="popular-tags" id="popularTags"></div>
+    </div>
+  </div>
+
+  <div class="filter-bar" id="filterBar" style="display:none;">
+    <div class="filter-group">
+      <label><i class="ri-grid-line"></i> Category</label>
+      <select class="filter-select" id="filterCategory">
+        <option value="">All Categories</option>
+        <option value="movie">🎬 Movie</option>
+        <option value="anime">⚡ Anime</option>
+        <option value="series">📺 Series</option>
+        <option value="cartoon">🎨 Cartoon</option>
+        <option value="documentary">🌍 Documentary</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label><i class="ri-price-tag-3-line"></i> Genre</label>
+      <select class="filter-select" id="filterGenre">
+        <option value="">All Genres</option>
+        <option value="action">Action</option>
+        <option value="adventure">Adventure</option>
+        <option value="animation">Animation</option>
+        <option value="comedy">Comedy</option>
+        <option value="drama">Drama</option>
+        <option value="fantasy">Fantasy</option>
+        <option value="horror">Horror</option>
+        <option value="romance">Romance</option>
+        <option value="sci-fi">Sci-Fi</option>
+        <option value="thriller">Thriller</option>
+        <option value="slice-of-life">Slice of Life</option>
+        <option value="supernatural">Supernatural</option>
+        <option value="isekai">Isekai</option>
+        <option value="mecha">Mecha</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label><i class="ri-calendar-line"></i> Year</label>
+      <select class="filter-select" id="filterYear">
+        <option value="">Any Year</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label><i class="ri-star-line"></i> Min Rating</label>
+      <select class="filter-select" id="filterRating">
+        <option value="">Any Rating</option>
+        <option value="9">9+ ⭐</option>
+        <option value="8">8+ ⭐</option>
+        <option value="7">7+ ⭐</option>
+        <option value="6">6+ ⭐</option>
+        <option value="5">5+ ⭐</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label><i class="ri-sort-asc"></i> Sort By</label>
+      <select class="filter-select" id="filterSort">
+        <option value="newest">Newest First</option>
+        <option value="most_viewed">Most Viewed</option>
+        <option value="highest_rated">Highest Rated</option>
+        <option value="title_az">Title A→Z</option>
+        <option value="title_za">Title Z→A</option>
+        <option value="oldest">Oldest First</option>
+      </select>
+    </div>
+    <div class="filter-group filter-actions">
+      <button class="btn-apply-filter" id="applyBtn">
+        <i class="ri-filter-3-line"></i> Apply
+      </button>
+      <button class="btn-reset-filter" id="resetBtn">
+        <i class="ri-refresh-line"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="active-filters" id="activeFilters"></div>
+
+  <div id="resultsSection" style="display:none;">
+    <div class="results-header">
+      <div class="results-count" id="resultsCount"></div>
+      <div style="font-size:12px;color:var(--text-muted);" id="resultsQuery"></div>
+    </div>
+    <div class="results-grid" id="resultsGrid"></div>
+    <div class="load-more-wrap" id="loadMoreWrap" style="display:none;">
+      <button class="btn btn-outline" id="loadMoreBtn">
+        <i class="ri-arrow-down-line"></i> Load More Results
+      </button>
+    </div>
+  </div>
+
+  <div id="loadingState" style="display:none;">
+    <div class="spinner-container" style="height:300px;">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <div id="emptyState" style="display:none;">
+    <div class="search-empty">
+      <div class="search-empty-icon">🔍</div>
+      <h3 id="emptyTitle">No results found</h3>
+      <p id="emptyMsg">Try different keywords or remove some filters</p>
+      <button class="btn btn-outline" id="emptyResetBtn" style="margin-top:20px;">
+        <i class="ri-refresh-line"></i> Clear Filters
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="../js/pwa.js"></script>
+<script>
+
+// ══════════════════════════════════════════
+// MEDIA URL HELPER
+// FIX: The root cause of broken images.
+// Old code: `${MEDIA_BASE}${m.thumbnailUrl}`
+// When thumbnailUrl is already a full Cloudinary URL (https://res.cloudinary.com/...)
+// this produced: http://localhost:5000https://res.cloudinary.com/... — BROKEN
+// Fix: check if URL already starts with http, skip MEDIA_BASE if so
+// ══════════════════════════════════════════
+function getImageUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return (typeof MEDIA_BASE !== 'undefined' ? MEDIA_BASE : '') + url;
+}
+
+const PLACEHOLDER = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';
+
+// ── STATE ──
+let currentQuery = '';
+let currentPage  = 1;
+let totalPages   = 1;
+let searchTimer  = null;
+let suggestTimer = null;
+
+function buildMoviesEndpoint(queryString) {
+  return `/movies?${queryString}`;
+}
+
+function bindSearchImageFallback(root = document) {
+  root.querySelectorAll('img[data-fallback-src]').forEach((img) => {
+    if (img.dataset.bound === 'true') return;
+    img.dataset.bound = 'true';
+    img.addEventListener('error', () => {
+      if (img.dataset.fallbackApplied === 'true') return;
+      img.dataset.fallbackApplied = 'true';
+      img.src = img.dataset.fallbackSrc;
+    });
+  });
+}
+
+// ── INIT ──
+window.addEventListener('DOMContentLoaded', () => {
+  setupNavbar();
+  buildYearOptions();
+  loadPopularContent();
+
+  const urlQ = new URLSearchParams(window.location.search).get('q');
+  if (urlQ) {
+    document.getElementById('mainSearchInput').value = urlQ;
+    toggleClearBtn(true);
+    showFilterBar();
+    document.getElementById('popularSection').style.display = 'none';
+    currentPage = 1;
+    performSearch(urlQ);
+  }
+
+  document.getElementById('mainSearchInput').addEventListener('input', function() {
+    const val = this.value.trim();
+    toggleClearBtn(val.length > 0);
+
+    if (val.length > 0) {
+      showFilterBar();
+      document.getElementById('popularSection').style.display = 'none';
+    } else {
+      document.getElementById('popularSection').style.display = 'block';
+      hideSuggestions();
+      hideAllStates();
+      return;
+    }
+
+    clearTimeout(suggestTimer);
+    suggestTimer = setTimeout(() => fetchSuggestions(val), 250);
+
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      currentPage = 1;
+      performSearch(val);
+    }, 600);
+  });
+
+  document.getElementById('mainSearchInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      hideSuggestions();
+      clearTimeout(searchTimer);
+      currentPage = 1;
+      performSearch(document.getElementById('mainSearchInput').value.trim());
+    }
+    if (e.key === 'Escape') hideSuggestions();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-box-wrap')) hideSuggestions();
+  });
+
+  document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
+  document.getElementById('applyBtn').addEventListener('click', applyFilters);
+  document.getElementById('resetBtn').addEventListener('click', resetFilters);
+  document.getElementById('loadMoreBtn').addEventListener('click', loadMore);
+  document.getElementById('emptyResetBtn').addEventListener('click', resetFilters);
+});
+
+// ── NAVBAR ──
+function setupNavbar() {
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  const sec  = document.getElementById('userSection');
+  if (!sec) return;
+
+  if (user) {
+    const avatarBg = user.avatar?.startsWith('#') ? user.avatar : 'var(--accent)';
+    sec.innerHTML = `
+      <a href="profile.html"
+         style="font-size:13px;color:var(--text-secondary);
+                text-decoration:none;display:flex;align-items:center;gap:6px;">
+        <div style="width:28px;height:28px;border-radius:50%;
+                    background:${escapeHTML(avatarBg)};display:flex;align-items:center;
+                    justify-content:center;font-size:12px;font-weight:700;color:#fff;">
+          ${user.username ? user.username[0].toUpperCase() : 'U'}
+        </div>
+        Hi, ${escapeHTML(user.username || 'User')}
+      </a>
+      ${user.role === 'admin'
+        ? `<a href="admin.html" style="margin-left:8px;">
+             <button class="btn-nav"><i class="ri-upload-cloud-line"></i></button>
+           </a>`
+        : ''}
+      <button id="navLogout" class="btn-nav"
+              style="background:var(--bg-card);color:var(--text-secondary);margin-left:8px;">
+        Logout
+      </button>`;
+    document.getElementById('navLogout')?.addEventListener('click', () => {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = 'login.html';
+    });
+  } else {
+    sec.innerHTML = `<a href="login.html"><button class="btn-nav">Sign In</button></a>`;
+  }
+}
+
+// ── BUILD YEAR OPTIONS ──
+function buildYearOptions() {
+  const select = document.getElementById('filterYear');
+  const now    = new Date().getFullYear();
+  for (let y = now; y >= 1980; y--) {
+    const opt = document.createElement('option');
+    opt.value       = y;
+    opt.textContent = y;
+    select.appendChild(opt);
+  }
+}
+
+// ── LOAD POPULAR ──
+async function loadPopularContent() {
+  try {
+    const res  = await apiFetch(buildMoviesEndpoint('limit=10&sort=views'));
+    const data = await readJsonResponse(res);
+    const tags = document.getElementById('popularTags');
+    if (!tags) return;
+
+    if (data.movies && data.movies.length > 0) {
+      tags.innerHTML = data.movies.slice(0, 8).map(m => {
+        const safe = m.title.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+        return `<div class="popular-tag" data-title="${safe}">${escapeHTML(m.title)}</div>`;
+      }).join('');
+
+      tags.addEventListener('click', (e) => {
+        const tag = e.target.closest('.popular-tag');
+        if (tag) quickSearch(tag.dataset.title);
+      });
+    }
+  } catch(e) {}
+}
+
+// ── SUGGESTIONS ──
+async function fetchSuggestions(q) {
+  if (q.length < 2) { hideSuggestions(); return; }
+
+  try {
+    const res  = await apiFetch(buildMoviesEndpoint(`search=${encodeURIComponent(q)}&limit=6`));
+    const data = await readJsonResponse(res);
+    const dropdown = document.getElementById('suggestionsDropdown');
+
+    if (!data.movies || data.movies.length === 0) {
+      hideSuggestions();
+      return;
+    }
+
+    dropdown.innerHTML = data.movies.map(m => {
+      // FIX: Use getImageUrl() — handles both Cloudinary and local paths
+      const thumb  = getImageUrl(m.thumbnailUrl);
+      const title  = escapeHTML(m.title || '');
+      const cat    = escapeHTML(m.category || '');
+      const year   = m.releaseYear || '';
+      const rating = m.averageRating || 'N/A';
+
+      return `
+        <div class="suggestion-item" data-id="${m._id}">
+          <img class="suggestion-thumb"
+               src="${thumb || PLACEHOLDER}"
+               alt="${title}"
+               referrerpolicy="no-referrer"
+               data-fallback-src="${PLACEHOLDER}">
+          <div style="flex:1;min-width:0;">
+            <div class="suggestion-title">${title}</div>
+            <div class="suggestion-meta">${cat} • ${year} • ⭐ ${rating}</div>
+          </div>
+          <i class="ri-arrow-right-up-line" style="color:var(--text-muted);font-size:16px;"></i>
+        </div>`;
+    }).join('');
+
+    const seeAll = document.createElement('div');
+    seeAll.className = 'suggestion-item';
+    seeAll.style.cssText = 'justify-content:center;color:var(--accent);';
+    seeAll.innerHTML = `<i class="ri-search-line"></i>
+      <span style="font-size:13px;font-weight:600;">See all results for "${escapeHTML(q)}"</span>`;
+    seeAll.addEventListener('click', () => {
+      hideSuggestions();
+      performSearch(q);
+    });
+    dropdown.appendChild(seeAll);
+
+    dropdown.querySelectorAll('.suggestion-item[data-id]').forEach(item => {
+      item.addEventListener('click', () => {
+        hideSuggestions();
+        window.location.href = `movie-details.html?id=${item.dataset.id}`;
+      });
+    });
+    bindSearchImageFallback(dropdown);
+
+    dropdown.classList.add('visible');
+  } catch(e) {}
+}
+
+function hideSuggestions() {
+  const d = document.getElementById('suggestionsDropdown');
+  if (d) d.classList.remove('visible');
+}
+
+function quickSearch(q) {
+  document.getElementById('mainSearchInput').value = q;
+  toggleClearBtn(true);
+  showFilterBar();
+  document.getElementById('popularSection').style.display = 'none';
+  currentPage = 1;
+  performSearch(q);
+}
+
+// ── PERFORM SEARCH ──
+async function performSearch(q) {
+  if (!q || !q.trim()) return;
+  currentQuery = q.trim();
+  hideSuggestions();
+
+  const category = document.getElementById('filterCategory').value;
+  const genre    = document.getElementById('filterGenre').value;
+  const year     = document.getElementById('filterYear').value;
+  const rating   = document.getElementById('filterRating').value;
+  const sort     = document.getElementById('filterSort').value;
+
+  const urlParams = new URLSearchParams({ q: currentQuery });
+  if (category) urlParams.set('category', category);
+  window.history.replaceState({}, '', `?${urlParams.toString()}`);
+
+  const apiParams = new URLSearchParams({
+    search: currentQuery,
+    page: String(currentPage),
+    limit: '20',
+  });
+  if (sort === 'most_viewed')        apiParams.set('sort', 'views');
+  else if (sort === 'highest_rated') apiParams.set('sort', 'rating');
+  else if (sort === 'title_az')      apiParams.set('sort', 'titleAZ');
+  else if (sort === 'title_za')      apiParams.set('sort', 'titleZA');
+  else if (sort === 'oldest')        apiParams.set('sort', 'oldest');
+  if (category) apiParams.set('category', category);
+  if (genre)    apiParams.set('genre', genre);
+  if (year)     apiParams.set('year', year);
+  if (rating)   apiParams.set('minRating', rating);
+
+  document.getElementById('loadingState').style.display   = 'block';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('emptyState').style.display     = 'none';
+
+  try {
+    const res  = await apiFetch(buildMoviesEndpoint(apiParams.toString()));
+    const data = await readJsonResponse(res);
+
+    document.getElementById('loadingState').style.display = 'none';
+    totalPages = data.pagination?.pages || 1;
+
+    updateActiveFilterTags({ category, genre, year, rating, sort });
+
+    if (!data.movies || data.movies.length === 0) {
+      showEmptyState(currentQuery);
+      return;
+    }
+
+    renderResults(data.movies, data.pagination, currentPage > 1);
+
+  } catch(err) {
+    console.error('Search error:', err);
+    document.getElementById('loadingState').style.display = 'none';
+    showEmptyState(currentQuery);
+  }
+}
+
+// ── RENDER RESULTS ──
+function renderResults(movies, pagination, append) {
+  const grid  = document.getElementById('resultsGrid');
+  const cards = movies.map(m => buildSearchCard(m)).join('');
+
+  if (append) {
+    grid.insertAdjacentHTML('beforeend', cards);
+  } else {
+    grid.innerHTML = cards;
+  }
+  bindSearchImageFallback(grid);
+
+  document.getElementById('resultsSection').style.display = 'block';
+  document.getElementById('emptyState').style.display     = 'none';
+
+  const total = pagination?.total || movies.length;
+  document.getElementById('resultsCount').innerHTML =
+    `Found <strong>${total}</strong> result${total !== 1 ? 's' : ''}`;
+  document.getElementById('resultsQuery').textContent =
+    currentQuery ? `for "${currentQuery}"` : '';
+
+  const lmw  = document.getElementById('loadMoreWrap');
+  const page = pagination?.page  || currentPage;
+  const pages= pagination?.pages || 1;
+  lmw.style.display = page < pages ? 'block' : 'none';
+
+  // Attach card click events via delegation
+  if (!grid._delegated) {
+    grid._delegated = true;
+    grid.addEventListener('click', (e) => {
+      const card = e.target.closest('.movie-card[data-id]');
+      if (card) window.location.href = `movie-details.html?id=${card.dataset.id}`;
+    });
+  }
+}
+
+// ══════════════════════════════════════════
+// BUILD SEARCH CARD
+// FIX: Was using ${MEDIA_BASE}${m.thumbnailUrl}
+// which broke Cloudinary URLs (https://...) by prepending localhost
+// Now uses getImageUrl() which checks for existing http prefix
+// ══════════════════════════════════════════
+function buildSearchCard(m) {
+  const badges = {
+    anime:'badge-anime', movie:'badge-movie',
+    series:'badge-series', cartoon:'badge-cartoon',
+    documentary:'badge-documentary', short:'badge-movie',
+  };
+
+  // FIX: getImageUrl handles both Cloudinary (https://) and local paths
+  const thumb    = getImageUrl(m.thumbnailUrl) || PLACEHOLDER;
+  const badgeCls = badges[m.category] || 'badge-movie';
+  const rating   = m.averageRating > 0 ? m.averageRating : '—';
+  const dur      = m.duration ? `${m.duration} min` : '';
+
+  return `
+    <div class="movie-card" data-id="${m._id}">
+      <div class="card-thumbnail">
+        <img src="${thumb}"
+             alt="${escapeHTML(m.title)}"
+             loading="lazy"
+             referrerpolicy="no-referrer"
+             data-fallback-src="${PLACEHOLDER}">
+        <div class="card-overlay">
+          <div class="card-play-btn"><i class="ri-play-fill"></i></div>
+        </div>
+        <span class="card-badge ${badgeCls}">${escapeHTML(m.category)}</span>
+        <div class="card-rating"><i class="ri-star-fill"></i> ${rating}</div>
+      </div>
+      <div class="card-info">
+        <div class="card-title">${escapeHTML(m.title)}</div>
+        <div class="card-meta">
+          <span>${m.releaseYear || ''}</span>
+          ${dur ? `<span>·</span><span>${dur}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── LOAD MORE ──
+async function loadMore() {
+  const btn = document.getElementById('loadMoreBtn');
+  btn.innerHTML = '<i class="ri-loader-4-line"></i> Loading...';
+  btn.disabled  = true;
+  currentPage++;
+
+  const category = document.getElementById('filterCategory').value;
+  const genre    = document.getElementById('filterGenre').value;
+  const year     = document.getElementById('filterYear').value;
+  const rating   = document.getElementById('filterRating').value;
+  const sort     = document.getElementById('filterSort').value;
+
+  const apiParams = new URLSearchParams({
+    search: currentQuery,
+    page: String(currentPage),
+    limit: '20',
+  });
+  if (sort === 'most_viewed')        apiParams.set('sort', 'views');
+  else if (sort === 'highest_rated') apiParams.set('sort', 'rating');
+  if (category) apiParams.set('category', category);
+  if (genre)    apiParams.set('genre', genre);
+  if (year)     apiParams.set('year', year);
+  if (rating)   apiParams.set('minRating', rating);
+
+  try {
+    const res  = await apiFetch(buildMoviesEndpoint(apiParams.toString()));
+    const data = await readJsonResponse(res);
+    if (data.movies && data.movies.length > 0) {
+      renderResults(data.movies, data.pagination, true);
+    }
+  } catch(e) {}
+
+  btn.innerHTML = '<i class="ri-arrow-down-line"></i> Load More Results';
+  btn.disabled  = false;
+}
+
+// ── FILTERS ──
+function applyFilters() {
+  currentPage = 1;
+  const q = document.getElementById('mainSearchInput').value.trim();
+  if (q) performSearch(q);
+}
+
+function resetFilters() {
+  document.getElementById('filterCategory').value = '';
+  document.getElementById('filterGenre').value    = '';
+  document.getElementById('filterYear').value     = '';
+  document.getElementById('filterRating').value   = '';
+  document.getElementById('filterSort').value     = 'newest';
+  document.getElementById('activeFilters').innerHTML = '';
+  const q = document.getElementById('mainSearchInput').value.trim();
+  if (q) { currentPage = 1; performSearch(q); }
+}
+
+function updateActiveFilterTags({ category, genre, year, rating, sort }) {
+  const container = document.getElementById('activeFilters');
+  const tags = [];
+  if (category) tags.push({ label:`Category: ${category}`, id:'filterCategory' });
+  if (genre)    tags.push({ label:`Genre: ${genre}`,        id:'filterGenre' });
+  if (year)     tags.push({ label:`Year: ${year}`,          id:'filterYear' });
+  if (rating)   tags.push({ label:`${rating}+ stars`,       id:'filterRating' });
+  if (sort && sort !== 'newest')
+    tags.push({ label:sort.replace(/_/g,' '), id:'filterSort' });
+
+  container.innerHTML = tags.map(t => `
+    <div class="active-filter-tag">
+      ${escapeHTML(t.label)}
+      <button data-filter="${t.id}"><i class="ri-close-line"></i></button>
+    </div>`).join('');
+
+  container.querySelectorAll('button[data-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const el = document.getElementById(btn.dataset.filter);
+      if (el) el.value = btn.dataset.filter === 'filterSort' ? 'newest' : '';
+      applyFilters();
+    });
+  });
+}
+
+// ── HELPERS ──
+function escapeHTML(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function toggleClearBtn(show) {
+  document.getElementById('clearSearchBtn').classList.toggle('visible', show);
+}
+
+function showFilterBar() {
+  document.getElementById('filterBar').style.display = 'grid';
+}
+
+function hideAllStates() {
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('loadingState').style.display   = 'none';
+  document.getElementById('emptyState').style.display     = 'none';
+  document.getElementById('filterBar').style.display      = 'none';
+  document.getElementById('activeFilters').innerHTML      = '';
+}
+
+function showEmptyState(q) {
+  document.getElementById('emptyState').style.display     = 'block';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('emptyTitle').textContent = `No results for "${q}"`;
+  document.getElementById('emptyMsg').textContent   =
+    'Try different keywords, check spelling, or remove some filters.';
+}
+
+function clearSearch() {
+  document.getElementById('mainSearchInput').value = '';
+  toggleClearBtn(false);
+  hideSuggestions();
+  hideAllStates();
+  document.getElementById('popularSection').style.display = 'block';
+  document.getElementById('mainSearchInput').focus();
+  window.history.replaceState({}, '', window.location.pathname);
+}
+
+</script>
+</body>
+</html>

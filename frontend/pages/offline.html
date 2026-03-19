@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#e50914">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CineStream">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <title>Offline - CINE STREAM</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+  <style>
+    body { display:flex; align-items:center; justify-content:center; min-height:100vh; background:var(--bg-primary); }
+    .offline-card {
+      text-align:center; padding:48px 40px; max-width:440px;
+      background:var(--bg-secondary); border:1px solid var(--border);
+      border-radius:var(--radius-lg);
+    }
+    .offline-icon { font-size:80px; margin-bottom:24px; animation:pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    .offline-title { font-family:var(--font-display); font-size:36px; letter-spacing:2px; margin-bottom:12px; }
+    .offline-title span { color:var(--accent); }
+    .offline-msg { color:var(--text-secondary); font-size:15px; line-height:1.7; margin-bottom:28px; }
+    .offline-tips { background:var(--bg-card); border-radius:var(--radius); padding:20px; margin-bottom:28px; text-align:left; }
+    .offline-tips h4 { font-size:13px; font-weight:700; margin-bottom:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; }
+    .offline-tips li { font-size:13px; color:var(--text-secondary); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+    .online-indicator { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); margin-bottom:20px; }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); }
+    .dot.online { background:#10b981; animation:blink 1s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  </style>
+</head>
+<body>
+  <div class="offline-card">
+    <div class="offline-icon">📡</div>
+
+    <div class="online-indicator">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">Checking connection...</span>
+    </div>
+
+    <h1 class="offline-title">CINE<span>STREAM</span></h1>
+    <p class="offline-msg">
+      You're currently offline. Check your internet connection to continue watching.
+    </p>
+
+    <div class="offline-tips">
+      <h4>While you're offline:</h4>
+      <ul style="list-style:none;padding:0;margin:0;">
+        <li><i class="ri-wifi-off-line" style="color:var(--accent);"></i> Connect to WiFi or mobile data</li>
+        <li><i class="ri-refresh-line" style="color:var(--accent);"></i> Refresh once you're back online</li>
+        <li><i class="ri-history-line" style="color:var(--accent);"></i> Return once your connection is restored</li>
+      </ul>
+    </div>
+
+    <div style="display:flex;gap:12px;flex-direction:column;">
+      <button onclick="tryReconnect()" class="btn btn-primary" style="justify-content:center;" id="retryBtn">
+        <i class="ri-refresh-line"></i> Try Again
+      </button>
+      <a href="/pages/index.html" class="btn btn-outline" style="justify-content:center;">
+        <i class="ri-home-line"></i> Go to Homepage
+      </a>
+    </div>
+
+    <p style="font-size:11px;color:var(--text-muted);margin-top:20px;">
+      Reconnect to continue using the platform
+    </p>
+  </div>
+
+  <script>
+    const dot    = document.getElementById('statusDot');
+    const status = document.getElementById('statusText');
+
+    function updateOnlineStatus() {
+      if (navigator.onLine) {
+        dot.classList.add('online');
+        status.textContent = 'Back online!';
+        status.style.color = '#10b981';
+        setTimeout(() => { window.location.href = '/pages/index.html'; }, 1500);
+      } else {
+        dot.classList.remove('online');
+        status.textContent = 'No internet connection';
+        status.style.color = 'var(--text-muted)';
+      }
+    }
+
+    function tryReconnect() {
+      const btn = document.getElementById('retryBtn');
+      btn.innerHTML = '<i class="ri-loader-4-line"></i> Checking...';
+      btn.disabled  = true;
+      setTimeout(() => {
+        updateOnlineStatus();
+        if (!navigator.onLine) {
+          btn.innerHTML = '<i class="ri-refresh-line"></i> Try Again';
+          btn.disabled  = false;
+        }
+      }, 1500);
+    }
+
+    window.addEventListener('online',  updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus();
+  </script>
+</body>
+</html>

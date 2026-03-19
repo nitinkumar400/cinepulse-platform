@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#e50914">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CineStream">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <title>My Profile - CINE STREAM</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+  <style>
+    .profile-page { min-height:100vh; padding:calc(var(--nav-height)+40px) 4% 60px; margin-top:100px; }
+
+    .profile-hero {
+      --profile-backdrop: none;
+      isolation: isolate;
+      background:
+        linear-gradient(135deg,rgba(229,9,20,0.18) 0%,rgba(124,58,237,0.08) 50%,transparent 100%),
+        var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 36px;
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      margin-bottom: 32px;
+      position: relative;
+      overflow: hidden;
+    }
+    .profile-hero::before {
+      content:'';
+      position:absolute; top:-50%; right:-10%;
+      width:300px; height:300px;
+      background:radial-gradient(circle,rgba(229,9,20,0.08) 0%,transparent 70%);
+      pointer-events:none;
+      z-index:-2;
+    }
+    .profile-hero::after {
+      content:'';
+      position:absolute;
+      inset:0;
+      background:
+        linear-gradient(90deg, rgba(10,10,15,0.94) 0%, rgba(10,10,15,0.72) 46%, rgba(10,10,15,0.32) 100%),
+        linear-gradient(0deg, rgba(10,10,15,0.95) 0%, rgba(10,10,15,0.18) 46%, rgba(10,10,15,0) 100%),
+        var(--profile-backdrop) center/cover no-repeat;
+      filter: blur(0px);
+      z-index:-1;
+      pointer-events:none;
+    }
+    .avatar-frame { position:relative; flex-shrink:0; z-index:1; transition:transform 0.3s ease; }
+    .avatar-frame:hover { transform:scale(1.1); }
+    .avatar-frame::before,
+    .avatar-frame::after {
+      content:'';
+      position:absolute;
+      inset:-10px;
+      border-radius:50%;
+      border:1px solid rgba(255,255,255,0.08);
+      pointer-events:none;
+    }
+    .avatar-frame::after {
+      inset:-18px;
+      border-color: rgba(229,9,20,0.28);
+      box-shadow: 0 0 15px var(--primary, var(--accent)), 0 0 0 1px rgba(229,9,20,0.08), 0 20px 50px rgba(0,0,0,0.25);
+    }
+    .profile-avatar {
+      width:150px; height:150px; border-radius:50%;
+      background:linear-gradient(135deg,#ef4444 0%,#7c3aed 100%);
+      display:flex; align-items:center; justify-content:center;
+      font-family:var(--font-display); font-size:58px;
+      letter-spacing:2px; color:#fff;
+      border:3px solid var(--primary, var(--accent));
+      box-shadow:0 18px 45px rgba(0,0,0,0.28), 0 0 0 10px rgba(229,9,20,0.08);
+      overflow:hidden; cursor:pointer;
+      position:relative;
+      clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%);
+    }
+    .profile-avatar img { width:100%; height:100%; object-fit:cover; }
+    .avatar-edit-btn {
+      position:absolute; bottom:0; right:0;
+      width:38px; height:38px;
+      background:var(--accent); border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; font-size:13px; color:#fff;
+      border:3px solid var(--bg-secondary);
+    }
+    .profile-info { flex:1; position:relative; z-index:1; }
+    .profile-username { font-family:var(--font-display); font-size:36px; letter-spacing:2px; margin-bottom:6px; }
+    .profile-email { font-size:14px; color:var(--text-muted); margin-bottom:12px; display:flex; align-items:center; gap:6px; }
+    .profile-badges { display:flex; gap:8px; flex-wrap:wrap; }
+    .profile-badge { padding:4px 14px; border-radius:20px; font-size:12px; font-weight:600; }
+    .badge-admin    { background:rgba(229,9,20,0.15); color:var(--accent); border:1px solid rgba(229,9,20,0.3); }
+    .badge-user     { background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); }
+    .badge-verified { background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.3); animation:verifiedBreath 2.8s ease-in-out infinite; }
+    .profile-joined { font-size:12px; color:var(--text-muted); margin-top:10px; }
+    @keyframes verifiedBreath {
+      0%, 100% { transform:scale(1); box-shadow:0 0 0 rgba(16,185,129,0); }
+      50% { transform:scale(1.05); box-shadow:0 0 22px rgba(16,185,129,0.14); }
+    }
+
+    .profile-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:16px; margin-bottom:32px; }
+    .pstat-card {
+      background:var(--bg-secondary); border:1px solid var(--border);
+      border-radius:var(--radius-lg); padding:20px; text-align:center;
+      transition:var(--transition);
+    }
+    .pstat-card:hover { border-color:rgba(229,9,20,0.3); transform:translateY(-2px); }
+    .pstat-num   { font-family:var(--font-display); font-size:32px; letter-spacing:1px; color:var(--accent); }
+    .pstat-label { font-size:12px; color:var(--text-muted); margin-top:4px; }
+
+    .profile-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:28px; overflow-x:auto; scrollbar-width:none; }
+    .profile-tabs::-webkit-scrollbar { display:none; }
+    .ptab {
+      padding:14px 24px; font-size:14px; font-weight:600;
+      color:var(--text-muted); cursor:pointer;
+      border-bottom:2px solid transparent;
+      transition:var(--transition); white-space:nowrap;
+      background:none; border-top:none; border-left:none; border-right:none;
+      font-family:var(--font-body);
+      display:flex; align-items:center; gap:8px;
+    }
+    .ptab:hover  { color:var(--text-primary); }
+    .ptab.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+    .tab-panel        { display:none; }
+    .tab-panel.active { display:block; }
+
+    .settings-card { background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius-lg); padding:28px; max-width:560px; }
+    .settings-section-title { font-size:16px; font-weight:700; margin-bottom:20px; padding-bottom:12px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+    .settings-section-title i { color:var(--accent); }
+
+    .history-item {
+      display:flex; align-items:center; gap:16px;
+      background:linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.015)), var(--bg-secondary); border:1px solid var(--border);
+      border-radius:18px; padding:16px; margin-bottom:12px;
+      transition:var(--transition); cursor:pointer;
+    }
+    .history-item:hover { border-color:rgba(229,9,20,0.3); background:var(--bg-hover); }
+    .history-thumb { width:80px; height:110px; object-fit:cover; border-radius:var(--radius); flex-shrink:0; background:var(--bg-card); }
+    .history-info  { flex:1; min-width:0; }
+    .history-title { font-size:15px; font-weight:600; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .history-meta  { font-size:12px; color:var(--text-muted); margin-bottom:10px; }
+    .history-progress-bar { height:4px; background:rgba(255,255,255,0.1); border-radius:2px; overflow:hidden; }
+    .history-progress-fill { height:100%; background:var(--accent); border-radius:2px; }
+    .history-pct   { font-size:11px; color:var(--text-muted); margin-top:4px; }
+    .history-actions { display:flex; gap:8px; flex-direction:column; align-items:flex-end; flex-shrink:0; }
+    .history-play-btn { width:40px; height:40px; background:var(--accent); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; }
+    .history-remove-btn { background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:12px; padding:4px 8px; border-radius:4px; font-family:var(--font-body); transition:var(--transition); }
+    .history-remove-btn:hover { color:var(--accent); background:rgba(229,9,20,0.1); }
+
+    .watchlist-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:16px; }
+    .wl-card { position:relative; border-radius:18px; overflow:hidden; cursor:pointer; transition:var(--transition); background:var(--bg-secondary); border:1px solid var(--border); }
+    .wl-card:hover { transform:scale(1.03); }
+    .wl-card-thumb { aspect-ratio:2/3; object-fit:cover; width:100%; display:block; background:var(--bg-card); }
+    .wl-card-info  { padding:10px; }
+    .wl-card-title { font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .wl-card-cat   { font-size:10px; color:var(--text-muted); text-transform:capitalize; }
+    .wl-remove { position:absolute; top:8px; right:8px; width:26px; height:26px; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); border-radius:50%; display:none; align-items:center; justify-content:center; cursor:pointer; font-size:12px; color:#fff; border:none; }
+    .wl-card:hover .wl-remove { display:flex; }
+
+    .avatar-studio {
+      display:none;
+      background:linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01)), var(--bg-secondary);
+      border:1px solid var(--border);
+      border-radius:24px;
+      padding:24px;
+      margin-bottom:24px;
+      max-width:1040px;
+    }
+    .avatar-studio-header {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:16px;
+      margin-bottom:20px;
+    }
+    .avatar-studio-title { font-size:18px; font-weight:700; margin-bottom:6px; }
+    .avatar-studio-copy { color:var(--text-muted); font-size:13px; max-width:620px; }
+    .avatar-studio-section { margin-top:24px; }
+    .avatar-studio-kicker {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom:14px;
+      font-size:12px;
+      font-weight:700;
+      letter-spacing:0.16em;
+      color:var(--text-secondary);
+      text-transform:uppercase;
+    }
+    .avatar-presets-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));
+      gap:14px;
+    }
+    .avatar-preset-card {
+      position:relative;
+      overflow:hidden;
+      background:rgba(255,255,255,0.02);
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:18px;
+      padding:12px;
+      cursor:pointer;
+      transition:var(--transition);
+      text-align:left;
+    }
+    .avatar-preset-card:hover {
+      transform:translateY(-3px);
+      border-color:rgba(229,9,20,0.35);
+      box-shadow:0 20px 40px rgba(0,0,0,0.22);
+    }
+    .avatar-preset-card.selected {
+      border-color:rgba(229,9,20,0.7);
+      box-shadow:0 0 0 1px rgba(229,9,20,0.32), 0 24px 48px rgba(0,0,0,0.25);
+    }
+    .avatar-preset-thumb {
+      width:100%;
+      aspect-ratio:1/1;
+      border-radius:14px;
+      background:#0b0f19 center/cover no-repeat;
+      margin-bottom:10px;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,0.05);
+    }
+    .avatar-preset-name { font-size:13px; font-weight:700; color:var(--text-primary); }
+    .avatar-preset-series { font-size:11px; color:var(--text-muted); margin-top:4px; }
+    .avatar-colors { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+    .avatar-color-btn { width:32px; height:32px; border-radius:50%; cursor:pointer; border:2px solid transparent; transition:var(--transition); }
+    .avatar-color-btn:hover, .avatar-color-btn.selected { border-color:#fff; transform:scale(1.15); }
+
+    @media (max-width:768px) {
+      .profile-page { margin-top:56px; }
+      .profile-hero { flex-direction:column; text-align:center; }
+      .profile-badges { justify-content:center; }
+      .profile-avatar { width:130px; height:130px; font-size:50px; }
+      .avatar-studio-header { flex-direction:column; }
+      .avatar-presets-grid { grid-template-columns:repeat(auto-fill, minmax(132px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="navbar scrolled">
+  <a href="index.html" class="nav-logo">CINE<span>STREAM</span></a>
+  <div class="nav-links">
+    <a href="index.html">Home</a>
+    <a href="index.html?category=movie">Movies</a>
+    <a href="index.html?category=anime">Anime</a>
+  </div>
+  <div class="nav-right" id="userSection"></div>
+</nav>
+
+<div class="profile-page">
+
+  <div class="profile-hero">
+    <div class="profile-avatar-wrap avatar-frame">
+      <div class="profile-avatar" id="profileAvatarDisplay">?</div>
+      <div class="avatar-edit-btn" id="avatarEditBtn">
+        <i class="ri-pencil-line"></i>
+      </div>
+    </div>
+    <div class="profile-info">
+      <div class="profile-username" id="profileUsername">Loading...</div>
+      <div class="profile-email">
+        <i class="ri-mail-line"></i>
+        <span id="profileEmail">—</span>
+      </div>
+      <div class="profile-badges">
+        <span class="profile-badge" id="roleBadge">User</span>
+        <span class="profile-badge badge-verified" id="verifiedBadge" style="display:none;">✅ Verified</span>
+      </div>
+      <div class="profile-joined" id="profileJoined"></div>
+    </div>
+  </div>
+
+  <div class="avatar-studio" id="avatarColorPicker">
+    <div class="avatar-studio-header">
+      <div>
+        <div class="avatar-studio-title">Elite 20 Avatar Studio</div>
+        <div class="avatar-studio-copy">Choose a CineStream premium preset inspired by your favorite elite characters, or stay minimal with a signature gradient color.</div>
+      </div>
+      <button id="closeColorPicker" class="btn btn-outline" style="padding:8px 20px;font-size:13px;">Close</button>
+    </div>
+
+    <div class="avatar-studio-section">
+      <div class="avatar-studio-kicker"><i class="ri-vip-crown-2-line"></i> Elite Collection</div>
+      <div class="avatar-presets-grid" id="eliteAvatarGrid"></div>
+    </div>
+
+    <div class="avatar-studio-section">
+      <div class="avatar-studio-kicker"><i class="ri-palette-line"></i> Signature Colors</div>
+      <div class="avatar-colors" id="avatarColorsGrid"></div>
+    </div>
+  </div>
+
+  <div class="profile-stats">
+    <div class="pstat-card">
+      <div class="pstat-num" id="pstatWatched">—</div>
+      <div class="pstat-label">Watched</div>
+    </div>
+    <div class="pstat-card">
+      <div class="pstat-num" id="pstatCompleted">—</div>
+      <div class="pstat-label">Completed</div>
+    </div>
+    <div class="pstat-card">
+      <div class="pstat-num" id="pstatWatchlist">—</div>
+      <div class="pstat-label">Watchlist</div>
+    </div>
+    <div class="pstat-card">
+      <div class="pstat-num" id="pstatReviews">—</div>
+      <div class="pstat-label">Reviews</div>
+    </div>
+  </div>
+
+  <div class="profile-tabs">
+    <button class="ptab active" data-tab="history"><i class="ri-history-line"></i> Watch History</button>
+    <button class="ptab" data-tab="watchlist"><i class="ri-bookmark-line"></i> My Watchlist</button>
+    <button class="ptab" data-tab="settings"><i class="ri-settings-3-line"></i> Settings</button>
+    <button class="ptab" data-tab="security"><i class="ri-shield-keyhole-line"></i> Security</button>
+  </div>
+
+  <div class="tab-panel active" id="tab-history">
+    <div id="historyList">
+      <div class="spinner-container"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-watchlist">
+    <div class="watchlist-grid" id="watchlistGrid">
+      <div class="spinner-container" style="grid-column:1/-1;"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-settings">
+    <div class="settings-card">
+      <div class="settings-section-title">
+        <i class="ri-user-settings-line"></i> Edit Profile
+      </div>
+      <div id="settingsAlert" style="display:none;margin-bottom:16px;"></div>
+      <div class="form-group">
+        <label>Username</label>
+        <div class="input-with-icon">
+          <i class="ri-user-line input-icon"></i>
+          <input type="text" id="settingsUsername" placeholder="Your username">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Email <span style="color:var(--text-muted);font-size:12px;">(cannot change)</span></label>
+        <div class="input-with-icon">
+          <i class="ri-mail-line input-icon"></i>
+          <input type="email" id="settingsEmail" disabled style="opacity:0.5;cursor:not-allowed;">
+        </div>
+      </div>
+      <button class="btn btn-primary" id="saveProfileBtn">
+        <i class="ri-save-line"></i> Save Changes
+      </button>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-security">
+    <div class="settings-card">
+      <div class="settings-section-title">
+        <i class="ri-lock-password-line"></i> Change Password
+      </div>
+      <div id="securityAlert" style="display:none;margin-bottom:16px;"></div>
+      <div class="form-group">
+        <label>Current Password</label>
+        <div class="input-with-icon">
+          <i class="ri-lock-line input-icon"></i>
+          <input type="password" id="currentPassword" placeholder="Your current password">
+          <i class="ri-eye-line password-toggle" id="toggleCurrent"></i>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>New Password</label>
+        <div class="input-with-icon">
+          <i class="ri-lock-2-line input-icon"></i>
+          <input type="password" id="newPassword" placeholder="Minimum 6 characters">
+          <i class="ri-eye-line password-toggle" id="toggleNew"></i>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Confirm New Password</label>
+        <div class="input-with-icon">
+          <i class="ri-lock-2-line input-icon"></i>
+          <input type="password" id="confirmNewPassword" placeholder="Repeat new password">
+        </div>
+      </div>
+      <button class="btn btn-primary" id="changePasswordBtn">
+        <i class="ri-key-line"></i> Change Password
+      </button>
+    </div>
+
+    <div class="settings-card" style="margin-top:24px;border-color:rgba(229,9,20,0.3);">
+      <div class="settings-section-title" style="color:var(--accent);">
+        <i class="ri-error-warning-line"></i> Account Actions
+      </div>
+      <button class="btn btn-outline" id="securityLogoutBtn"
+              style="border-color:rgba(229,9,20,0.4);color:var(--accent);">
+        <i class="ri-logout-box-line"></i> Logout
+      </button>
+      <button class="btn btn-outline" id="installAppBtn"
+              style="margin-top:12px;border-color:rgba(59,130,246,0.4);color:#60a5fa;">
+        <i class="ri-install-line"></i> Install App on Device
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="../js/config.js" defer></script>
+<script src="../js/app.js" defer></script>
+<script src="../js/pwa.js" defer></script>
+<script src="../js/profileManager.js" defer></script>
+</body>
+</html>
+

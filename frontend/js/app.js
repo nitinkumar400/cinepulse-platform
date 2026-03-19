@@ -1,0 +1,851 @@
+// ══════════════════════════════════════════
+// CINE STREAM — Main App JavaScript
+// Loaded on every page via <script src="../js/app.js">
+// Depends on: config.js (must load before this)
+// ══════════════════════════════════════════
+
+// ══════════════════════════════════════════
+// TOAST NOTIFICATIONS
+// FIX: Auto-create container if page forgot it
+// FIX: escapeHtml on message — prevents XSS via toast
+// FIX: Replaced inline onclick with addEventListener (CSP safe)
+// ══════════════════════════════════════════
+function showToast(message, type = 'success', duration = 3500) {
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id        = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+
+  const icons = {
+    success: 'ri-checkbox-circle-line',
+    error:   'ri-error-warning-line',
+    warning: 'ri-alert-line',
+    info:    'ri-information-line',
+  };
+
+  toast.innerHTML = `
+    <i class="${icons[type] || icons.info}"></i>
+    <span>${escapeHtml(String(message))}</span>
+    <button class="toast-close" aria-label="Dismiss">
+      <i class="ri-close-line"></i>
+    </button>`;
+
+  // FIX: addEventListener instead of inline onclick
+  toast.querySelector('.toast-close').addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearTimeout(autoTimer);
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 400);
+  });
+
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+
+  const autoTimer = setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 400);
+  }, duration);
+}
+
+// ══════════════════════════════════════════
+// AUTH HELPERS
+// FIX: getUser wrapped in try/catch —
+//      corrupted localStorage JSON crashes the entire page
+// FIX: logout accepts redirect param — old code always redirected
+// FIX: Added saveAuth helper
+// ══════════════════════════════════════════
+function getToken() {
+  return localStorage.getItem('token') || null;
+}
+
+const YOUTUBE_ID_REGEX = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i;
+const DAILYMOTION_ID_REGEX = /(?:dailymotion\.com\/(?:video|embed\/video)\/|dai\.ly\/)([A-Za-z0-9]+)/i;
+const CINESTREAM_ELITE_AVATARS = [
+  { id: 'ayanokoji', name: 'Kiyotaka Ayanokoji', series: 'Classroom of the Elite', accent: '#ef4444', shadow: '#020617', glow: '#b91c1c' },
+  { id: 'gojo', name: 'Satoru Gojo', series: 'Jujutsu Kaisen', accent: '#7dd3fc', shadow: '#111827', glow: '#38bdf8' },
+  { id: 'eren', name: 'Eren Yeager', series: 'Attack on Titan', accent: '#f97316', shadow: '#111111', glow: '#dc2626' },
+  { id: 'jinwoo', name: 'Sung Jin-Woo', series: 'Solo Leveling', accent: '#6366f1', shadow: '#020617', glow: '#4338ca' },
+  { id: 'zoro', name: 'Roronoa Zoro', series: 'One Piece', accent: '#10b981', shadow: '#052e16', glow: '#059669' },
+  { id: 'lelouch', name: 'Lelouch Lamperouge', series: 'Code Geass', accent: '#a855f7', shadow: '#1e1b4b', glow: '#7c3aed' },
+  { id: 'itachi', name: 'Itachi Uchiha', series: 'Naruto', accent: '#f43f5e', shadow: '#111827', glow: '#b91c1c' },
+  { id: 'kaneki', name: 'Ken Kaneki', series: 'Tokyo Ghoul', accent: '#e5e7eb', shadow: '#111111', glow: '#ef4444' },
+  { id: 'alucard', name: 'Alucard', series: 'Hellsing Ultimate', accent: '#f87171', shadow: '#0f172a', glow: '#991b1b' },
+  { id: 'madara', name: 'Madara Uchiha', series: 'Naruto', accent: '#fb7185', shadow: '#1f2937', glow: '#be123c' },
+  { id: 'mikasa', name: 'Mikasa Ackerman', series: 'Attack on Titan', accent: '#fca5a5', shadow: '#111827', glow: '#ef4444' },
+  { id: 'makima', name: 'Makima', series: 'Chainsaw Man', accent: '#f43f5e', shadow: '#1f2937', glow: '#9f1239' },
+  { id: 'yor', name: 'Yor Forger', series: 'Spy x Family', accent: '#fb7185', shadow: '#1f2937', glow: '#e11d48' },
+  { id: 'esdeath', name: 'Esdeath', series: 'Akame ga Kill', accent: '#93c5fd', shadow: '#172554', glow: '#2563eb' },
+  { id: 'robin', name: 'Nico Robin', series: 'One Piece', accent: '#c084fc', shadow: '#1e1b4b', glow: '#8b5cf6' },
+  { id: 'saber', name: 'Saber', series: 'Fate Series', accent: '#fde68a', shadow: '#1f2937', glow: '#f59e0b' },
+  { id: 'power', name: 'Power', series: 'Chainsaw Man', accent: '#fbbf24', shadow: '#111827', glow: '#f97316' },
+  { id: 'nobara', name: 'Nobara Kugisaki', series: 'Jujutsu Kaisen', accent: '#fda4af', shadow: '#1f2937', glow: '#fb7185' },
+  { id: '2b', name: '2B', series: 'NieR:Automata', accent: '#e5e7eb', shadow: '#111827', glow: '#9ca3af' },
+  { id: 'nezuko', name: 'Nezuko Kamado', series: 'Demon Slayer', accent: '#f9a8d4', shadow: '#1f2937', glow: '#ec4899' },
+];
+
+function getUser() {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null');
+  } catch {
+    localStorage.removeItem('user');
+    return null;
+  }
+}
+
+function isLoggedIn() { return !!getToken(); }
+function isAdmin()    { return getUser()?.role === 'admin'; }
+
+function saveAuth(token, user) {
+  localStorage.setItem('token', token);
+  localStorage.setItem('user', JSON.stringify(user));
+}
+
+function parseApiPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
+    return {
+      ...payload.data,
+      success: payload.success,
+      message: payload.message,
+      error: payload.error,
+    };
+  }
+
+  return payload;
+}
+
+async function readJsonResponse(response) {
+  const payload = await response.json().catch(() => ({}));
+  return parseApiPayload(payload);
+}
+
+function setQueryParam(key, value, options = {}) {
+  try {
+    const url = new URL(window.location.href);
+    if (value === null || value === undefined || value === '') {
+      url.searchParams.delete(key);
+    } else {
+      url.searchParams.set(key, value);
+    }
+
+    if (options.replace) {
+      window.history.replaceState({}, '', url);
+    } else {
+      window.history.pushState({}, '', url);
+    }
+  } catch (error) {
+    console.warn('Failed to update query param:', error.message);
+  }
+}
+
+function isEliteAvatarId(value = '') {
+  return String(value).startsWith('elite:');
+}
+
+function getEliteAvatarById(value = '') {
+  const normalizedId = String(value).replace(/^elite:/, '').trim().toLowerCase();
+  return CINESTREAM_ELITE_AVATARS.find((avatar) => avatar.id === normalizedId) || null;
+}
+
+function createEliteAvatarSvg(avatar) {
+  const initials = avatar.name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] || '')
+    .join('')
+    .toUpperCase();
+
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="${avatar.name}">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="${avatar.shadow}" />
+          <stop offset="100%" stop-color="#030712" />
+        </linearGradient>
+        <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="${avatar.accent}" />
+          <stop offset="100%" stop-color="${avatar.glow}" />
+        </linearGradient>
+        <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="12" result="blur"/>
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+      <rect width="320" height="320" rx="38" fill="url(#bg)"/>
+      <circle cx="250" cy="72" r="72" fill="${avatar.glow}" opacity="0.28" filter="url(#softGlow)"/>
+      <circle cx="76" cy="256" r="86" fill="${avatar.accent}" opacity="0.14"/>
+      <path d="M38 225 L160 54 L282 225 L160 282 Z" fill="none" stroke="url(#accent)" stroke-width="6" opacity="0.85"/>
+      <text x="34" y="68" fill="${avatar.accent}" font-family="Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="4">CINESTREAM ELITE</text>
+      <text x="36" y="178" fill="#f8fafc" font-family="Arial, sans-serif" font-size="98" font-weight="800" letter-spacing="2">${initials}</text>
+      <text x="38" y="226" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="700">${avatar.name}</text>
+      <text x="38" y="254" fill="#94a3b8" font-family="Arial, sans-serif" font-size="16">${avatar.series}</text>
+    </svg>
+  `.trim();
+}
+
+function getEliteAvatarDataUrl(value = '') {
+  const avatar = getEliteAvatarById(value);
+  if (!avatar) return '';
+
+  const svg = createEliteAvatarSvg(avatar);
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function resolveAvatarImage(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (isEliteAvatarId(raw)) return getEliteAvatarDataUrl(raw);
+  if (raw.startsWith('http') || raw.startsWith('/') || raw.startsWith('data:image')) return getImageUrl(raw);
+  return '';
+}
+
+function getSourceType(url = '', fallbackType = '') {
+  const explicit = String(fallbackType || '').trim().toLowerCase();
+  if (explicit) return explicit;
+
+  const raw = String(url || '').trim();
+  if (!raw) return 'offline';
+  if (YOUTUBE_ID_REGEX.test(raw)) return 'youtube';
+  if (DAILYMOTION_ID_REGEX.test(raw)) return 'dailymotion';
+  return 'local';
+}
+
+function getCleanEmbedUrl(url = '') {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+
+  const youtubeMatch = raw.match(YOUTUBE_ID_REGEX);
+  if (youtubeMatch?.[1]) {
+    const params = new URLSearchParams({
+      autoplay: '1',
+      controls: '1',
+      cc_load_policy: '1',
+      cc_lang_pref: 'en',
+      modestbranding: '1',
+      playsinline: '1',
+      rel: '0',
+    });
+    return `https://www.youtube-nocookie.com/embed/${youtubeMatch[1]}?${params.toString()}`;
+  }
+
+  const dailymotionMatch = raw.match(DAILYMOTION_ID_REGEX);
+  if (dailymotionMatch?.[1]) {
+    const params = new URLSearchParams({
+      autoplay: '1',
+      'ui-logo': 'false',
+      'subtitles-default': 'en',
+      'queue-enable': 'false',
+      'sharing-enable': 'false',
+      'endscreen-enable': 'false',
+    });
+    return `https://www.dailymotion.com/embed/video/${dailymotionMatch[1]}?${params.toString()}`;
+  }
+
+  return '';
+}
+
+function isOfflinePlaybackSource(url = '', sourceType = '') {
+  const raw = String(url || '').trim();
+  if (!raw) return true;
+
+  const resolvedType = getSourceType(raw, sourceType);
+  if (resolvedType === 'youtube' || resolvedType === 'dailymotion') {
+    return !getCleanEmbedUrl(raw);
+  }
+
+  return false;
+}
+
+window.parseApiPayload = parseApiPayload;
+window.readJsonResponse = readJsonResponse;
+window.setQueryParam = setQueryParam;
+window.getSourceType = getSourceType;
+window.getCleanEmbedUrl = getCleanEmbedUrl;
+window.isOfflinePlaybackSource = isOfflinePlaybackSource;
+window.CINESTREAM_ELITE_AVATARS = CINESTREAM_ELITE_AVATARS;
+window.isEliteAvatarId = isEliteAvatarId;
+window.getEliteAvatarById = getEliteAvatarById;
+window.getEliteAvatarDataUrl = getEliteAvatarDataUrl;
+window.resolveAvatarImage = resolveAvatarImage;
+
+function logout(redirect = true) {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  // FIX: Old code hardcoded 'login.html' (relative) — breaks from root pages
+  if (redirect) window.location.href = '/login';
+}
+
+// ══════════════════════════════════════════
+// MEDIA URL HELPER
+// FIX: Was missing entirely — used by every page
+// Handles Cloudinary URLs (http) and local paths
+// ══════════════════════════════════════════
+function getImageUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  const base = (typeof MEDIA_BASE !== 'undefined') ? MEDIA_BASE : '';
+  return base + url;
+}
+const mediaUrl = getImageUrl;
+
+// ══════════════════════════════════════════
+// ESCAPE HTML — prevent XSS
+// ══════════════════════════════════════════
+function escapeHtml(str) {
+  if (!str) return '';
+  const d = document.createElement('div');
+  d.appendChild(document.createTextNode(str));
+  return d.innerHTML;
+}
+
+// ══════════════════════════════════════════
+// MOVIE CARD BUILDER
+// FIX: thumbnailUrl fallback was empty string — broken image icon showed
+// FIX: mediaUrl() used so Cloudinary + local both work
+// FIX: category escaped to prevent XSS
+// FIX: Added optional progress bar for "Continue Watching" cards
+// ══════════════════════════════════════════
+const CARD_PLACEHOLDER = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';
+
+function createMovieCard(movie, opts = {}) {
+  if (!movie) return '';
+
+  const thumb    = getImageUrl(movie.thumbnailUrl) || CARD_PLACEHOLDER;
+  const badgeMap = {
+    anime:'badge-anime', movie:'badge-movie',
+    series:'badge-series', cartoon:'badge-cartoon',
+    documentary:'badge-documentary', short:'badge-movie',
+  };
+  const badgeCls = badgeMap[movie.category] || 'badge-movie';
+  const rating   = movie.averageRating > 0 ? movie.averageRating : '—';
+
+  // Optional progress bar (for Continue Watching)
+  const progressBar = opts.progress > 0 ? `
+    <div class="card-progress-bar">
+      <div class="card-progress-fill"
+           style="width:${Math.min(100, Math.round(opts.progress))}%">
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="movie-card" data-id="${movie._id}">
+      <div class="card-thumbnail">
+        <img src="${thumb}"
+             alt="${escapeHtml(movie.title)}"
+             loading="lazy"
+             referrerpolicy="no-referrer"
+             onerror="this.src='${CARD_PLACEHOLDER}'">
+        <div class="card-overlay">
+          <div class="card-play-btn"><i class="ri-play-fill"></i></div>
+        </div>
+        <span class="card-badge ${badgeCls}">${escapeHtml(movie.category)}</span>
+        <div class="card-rating">
+          <i class="ri-star-fill"></i> ${rating}
+        </div>
+        ${progressBar}
+      </div>
+      <div class="card-info">
+        <div class="card-title">${escapeHtml(movie.title)}</div>
+        <div class="card-meta">
+          <span>${movie.releaseYear || ''}</span>
+          ${movie.duration
+            ? `<span>·</span><span>${formatDuration(movie.duration)}</span>`
+            : ''}
+          ${movie.views > 0
+            ? `<span>·</span><span>${formatNumber(movie.views)} views</span>`
+            : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+// Event delegation card click handler
+function handleCardClick(e) {
+  const card = e.target.closest('.movie-card[data-id]');
+  if (card) {
+    // FIX: Absolute path — old code used relative 'movie-details.html'
+    window.location.href = `/pages/movie-details.html?id=${card.dataset.id}`;
+  }
+}
+
+// ══════════════════════════════════════════
+// NAVBAR SETUP
+// FIX: All hrefs use absolute /pages/... paths
+//      Old code used relative paths that break on root-level routes
+// FIX: Notification bell now has a click handler
+// FIX: Avatar bg color escaped to prevent attribute injection
+// ══════════════════════════════════════════
+function initNavbar() {
+  const sec  = document.getElementById('userSection');
+  const user = getUser();
+  if (!sec) return;
+
+  if (user) {
+    const avatarBg = user.avatar?.startsWith('#') ? user.avatar : 'var(--accent)';
+
+    sec.innerHTML = `
+      <div class="nav-user-wrap">
+        <a href="/pages/search.html" class="nav-icon-btn" title="Search">
+          <i class="ri-search-line"></i>
+        </a>
+        <div class="nav-notifications" id="navNotifications">
+          <button class="nav-icon-btn" id="notifBtn" title="Notifications">
+            <i class="ri-notification-3-line"></i>
+            <span class="notif-badge" id="notifBadge" style="display:none;"></span>
+          </button>
+        </div>
+        <a href="/pages/profile.html"
+           class="nav-avatar"
+           style="background:${escapeHtml(avatarBg)};"
+           title="${escapeHtml(user.username || 'Profile')}">
+          ${escapeHtml((user.username || 'U')[0].toUpperCase())}
+        </a>
+        ${isAdmin()
+          ? `<a href="/pages/admin.html">
+               <button class="btn-nav btn-nav-admin">
+                 <i class="ri-upload-cloud-line"></i> Upload
+               </button>
+             </a>`
+          : ''}
+        <button class="btn-nav btn-nav-logout" id="logoutBtn">Logout</button>
+      </div>`;
+
+    document.getElementById('logoutBtn')
+      ?.addEventListener('click', () => logout(true));
+
+    // FIX: Notification bell click was completely missing
+    document.getElementById('notifBtn')
+      ?.addEventListener('click', () => {
+        window.location.href = '/pages/profile.html#notifications';
+      });
+
+  } else {
+    sec.innerHTML = `
+      <a href="/login">
+        <button class="btn-nav">Admin Sign In</button>
+      </a>`;
+  }
+
+  // Scroll effect
+  const navbar = document.getElementById('navbar');
+  if (navbar) {
+    window.addEventListener('scroll', () => {
+      navbar.classList.toggle('scrolled', window.scrollY > 50);
+    }, { passive: true });
+  }
+}
+
+// ══════════════════════════════════════════
+// API FETCH HELPER
+// FIX: FormData must NOT have Content-Type set manually
+//      Old code always set it — broke every file upload
+//      Browser needs to set it automatically with the multipart boundary
+// FIX: Network error caught and shown as toast
+// FIX: 401 checks code field not fragile message string matching
+// ══════════════════════════════════════════
+async function apiFetch(endpoint, options = {}) {
+  const token = getToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(options.headers || {}),
+  };
+
+  // FIX: Remove Content-Type for FormData uploads
+  if (options.body instanceof FormData) {
+    delete headers['Content-Type'];
+  }
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+  } catch (err) {
+    showToast('Cannot connect to server', 'error');
+    throw err;
+  }
+
+  if (res.status === 401) {
+    const data = await readJsonResponse(res);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    showToast('Session expired — please login again', 'warning');
+    setTimeout(() => { window.location.href = '/pages/login.html'; }, 300);
+    throw new Error(data.message || 'Unauthorized');
+  }
+
+  return res;
+}
+
+const API_MAX_RETRIES = 2;
+const API_RETRY_BASE_DELAY_MS = 300;
+
+function buildApiUrl(endpoint) {
+  if (/^https?:\/\//i.test(endpoint)) return endpoint;
+  return `${API_BASE}${endpoint}`;
+}
+
+function getRetryDelayMs(attempt, response) {
+  const retryAfterHeader = response?.headers?.get?.('retry-after');
+  const retryAfterSeconds = Number.parseInt(retryAfterHeader, 10);
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+    return retryAfterSeconds * 1000;
+  }
+
+  return API_RETRY_BASE_DELAY_MS * (2 ** attempt);
+}
+
+function shouldRetryRequest(method, error, response, attempt, maxRetries) {
+  if (attempt >= maxRetries) return false;
+
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+  if (!['GET', 'HEAD'].includes(normalizedMethod)) return false;
+  if (response?.status === 429) return true;
+  if (error) return true;
+  return response?.status >= 500;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function clearAuthSession() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+}
+
+function redirectToAdminLogin() {
+  if (window.location.pathname === '/login' || window.location.pathname === '/login.html') {
+    return;
+  }
+
+  window.location.href = '/login';
+}
+
+async function performApiFetchWithRetry(endpoint, options = {}) {
+  const token = getToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers || {}),
+  };
+
+  if (options.body instanceof FormData) {
+    delete headers['Content-Type'];
+  }
+
+  const requestOptions = { ...options, headers };
+  const method = String(requestOptions.method || 'GET').toUpperCase();
+  const maxRetries = Number.isInteger(options.maxRetries) ? options.maxRetries : API_MAX_RETRIES;
+  let attempt = 0;
+  let lastError = null;
+  let lastResponse = null;
+
+  while (attempt <= maxRetries) {
+    try {
+      const response = await fetch(buildApiUrl(endpoint), requestOptions);
+
+      if (response.status === 401 || response.status === 403) {
+        const data = await readJsonResponse(response.clone());
+        clearAuthSession();
+        const fallbackMessage = response.status === 403
+          ? 'Admin access required. Please sign in with an admin account.'
+          : 'Session expired. Please sign in again.';
+        showToast(fallbackMessage, 'warning');
+        setTimeout(() => { redirectToAdminLogin(); }, 300);
+        throw new Error(data.message || fallbackMessage);
+      }
+
+      if (!shouldRetryRequest(method, null, response, attempt, maxRetries)) {
+        return response;
+      }
+
+      lastResponse = response;
+      await delay(getRetryDelayMs(attempt, response));
+    } catch (error) {
+      lastError = error;
+      if (!shouldRetryRequest(method, error, null, attempt, maxRetries)) {
+        break;
+      }
+
+      await delay(getRetryDelayMs(attempt));
+    }
+
+    attempt += 1;
+  }
+
+  if (lastError) {
+    showToast('Cannot connect to server', 'error');
+    throw lastError;
+  }
+
+  return lastResponse;
+}
+
+apiFetch = async function apiFetchWithMemoization(endpoint, options = {}) {
+  return performApiFetchWithRetry(endpoint, options);
+};
+
+window.apiFetch = apiFetch;
+
+// ══════════════════════════════════════════
+// WATCHLIST TOGGLE
+// ══════════════════════════════════════════
+async function toggleWatchlist(movieId, btn) {
+  if (!isLoggedIn()) {
+    showToast('Please login to use watchlist', 'error');
+    return;
+  }
+  try {
+    const res  = await apiFetch(`/auth/watchlist/${movieId}`, { method: 'PUT' });
+    const data = await readJsonResponse(res);
+    if (res.ok) {
+      if (btn) {
+        btn.innerHTML = data.inWatchlist
+          ? '<i class="ri-bookmark-fill"></i>'
+          : '<i class="ri-bookmark-line"></i>';
+        btn.classList.toggle('active', data.inWatchlist);
+      }
+      showToast(data.message, 'success');
+    }
+  } catch (e) {
+    showToast('Failed to update watchlist', 'error');
+  }
+}
+
+// ══════════════════════════════════════════
+// FORMAT HELPERS
+// FIX: timeAgo was missing weeks + months —
+//      jumped from "29d ago" straight to a full date
+// FIX: Added formatTime (seconds → "m:ss" or "h:mm:ss")
+// FIX: Added formatCount as alias for formatNumber
+// ══════════════════════════════════════════
+function formatDuration(minutes) {
+  if (!minutes) return '—';
+  const h   = Math.floor(minutes / 60);
+  const min = minutes % 60;
+  return h > 0 ? `${h}h ${min}m` : `${min}m`;
+}
+
+function formatNumber(n) {
+  if (!n || isNaN(n)) return '0';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'K';
+  return n.toString();
+}
+const formatCount = formatNumber;
+
+function formatTime(seconds) {
+  if (!isFinite(seconds) || isNaN(seconds)) return '0:00';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0)
+    return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff   = Date.now() - new Date(dateStr).getTime();
+  const mins   = Math.floor(diff / 60_000);
+  const hours  = Math.floor(diff / 3_600_000);
+  const days   = Math.floor(diff / 86_400_000);
+  const weeks  = Math.floor(days / 7);
+  const months = Math.floor(days / 30);
+  const years  = Math.floor(days / 365);
+
+  if (mins   <  1) return 'just now';
+  if (mins   < 60) return `${mins}m ago`;
+  if (hours  < 24) return `${hours}h ago`;
+  if (days   <  7) return `${days}d ago`;
+  // FIX: These two lines were missing — jumped from "29d ago" to a full date
+  if (weeks  <  5) return `${weeks}w ago`;
+  if (months < 12) return `${months}mo ago`;
+  return `${years}y ago`;
+}
+
+// ══════════════════════════════════════════
+// SPINNER / EMPTY STATE HELPERS
+// FIX: Added showEmpty — was only showError before
+//      Both kept for backwards compat
+// ══════════════════════════════════════════
+function showSpinner(containerId) {
+  const el = document.getElementById(containerId);
+  if (el) el.innerHTML =
+    '<div class="spinner-container"><div class="spinner"></div></div>';
+}
+
+function showEmpty(containerId, msg = 'Nothing here yet', icon = '🎬') {
+  const el = document.getElementById(containerId);
+  if (el) el.innerHTML = `
+    <div class="empty-state">
+      <div class="empty-state-icon">${icon}</div>
+      <p>${escapeHtml(msg)}</p>
+    </div>`;
+}
+
+function showError(containerId, msg = 'Failed to load') {
+  showEmpty(containerId, msg, '😕');
+}
+
+// ══════════════════════════════════════════
+// DEBOUNCE
+// FIX: Was missing — search inputs likely fired API on every keystroke
+// ══════════════════════════════════════════
+function debounce(fn, delay = 400) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
+
+// ══════════════════════════════════════════
+// INFINITE SCROLL
+// FIX: Was missing — dashboard/search needed this
+// ══════════════════════════════════════════
+function setupInfiniteScroll({ loader, threshold = 300 }) {
+  let loading = false;
+  const handler = async () => {
+    if (loading) return;
+    const scrolled  = window.scrollY + window.innerHeight;
+    const docHeight = document.documentElement.scrollHeight;
+    if (scrolled >= docHeight - threshold) {
+      loading = true;
+      await loader();
+      loading = false;
+    }
+  };
+  window.addEventListener('scroll', handler, { passive: true });
+  return () => window.removeEventListener('scroll', handler);
+}
+
+// ══════════════════════════════════════════
+// NOTIFICATION SYSTEM
+// FIX: endpoint is relative — apiFetch prepends API_BASE
+//      Old code called /notifications which was the full path
+// FIX: Badge clears text when count = 0 (was just hidden)
+// FIX: Added polling every 2 minutes
+// ══════════════════════════════════════════
+const NotificationSystem = {
+  count: 0,
+
+  async init() {
+    if (!isLoggedIn()) return;
+    try {
+      await this.loadCount();
+      setInterval(() => this.loadCount(), 2 * 60 * 1000);
+    } catch (e) { /* Silent */ }
+  },
+
+  async loadCount() {
+    try {
+      const res  = await apiFetch('/notifications?limit=1&unreadOnly=true');
+      const data = await readJsonResponse(res);
+      this.count = data.unreadCount || 0;
+      this.updateBadge();
+    } catch (e) { /* Silent */ }
+  },
+
+  updateBadge() {
+    const badge = document.getElementById('notifBadge');
+    if (!badge) return;
+    if (this.count > 0) {
+      badge.textContent   = this.count > 99 ? '99+' : this.count;
+      badge.style.display = 'flex';
+    } else {
+      badge.textContent   = ''; // FIX: clear stale number
+      badge.style.display = 'none';
+    }
+  },
+};
+
+function isPublicRoute(pathname = window.location.pathname) {
+  return pathname === '/login'
+    || pathname === '/login.html'
+    || pathname === '/offline'
+    || pathname === '/offline.html';
+}
+
+function enforceAdminPageAccess() {
+  if (isPublicRoute()) {
+    return true;
+  }
+
+  const user = getUser();
+  if (!getToken() || !user || user.role !== 'admin') {
+    clearAuthSession();
+    redirectToAdminLogin();
+    return false;
+  }
+
+  return true;
+}
+
+// ══════════════════════════════════════════
+// AUTO INIT
+// ══════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  if (!enforceAdminPageAccess()) return;
+  initNavbar();
+  if (isLoggedIn()) NotificationSystem.init();
+  document.addEventListener('click', handleCardClick);
+});
+// ══════════════════════════════════════════
+// GLOBAL IMAGE REFERRER FIX
+// Patches ALL images on every page automatically
+// Fixes AniList/TMDB/external CDN hotlink blocking
+// ══════════════════════════════════════════
+(function () {
+  function patchImg(img) {
+    img.referrerPolicy = 'no-referrer';
+    if (img.src && img.src !== window.location.href) {
+      const src = img.src;
+      img.src   = '';
+      img.src   = src;
+    }
+  }
+
+  function patchAll() {
+    document.querySelectorAll('img').forEach(patchImg);
+  }
+
+  // Patch images already in DOM
+  document.addEventListener('DOMContentLoaded', patchAll);
+
+  // Patch every new image added dynamically (cards, grids, etc.)
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((m) => {
+      m.addedNodes.forEach((node) => {
+        if (!node || node.nodeType !== 1) return;
+        if (node.tagName === 'IMG') {
+          patchImg(node);
+        } else {
+          node.querySelectorAll('img').forEach(patchImg);
+        }
+      });
+    });
+  });
+
+  // Start observing as soon as body exists
+  const startObserver = () => {
+    if (document.body) {
+      observer.observe(document.body, { childList: true, subtree: true });
+    } else {
+      setTimeout(startObserver, 10);
+    }
+  };
+  startObserver();
+})();

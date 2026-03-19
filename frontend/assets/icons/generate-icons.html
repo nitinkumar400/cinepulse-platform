@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head><title>Icon Generator - CINE STREAM</title></head>
+<body style="background:#111;color:#fff;font-family:sans-serif;padding:20px;">
+  <h2>CINE STREAM Icon Generator</h2>
+  <p>Click each button to download the icon, then save it to <code>frontend/assets/icons/</code></p>
+  <div id="buttons" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:20px;"></div>
+  <canvas id="canvas" style="display:none;"></canvas>
+
+  <script>
+    const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+    const container = document.getElementById('buttons');
+
+    function generateIcon(size) {
+      canvas.width  = size;
+      canvas.height = size;
+
+      // Background
+      const grad = ctx.createLinearGradient(0, 0, size, size);
+      grad.addColorStop(0, '#0a0a0f');
+      grad.addColorStop(1, '#1a1a24');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+
+      // Red accent circle
+      ctx.beginPath();
+      ctx.arc(size/2, size/2, size*0.42, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(229,9,20,0.15)';
+      ctx.fill();
+
+      // Red border circle
+      ctx.beginPath();
+      ctx.arc(size/2, size/2, size*0.42, 0, Math.PI*2);
+      ctx.strokeStyle = '#e50914';
+      ctx.lineWidth = size * 0.04;
+      ctx.stroke();
+
+      // Play triangle
+      const triSize = size * 0.3;
+      const cx = size/2 + size*0.04;
+      const cy = size/2;
+      ctx.beginPath();
+      ctx.moveTo(cx - triSize/2, cy - triSize*0.6);
+      ctx.lineTo(cx + triSize*0.7, cy);
+      ctx.lineTo(cx - triSize/2, cy + triSize*0.6);
+      ctx.closePath();
+      ctx.fillStyle = '#e50914';
+      ctx.fill();
+
+      // Text "CS" at bottom
+      if (size >= 128) {
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.font = `bold ${size*0.1}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText('CINE STREAM', size/2, size*0.92);
+      }
+
+      return canvas.toDataURL('image/png');
+    }
+
+    sizes.forEach(size => {
+      const dataUrl = generateIcon(size);
+      const btn = document.createElement('div');
+      btn.style.cssText = 'text-align:center;';
+      btn.innerHTML = `
+        <img src="${dataUrl}" style="width:64px;height:64px;display:block;margin:0 auto 8px;border:1px solid #333;border-radius:8px;">
+        <a href="${dataUrl}" download="icon-${size}.png"
+           style="background:#e50914;color:#fff;padding:6px 12px;border-radius:4px;text-decoration:none;font-size:12px;">
+          Download ${size}x${size}
+        </a>`;
+      container.appendChild(btn);
+    });
+  </script>
+</body>
+</html>
