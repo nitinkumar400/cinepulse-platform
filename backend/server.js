@@ -59,9 +59,18 @@ const htmlPageMap = {
 };
 
 function corsOriginHandler(origin, callback) {
-  if (!origin || corsOrigins.length === 0 || corsOrigins.includes(origin)) {
+  // Allow requests with no origin (mobile apps, curl, server-to-server)
+  if (!origin) return callback(null, true);
+  
+  // Allow all origins if wildcard is configured
+  if (corsOrigins.includes('*')) return callback(null, true);
+  
+  // Allow if origins list is empty (development) or includes this origin
+  if (corsOrigins.length === 0 || corsOrigins.includes(origin)) {
     return callback(null, true);
   }
+  
+  console.warn(`[CORS] Blocked origin: ${origin}. Allowed: ${corsOrigins.join(', ')}`);
   return callback(new Error(`CORS origin blocked: ${origin}`));
 }
 
@@ -221,19 +230,19 @@ app.get('/manifest.json', (req, res) => {
 });
 
 app.use('/api/auth', authLimiter, authRoutes);
-app.use('/api/movies', movieLimiter, protect, adminOnly, movieRoutes);
-app.use('/api/watch', protect, adminOnly, watchRoutes);
-app.use('/api/episodes', protect, adminOnly, episodeRoutes);
-app.use('/api/comments', protect, adminOnly, commentRoutes);
-app.use('/api/notifications', protect, adminOnly, notificationRoutes);
+app.use('/api/movies', movieLimiter, movieRoutes);
+app.use('/api/watch', protect, watchRoutes);
+app.use('/api/episodes', protect, episodeRoutes);
+app.use('/api/comments', protect, commentRoutes);
+app.use('/api/notifications', protect, notificationRoutes);
 app.use('/api/anilist', anilistRoutes);
 app.use('/api/tmdb', tmdbRoutes);
-app.use('/api/tmdb-public', protect, adminOnly, tmdbPublicRoutes);
+app.use('/api/tmdb-public', tmdbPublicRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/subtitles', protect, adminOnly, subtitleRoutes);
-app.use('/api/recommend', protect, adminOnly, recommendRoutes);
-app.use('/api/users', protect, adminOnly, userRoutes);
-app.use('/api/ai', aiLimiter, protect, adminOnly, aiRouter);
+app.use('/api/subtitles', protect, subtitleRoutes);
+app.use('/api/recommend', protect, recommendRoutes);
+app.use('/api/users', protect, userRoutes);
+app.use('/api/ai', aiLimiter, protect, aiRouter);
 
 app.get('/', servePage('index.html'));
 app.get('/login', servePage('login.html'));
