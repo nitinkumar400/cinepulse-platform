@@ -1,18 +1,13 @@
 {
   "version": 2,
-  "outputDirectory": "frontend",
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "/backend/server.js"
+      "destination": "/api/server"
     },
     {
       "source": "/health",
-      "destination": "/backend/server.js"
-    },
-    {
-      "source": "/manifest.json",
-      "destination": "/manifest.json"
+      "destination": "/api/server"
     }
   ],
   "env": {
