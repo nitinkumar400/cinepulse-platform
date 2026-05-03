@@ -49,14 +49,45 @@ function extractPublicId(url = '') {
 }
 
 function normalizeSourcePayload(body = {}, existingSource = null) {
-  const server = String(body.server || existingSource?.server || '').trim().toLowerCase();
-  const url = String(body.url || existingSource?.url || '').trim();
-  const sourceType = inferSourceType(url, body.sourceType || existingSource?.sourceType || server);
+  const requestedServer = String(body.server || existingSource?.server || '').trim().toLowerCase();
+  const incomingUrl = String(body.url || existingSource?.url || '').trim();
   const quality = String(body.quality || existingSource?.quality || 'HD').trim();
   const incomingMeta = body.meta && typeof body.meta === 'object' ? body.meta : {};
   const existingMeta = existingSource?.meta || {};
+  let server = requestedServer === 'local' || requestedServer === 'storage' ? 'upload' : requestedServer;
+  let type = server === 'upload' ? 'storage' : server;
+  let id = '';
+  let path = '';
+  let url = incomingUrl;
+  let sourceType = inferSourceType(url, body.sourceType || existingSource?.sourceType || server);
+
+  if (type === 'youtube') {
+    id = extractYouTubeId(url);
+    url = buildCanonicalSourceUrl('youtube', id);
+    server = 'youtube';
+    sourceType = 'youtube';
+  } else if (type === 'dailymotion') {
+    id = extractDailymotionId(url);
+    url = buildCanonicalSourceUrl('dailymotion', id);
+    server = 'dailymotion';
+    sourceType = 'dailymotion';
+  } else if (type === 'vimeo') {
+    id = extractVimeoId(url);
+    url = buildCanonicalSourceUrl('vimeo', id);
+    server = 'vimeo';
+    sourceType = 'vimeo';
+  } else {
+    type = 'storage';
+    path = String(body.path || existingSource?.path || url).trim();
+    url = buildCanonicalSourceUrl('storage', '', path);
+    server = 'upload';
+    sourceType = 'local';
+  }
 
   return {
+    type,
+    id,
+    path,
     sourceType,
     server,
     url,
@@ -65,11 +96,106 @@ function normalizeSourcePayload(body = {}, existingSource = null) {
       title: String(incomingMeta.title ?? existingMeta.title ?? '').trim(),
       duration_seconds: Math.max(0, parseInt(incomingMeta.duration_seconds ?? existingMeta.duration_seconds, 10) || 0),
       thumbnail: String(incomingMeta.thumbnail ?? existingMeta.thumbnail ?? '').trim(),
-      canonical_id: String(incomingMeta.canonical_id ?? existingMeta.canonical_id ?? '').trim(),
+      canonical_id: String(incomingMeta.canonical_id ?? existingMeta.canonical_id ?? id).trim(),
     },
     is_broken: Boolean(body.is_broken ?? existingSource?.is_broken ?? false),
     last_checked: body.last_checked || existingSource?.last_checked || null,
   };
+}
+
+function extractYouTubeId(url = '') {
+  const match = String(url || '').trim().match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|shorts\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+  return match ? match[1] : '';
+}
+
+function extractVimeoId(url = '') {
+  const match = String(url || '').trim().match(/vimeo\.com\/(\d+)/i);
+  return match ? match[1] : '';
+}
+
+function extractDailymotionId(url = '') {
+  const match = String(url || '').trim().match(/(?:dailymotion\.com\/(?:video|embed\/video)\/|dai\.ly\/)([^_?&/]+)/i);
+  return match ? match[1] : '';
+}
+
+function buildCanonicalSourceUrl(type = '', id = '', path = '') {
+  if (type === 'youtube' && id) return `https://youtu.be/${id}`;
+  if (type === 'dailymotion' && id) return `https://dai.ly/${id}`;
+  if (type === 'vimeo' && id) return `https://vimeo.com/${id}`;
+  if (type === 'storage') return String(path || '').trim();
+  return '';
+}
+
+function normalizeIncomingSources(rawSources = [], storagePath = '') {
+  const seen = new Set();
+  const normalized = [];
+
+  if (storagePath) {
+    const trimmedPath = String(storagePath).trim();
+    if (trimmedPath) {
+      const key = `storage:${trimmedPath}`;
+      seen.add(key);
+      normalized.push({
+        type: 'storage',
+        id: '',
+        path: trimmedPath,
+        sourceType: 'local',
+        server: 'upload',
+        url: trimmedPath,
+        quality: 'HD',
+        meta: {
+          canonical_id: '',
+        },
+      });
+    }
+  }
+
+  for (const source of Array.isArray(rawSources) ? rawSources : []) {
+    const requestedType = String(source?.type || source?.server || source?.sourceType || '').trim().toLowerCase();
+    let type = requestedType;
+    let id = String(source?.id || '').trim();
+    let path = String(source?.path || '').trim();
+
+    if (type === 'youtube') id = id || extractYouTubeId(source?.url);
+    if (type === 'dailymotion') id = id || extractDailymotionId(source?.url);
+    if (type === 'vimeo') id = id || extractVimeoId(source?.url);
+    if (type === 'local' || type === 'upload') type = 'storage';
+
+    const dedupeKey = type === 'storage' ? `storage:${path}` : `${type}:${id}`;
+    if (!type || seen.has(dedupeKey)) continue;
+    if (type === 'storage' && !path) continue;
+    if (type !== 'storage' && !id) continue;
+
+    seen.add(dedupeKey);
+    normalized.push({
+      type,
+      id: type === 'storage' ? '' : id,
+      path: type === 'storage' ? path : '',
+      sourceType: type === 'storage' ? 'local' : type,
+      server: type === 'storage' ? 'upload' : type,
+      url: buildCanonicalSourceUrl(type, id, path),
+      quality: String(source?.quality || 'HD').trim() || 'HD',
+      meta: {
+        canonical_id: type === 'storage' ? '' : id,
+      },
+    });
+  }
+
+  return normalized;
+}
+
+function parseStructuredSources(body = {}, storagePath = '') {
+  try {
+    const raw = typeof body.sources === 'string'
+      ? JSON.parse(body.sources || '[]')
+      : Array.isArray(body.sources)
+        ? body.sources
+        : [];
+
+    return normalizeIncomingSources(raw, storagePath);
+  } catch {
+    return normalizeIncomingSources([], storagePath);
+  }
 }
 
 
@@ -624,8 +750,13 @@ router.post('/',
     try {
       const externalVideoUrl = String(req.body.videoUrl || '').trim();
       const requestedSourceType = String(req.body.sourceType || '').trim().toLowerCase();
-      const sourceType = inferSourceType(externalVideoUrl, requestedSourceType);
-      const isExternalSource = Boolean(externalVideoUrl) && sourceType !== 'local';
+      const incomingSources = parseStructuredSources(req.body);
+      const primaryExternalSource = incomingSources.find((source) => source.server !== 'upload') || null;
+      const sourceType = primaryExternalSource?.sourceType || inferSourceType(externalVideoUrl, requestedSourceType);
+      const isExternalSource = !req.files?.video && (
+        (Boolean(externalVideoUrl) && sourceType !== 'local') ||
+        Boolean(primaryExternalSource)
+      );
 
       const {
         title, description, category,
@@ -647,6 +778,9 @@ router.post('/',
           return res.status(400).json({ message: 'Title is required' });
         }
 
+        const primaryVideoUrl = primaryExternalSource?.url || externalVideoUrl;
+        const normalizedSources = parseStructuredSources(req.body);
+
         const movie = await Movie.create({
           title:       title.trim(),
           description: description?.trim(),
@@ -661,10 +795,11 @@ router.post('/',
           studio:      studio || '',
           director:    director || '',
           trailerUrl:  trailerUrl || '',
-          sourceType,
-          videoUrl:    externalVideoUrl,
+          sourceType:  primaryExternalSource?.sourceType || sourceType,
+          videoUrl:    primaryVideoUrl,
           thumbnailUrl: String(externalThumbnailUrl || '').trim(),
           bannerUrl:    String(externalThumbnailUrl || '').trim(),
+          sources:     normalizedSources,
           isFeatured:  isFeatured === 'true',
           uploadedBy:  req.user._id,
         });
@@ -691,6 +826,7 @@ router.post('/',
 
       const videoUrl     = videoResult.secure_url;
       const thumbnailUrl = thumbResult.secure_url;
+      const normalizedSources = parseStructuredSources(req.body, videoUrl);
 
       let bannerUrl = thumbnailUrl;
       if (req.files.banner) {
@@ -720,6 +856,7 @@ router.post('/',
         videoUrl,
         thumbnailUrl,
         bannerUrl,
+        sources:     normalizedSources,
         isFeatured:  isFeatured === 'true',
         uploadedBy:  req.user._id,
       });
@@ -744,9 +881,26 @@ router.post('/',
       res.status(201).json({ message: 'Movie uploaded successfully!', movie });
 
     } catch (error) {
+      console.error('[MOVIE UPLOAD FATAL]:', error);
       logger.error('Movie upload error', {
         error: error.message,
+        name: error.name,
+        body: {
+          title: req.body?.title,
+          category: req.body?.category,
+          sourceType: req.body?.sourceType,
+          videoUrl: req.body?.videoUrl,
+          hasSources: Boolean(req.body?.sources),
+        },
       });
+      if (error?.name === 'ValidationError') {
+        return res.status(400).json({
+          message: error.message,
+          errors: Object.fromEntries(
+            Object.entries(error.errors || {}).map(([key, value]) => [key, value.message])
+          ),
+        });
+      }
       res.status(500).json({ message: error.message });
     }
   }
@@ -773,6 +927,19 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
     allowed.forEach(field => {
       if (req.body[field] !== undefined) movie[field] = req.body[field];
     });
+
+    if (req.body.sources !== undefined) {
+      const normalizedSources = parseStructuredSources(req.body, movie.sourceType === 'local' ? movie.videoUrl : '');
+      movie.sources = normalizedSources;
+
+      if (movie.sourceType !== 'local') {
+        const primaryExternalSource = normalizedSources.find((source) => source.server !== 'upload') || null;
+        if (primaryExternalSource) {
+          movie.sourceType = primaryExternalSource.sourceType;
+          movie.videoUrl = primaryExternalSource.url;
+        }
+      }
+    }
 
     await movie.save();
     res.json({ message: 'Movie updated!', movie });

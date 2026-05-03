@@ -310,7 +310,14 @@ ul { list-style:none; }
 .card-info { padding:14px; }
 .card-title {
   font-size:13px; font-weight:600;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:normal;
+  min-height:calc(1.4em * 2);
+  line-height:1.4;
   margin-bottom:6px; color:var(--text-primary);
 }
 .card-meta {
@@ -695,3 +702,68 @@ ul { list-style:none; }
 /* Hide default controls tooltip */
 video::-webkit-media-controls { display: none !important; }
 video::-webkit-media-controls-enclosure { display: none !important; }
+
+body.movie-details-page {
+  background:
+    radial-gradient(circle at top center, rgba(229, 9, 20, 0.08), transparent 36%),
+    linear-gradient(180deg, #040408 0%, #08080d 100%);
+}
+
+body.movie-details-page #videoContainer.player-shell {
+  box-shadow: 0 10px 40px -10px rgba(229, 9, 20, 0.3), 0 24px 72px rgba(0, 0, 0, 0.72);
+}
+
+body.movie-details-page .player-viewport {
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+body.movie-details-page .player-viewport,
+body.movie-details-page .player-stage,
+body.movie-details-page .player-embed-shell,
+body.movie-details-page .player-embed,
+body.movie-details-page .player-embed iframe,
+body.movie-details-page .player-stage video {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+body.movie-details-page .player-embed iframe {
+  position: absolute;
+  inset: 0;
+}
+
+/* Keep poster crops consistent without forcing generic card images */
+.card-thumbnail img, .details-poster img, .ep-card-thumb, .movie-card img, .content-card img,
+.library-card img, .grid-card img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    object-position: center !important;
+    transform: scale(1.05) !important;
+    display: block !important;
+}
+
+.player-embed-shell {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 12px;
+    background: #000;
+}
+
+.player-embed-shell iframe, .player-embed-shell video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none !important;
+    outline: none !important;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}

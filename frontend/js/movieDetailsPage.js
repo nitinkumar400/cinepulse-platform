@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
 
 // Search and auto-load subtitles for a movie
 async function loadOpenSubtitles(movieTitle, movieId) {
@@ -42,9 +42,9 @@ async function loadOpenSubtitles(movieTitle, movieId) {
     console.warn('Subtitle auto-load failed:', e.message);
   }
 }
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // STATE
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 let currentMovieId  = null;
 let currentMovie    = null;
 let selectedRating  = 0;
@@ -57,6 +57,59 @@ let nativePlayerInitialized = false;
 let progressTrackingReady = false;
 let activePlayerSwitchToken = 0;
 let providerSubtitleBlobUrls = [];
+let activeEmbedPlayer = null;
+
+function getTmdbType(movie) {
+  const category = String(movie?.category || '').trim().toLowerCase();
+  if (['anime', 'series', 'cartoon', 'tv'].includes(category)) return 'tv';
+  return 'movie';
+}
+
+function getOfficialTrailerUrl(videos = []) {
+  if (!Array.isArray(videos)) return '';
+  const official = videos.find((item) => ['Trailer', 'Teaser'].includes(item.type) && item.site === 'YouTube');
+  const anyYouTube = videos.find((item) => item.site === 'YouTube');
+  const video = official || anyYouTube;
+  return video ? `https://www.youtube.com/watch?v=${video.key}` : '';
+}
+
+async function fetchTmdbMetadata(movie) {
+  if (!movie?.tmdbId) return null;
+  try {
+    const type = getTmdbType(movie);
+    const res = await apiFetch(`/tmdb/details/${movie.tmdbId}?type=${type}`, { silent: true });
+    if (!res.ok) return null;
+    const data = await readJsonResponse(res);
+    return data.details || null;
+  } catch (error) {
+    console.warn('TMDb metadata load failed:', error.message);
+    return null;
+  }
+}
+
+function mergeTmdbDetails(movie, details) {
+  if (!details) return movie;
+  const poster = details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : movie.thumbnailUrl;
+  const banner = details.backdrop_path ? `https://image.tmdb.org/t/p/original${details.backdrop_path}` : movie.bannerUrl;
+  const year = movie.releaseYear || (details.release_date || details.first_air_date || '').slice(0, 4);
+  const genres = Array.isArray(details.genres) && details.genres.length
+    ? details.genres.map((genre) => genre.name)
+    : movie.genre || [];
+
+  return {
+    ...movie,
+    title: details.title || details.name || movie.title,
+    description: details.overview || movie.description,
+    releaseYear: year || movie.releaseYear,
+    thumbnailUrl: poster || movie.thumbnailUrl,
+    bannerUrl: banner || movie.bannerUrl,
+    rating: movie.rating || (details.vote_average ? details.vote_average.toFixed(1) : movie.rating),
+    averageRating: movie.averageRating || details.vote_average || movie.averageRating,
+    genre: genres,
+    language: movie.language || details.original_language?.toUpperCase(),
+    trailerUrl: movie.trailerUrl || getOfficialTrailerUrl(details.videos?.results),
+  };
+}
 
 const urlParams = new URLSearchParams(window.location.search);
 const movieId   = urlParams.get('id');
@@ -83,9 +136,9 @@ function escapeHtml(text) {
   return d.innerHTML;
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // INIT & EVENT DELEGATION
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 window.addEventListener('DOMContentLoaded', async () => {
   setupNavbar();
 
@@ -98,13 +151,19 @@ userLoggedIn = !!token;
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const res = await fetch(`${API_BASE}/movies/${movieId}`, { headers });
+    const res = await apiFetch(`/movies/${movieId}`, { headers });
     if (!res.ok) throw new Error('Not found');
 
     const movie  = await readJsonResponse(res);
     currentMovie   = movie;
     currentMovieId = movie._id;
-    renderMovie(movie);
+
+    const tmdbData = await fetchTmdbMetadata(movie);
+    if (tmdbData) {
+      currentMovie = mergeTmdbDetails(currentMovie, tmdbData);
+    }
+
+    renderMovie(currentMovie);
 
   } catch(e) {
     console.error('Movie load error:', e);
@@ -120,9 +179,12 @@ userLoggedIn = !!token;
   document.getElementById('shortcutsBtn').addEventListener('click', () => {
     if (typeof VideoPlayer !== 'undefined') VideoPlayer.showShortcuts?.();
   });
-  document.getElementById('serverSelector').addEventListener('change', (e) => {
-    const nextIndex = parseInt(e.target.value, 10);
-    if (Number.isInteger(nextIndex)) {
+  // Server button delegation (replaces old <select>)
+  document.getElementById('serverButtons').addEventListener('click', (e) => {
+    const btn = e.target.closest('.srv-btn');
+    if (!btn) return;
+    const nextIndex = parseInt(btn.dataset.index, 10);
+    if (Number.isInteger(nextIndex) && nextIndex !== activeSourceIndex) {
       switchPlaybackSource(nextIndex);
     }
   });
@@ -132,7 +194,7 @@ userLoggedIn = !!token;
     document.getElementById('commentCharCount').textContent = `${this.value.length} / 500`;
   });
 
-  // ── OPTIMIZED EVENT DELEGATION ──
+  // â”€â”€ OPTIMIZED EVENT DELEGATION â”€â”€
   // Bound globally ONCE to prevent listener stacking
   
   // 1. Season Tabs Delegation
@@ -170,9 +232,9 @@ userLoggedIn = !!token;
   });
 });
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // SHOW STATE
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function showState(state) {
   document.getElementById('loadingState').style.display = state === 'loading' ? 'block' : 'none';
   document.getElementById('movieContent').style.display = state === 'content' ? 'block' : 'none';
@@ -186,7 +248,7 @@ function setPlayerStatus(message, variant = '') {
   statusEl.className = `player-status${variant ? ` is-${variant}` : ''}`;
 }
 
-function showPlayerLoader(show, text = 'Loading stream…') {
+function showPlayerLoader(show, text = 'Loading streamâ€¦') {
   const loader = document.getElementById('playerLoader');
   const textEl = loader?.querySelector('.player-loader-text');
   if (textEl) textEl.textContent = text;
@@ -212,23 +274,46 @@ function getEmbedFrame() {
   return document.getElementById('embedFrame');
 }
 
+function getEmbedShell() {
+  return document.getElementById('embedShell');
+}
+
+function getEmbedPlayerHost() {
+  return document.getElementById('embedPlayerHost');
+}
+
 function getNativeShell() {
   return document.getElementById('nativePlayerShell');
 }
 
 function activatePlaybackSurface(mode) {
   const nativeShell = getNativeShell();
-  const embedFrame = getEmbedFrame();
+  const embedShell = getEmbedShell();
   nativeShell?.classList.toggle('is-active', mode === 'native');
-  embedFrame?.classList.toggle('is-active', mode === 'embed');
+  embedShell?.classList.toggle('is-active', mode === 'embed');
+}
+
+function destroyEmbedPlayer() {
+  if (activeEmbedPlayer && typeof activeEmbedPlayer.destroy === 'function') {
+    try {
+      activeEmbedPlayer.destroy();
+    } catch {}
+  }
+  activeEmbedPlayer = null;
 }
 
 function stopEmbedPlayback() {
+  destroyEmbedPlayer();
   const frame = getEmbedFrame();
   if (frame) {
     frame.removeAttribute('srcdoc');
     frame.removeAttribute('src');
   }
+}
+
+function initProviderPlayer(source) {
+  destroyEmbedPlayer();
+  return null;
 }
 
 function revokeProviderSubtitleUrls() {
@@ -242,7 +327,7 @@ async function loadProviderSubtitleTracks(source) {
   try {
     if (!source?.url || source.server === 'upload') return;
 
-    const response = await fetch(`${API_BASE}/subtitles?url=${encodeURIComponent(source.url)}&sourceType=${encodeURIComponent(source.sourceType || source.server)}&langs=en,hi,ja`);
+    const response = await apiFetch(`/subtitles?url=${encodeURIComponent(source.url)}&sourceType=${encodeURIComponent(source.sourceType || source.server)}&langs=en,hi,ja`);
     const payload = await readJsonResponse(response);
     const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
     if (!tracks.length) return;
@@ -274,7 +359,7 @@ async function loadProviderSubtitleTracks(source) {
   }
 }
 
-function renderSourceOffline(source, reason = 'Source Offline') {
+function renderSourceOffline(source, reason = 'Content currently unavailable. Please try another server.') {
   stopEmbedPlayback();
   activatePlaybackSurface('embed');
   showPlayerLoader(false);
@@ -283,7 +368,7 @@ function renderSourceOffline(source, reason = 'Source Offline') {
   const frame = getEmbedFrame();
   if (!frame) return;
 
-  const title = escapeHtml(source?.label || 'Source Offline');
+  const title = escapeHtml(source?.label || 'Playback unavailable');
   const detail = escapeHtml(reason);
   frame.srcdoc = `
     <!DOCTYPE html>
@@ -306,9 +391,26 @@ function renderSourceOffline(source, reason = 'Source Offline') {
           text-align: center;
           padding: 24px;
         }
-        h2 { margin: 0; font-size: 28px; }
-        p { margin: 0; color: rgba(255,255,255,0.72); }
-        .badge {
+        .state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          max-width: 340px;
+        }
+        .icon {
+          width: 72px;
+          height: 72px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255,255,255,0.08);
+          font-size: 34px;
+        }
+        h2 { margin: 0; font-size: 26px; }
+        p { margin: 0; color: rgba(255,255,255,0.72); line-height: 1.6; }
+        .label {
           padding: 6px 12px;
           border-radius: 999px;
           border: 1px solid rgba(255,255,255,0.12);
@@ -321,9 +423,12 @@ function renderSourceOffline(source, reason = 'Source Offline') {
       </style>
     </head>
     <body>
-      <div class="badge">${title}</div>
-      <h2>Source Offline</h2>
-      <p>${detail}</p>
+      <div class="state">
+        <div class="icon">!</div>
+        <div class="label">${title}</div>
+        <h2>Playback unavailable</h2>
+        <p>${detail}</p>
+      </div>
     </body>
     </html>`;
 }
@@ -355,8 +460,8 @@ function wireNativeFallback() {
   video.dataset.multiSourceBound = 'true';
   video.addEventListener('error', () => {
     if (activeSourceIndex < playbackSources.length - 1) {
-      showPlayerMessage('Switching server…');
-      setPlayerStatus('Current source failed. Trying another server…', 'switching');
+      showPlayerMessage('Switching serverâ€¦');
+      setPlayerStatus('Current source failed. Trying another serverâ€¦', 'switching');
       switchPlaybackSource(activeSourceIndex + 1, { auto: true });
     } else {
       showPlayerLoader(false);
@@ -368,20 +473,50 @@ function wireNativeFallback() {
 
 function renderServerSelector() {
   const switcher = document.getElementById('serverSwitcher');
-  const select = document.getElementById('serverSelector');
-  if (!switcher || !select) return;
+  const btnContainer = document.getElementById('serverButtons');
+  if (!switcher || !btnContainer) return;
 
   if (!playbackSources.length) {
     switcher.style.display = 'none';
-    select.innerHTML = '';
+    btnContainer.innerHTML = '';
     return;
   }
 
   switcher.style.display = playbackSources.length > 1 ? 'flex' : 'none';
-  select.innerHTML = playbackSources.map((source, index) => `
-    <option value="${index}">${escapeHtml(source.label)}</option>
-  `).join('');
-  select.value = activeSourceIndex >= 0 ? String(activeSourceIndex) : '0';
+
+  // Render visual server buttons with status indicators
+  btnContainer.innerHTML = playbackSources.map((source, index) => {
+    const isActive = index === activeSourceIndex;
+    const status = source.status || 'unknown';
+    const statusColor = status === 'working' ? '#22c55e' : status === 'failed' ? '#ef4444' : '#fbbf24';
+
+    return `
+      <button
+        class="srv-btn ${isActive ? 'srv-active' : ''} ${status === 'failed' ? 'srv-failed' : ''}"
+        data-index="${index}"
+        title="${escapeHtml(source.label)}${status === 'failed' ? ' (Failed)' : ''}"
+        style="
+          padding: 6px 12px;
+          border: 1px solid ${isActive ? 'var(--accent, #e50914)' : 'rgba(255,255,255,0.2)'};
+          background: ${isActive ? 'var(--accent, #e50914)' : 'transparent'};
+          color: ${isActive ? '#fff' : 'rgba(255,255,255,0.8)'};
+          border-radius: 6px;
+          cursor: ${status === 'failed' ? 'not-allowed' : 'pointer'};
+          font-size: 12px;
+          font-weight: 500;
+          transition: all 0.2s;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          opacity: ${status === 'failed' ? '0.5' : '1'};
+        "
+        ${status === 'failed' ? 'disabled' : ''}
+      >
+        <span style="width:6px;height:6px;border-radius:50%;background:${statusColor};"></span>
+        ${escapeHtml(source.serverName || source.label)}
+      </button>
+    `;
+  }).join('');
 }
 
 function renderNoPlaybackState() {
@@ -402,10 +537,10 @@ function renderNoPlaybackState() {
   const nativeShell = getNativeShell();
   if (nativeShell) {
     nativeShell.innerHTML = `
-      <div style="height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:40px 20px;color:var(--text-muted);text-align:center;">
-        <div style="font-size:56px;margin-bottom:14px;">🎬</div>
-        <p style="font-size:18px;color:#fff;margin-bottom:8px;">Video not available yet</p>
-        <p style="font-size:13px;">Check back soon</p>
+      <div class="player-error-state">
+        <i class="ri-film-line"></i>
+        <h3 style="margin:0;font-size:20px;">Playback unavailable</h3>
+        <p>Content currently unavailable. Please try another server.</p>
       </div>`;
   }
 }
@@ -433,7 +568,7 @@ async function switchPlaybackSource(index, options = {}) {
   const source = playbackSources[index];
   const switchToken = ++activePlayerSwitchToken;
   const shortcutsBtn = document.getElementById('shortcutsBtn');
-  showPlayerLoader(true, options.auto ? 'Switching server…' : 'Loading stream…');
+  showPlayerLoader(true, options.auto ? 'Switching serverâ€¦' : 'Loading streamâ€¦');
   setPlayerStatus(`Playing from ${source.label}`, options.auto ? 'switching' : '');
   if (shortcutsBtn) {
     shortcutsBtn.style.opacity = source.server === 'upload' ? '1' : '0.55';
@@ -456,7 +591,7 @@ async function switchPlaybackSource(index, options = {}) {
       if (switchToken !== activePlayerSwitchToken) return;
       clearTimeout(switchPlaybackSource.embedTimer);
       showPlayerLoader(false);
-      setPlayerStatus(`Now playing • ${source.quality || 'HD'}`);
+      setPlayerStatus(`Now playing â€¢ ${source.quality || 'HD'}`);
       if (startTime > 0 && video.currentTime < startTime) {
         video.currentTime = startTime;
       }
@@ -468,41 +603,30 @@ async function switchPlaybackSource(index, options = {}) {
     return;
   }
 
-  const frame = getEmbedFrame();
-  activatePlaybackSurface('embed');
-  if (!frame) return;
-  if (!source.embedUrl || window.isOfflinePlaybackSource?.(source.url, source.sourceType || source.server)) {
-    renderSourceOffline(source, 'This external source is malformed or unavailable.');
-    return;
-  }
-  const video = getVideoElement();
-  if (video) {
-    video.removeAttribute('src');
-    video.load();
-  }
+  // External embed source - use popup player (embed servers block iframes)
+  showPlayerLoader(false);
+  source.status = 'ready';
+  renderServerSelector();
 
-  frame.onload = () => {
-    if (switchToken !== activePlayerSwitchToken) return;
-    clearTimeout(switchPlaybackSource.embedTimer);
-    showPlayerLoader(false);
-    setPlayerStatus(`Now playing • ${source.label}`);
-  };
+  // Hide video player, show popup shell
+  const nativeShell = getNativeShell();
+  const popupShell = document.getElementById('popupPlayerShell');
+  const embedShell = getEmbedShell();
+        <button id="btnWatchPopup" style="padding:16px 40px;background:linear-gradient(135deg,#dc2626,#b91c1c);color:white;border:none;border-radius:10px;font-size:18px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:10px;box-shadow:0 6px 20px rgba(220,38,38,0.3);transition:transform 0.2s,box-shadow 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+          <i class="ri-play-fill" style="font-size:24px;"></i> Watch Now
+        </button>
+        <p style="margin:8px 0 0;font-size:12px;color:#64748b;">Click to open ${source.server || 'external'} player</p>
+      </div>
+    `;
 
-  frame.removeAttribute('srcdoc');
-  frame.src = source.embedUrl;
-  loadProviderSubtitleTracks(source).catch(() => {});
-
-  clearTimeout(switchPlaybackSource.embedTimer);
-  switchPlaybackSource.embedTimer = setTimeout(() => {
-    if (switchToken !== activePlayerSwitchToken) return;
-    if (index < playbackSources.length - 1) {
-      showPlayerMessage('Switching server…');
-      setPlayerStatus('Embedded player is slow. Trying another server…', 'switching');
-      switchPlaybackSource(index + 1, { auto: true });
-    } else {
-      renderSourceOffline(source, 'Embedded playback is unavailable right now.');
+    // Wire up the button
+    const btn = document.getElementById('btnWatchPopup');
+    if (btn) {
+      btn.onclick = () => openPopupPlayer(source.embedUrl);
     }
-  }, 7000);
+  }
+
+  setPlayerStatus(`Click "Watch Now" to open ${source.label}`);
 }
 
 function setupPlayback(movie) {
@@ -533,9 +657,9 @@ function setupPlayback(movie) {
   renderRatingStars();
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // RENDER MOVIE
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function renderMovie(m) {
   document.title = `${m.title} - CINE STREAM`;
 
@@ -556,7 +680,7 @@ function renderMovie(m) {
   const min = (m.duration || 0) % 60;
   document.getElementById('movieDuration').textContent = h > 0 ? `${h}h ${min}m` : `${min}m`;
 
-  document.getElementById('movieRating').textContent = `⭐ ${m.averageRating || 'N/A'} (${m.numRatings || 0} ratings)`;
+  document.getElementById('movieRating').textContent = `â­ ${m.averageRating || 'N/A'} (${m.numRatings || 0} ratings)`;
 
   if (m.status && m.status !== 'Completed') {
     const badge = document.getElementById('movieStatusBadge');
@@ -572,12 +696,12 @@ function renderMovie(m) {
     `<span class="genre-tag">${escapeHtml(g)}</span>`
   ).join('');
 
-  document.getElementById('detailDirector').textContent = m.director  || '—';
-  document.getElementById('detailStudio').textContent   = m.studio    || '—';
-  document.getElementById('detailLanguage').textContent = m.language  || '—';
+  document.getElementById('detailDirector').textContent = m.director  || 'â€”';
+  document.getElementById('detailStudio').textContent   = m.studio    || 'â€”';
+  document.getElementById('detailLanguage').textContent = m.language  || 'â€”';
   document.getElementById('detailViews').textContent    = (m.views || 0).toLocaleString();
-  document.getElementById('detailYear').textContent     = m.releaseYear || '—';
-  document.getElementById('detailRating').textContent   = m.rating    || '—';
+  document.getElementById('detailYear').textContent     = m.releaseYear || 'â€”';
+  document.getElementById('detailRating').textContent   = m.rating    || 'â€”';
 
   if (m.category === 'anime' || m.category === 'series' || m.category === 'cartoon') {
     if (m.status) {
@@ -601,6 +725,14 @@ function renderMovie(m) {
     document.getElementById('trailerBtn').style.display = 'inline-flex';
   }
 
+  if (typeof isAdmin === 'function' && isAdmin()) {
+    const deleteBtn = document.getElementById('adminDeleteMovieBtn');
+    if (deleteBtn) {
+      deleteBtn.style.display = 'inline-flex';
+      deleteBtn.onclick = deleteMovie;
+    }
+  }
+
   setupPlayback(m);
 
   document.getElementById('playerTitle').textContent = m.title;
@@ -615,15 +747,15 @@ function renderMovie(m) {
   showState('content');
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // RATING STARS
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function renderRatingStars() {
   const container = document.getElementById('ratingStars');
   container.innerHTML = '';
   for (let i = 1; i <= 10; i++) {
     const btn = document.createElement('button');
-    btn.textContent    = '★';
+    btn.textContent    = 'â˜…';
     btn.title          = `Rate ${i}/10`;
     btn.dataset.rating = i;
     btn.addEventListener('mouseenter', () => highlightStars(i));
@@ -643,7 +775,7 @@ async function submitRating(rating) {
   if (!userLoggedIn) { toast('Login to rate', 'error'); return; }
   const token = localStorage.getItem('token');
   try {
-    const res  = await fetch(`${API_BASE}/movies/${currentMovieId}/rate`, {
+    const res  = await apiFetch(`/movies/${currentMovieId}/rate`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ rating }),
@@ -651,17 +783,17 @@ async function submitRating(rating) {
     const data = await readJsonResponse(res);
     if (res.ok) {
       highlightStars(rating);
-      document.getElementById('movieRating').textContent = `⭐ ${data.averageRating} (${data.numRatings} ratings)`;
-      toast(`Rated ${rating}/10 ⭐`, 'success');
+      document.getElementById('movieRating').textContent = `â­ ${data.averageRating} (${data.numRatings} ratings)`;
+      toast(`Rated ${rating}/10 â­`, 'success');
     } else {
       toast(data.message || 'Already rated', 'error');
     }
   } catch(e) { toast('Failed to rate', 'error'); }
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // PROGRESS TRACKING
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function setupProgressTracking() {
   const video = document.getElementById('videoPlayer');
   if (!video || !userLoggedIn) return;
@@ -683,7 +815,7 @@ async function apiSaveProgress(ct, td) {
   const token = localStorage.getItem('token');
   if (!token || !currentMovieId || !td || !isFinite(td)) return;
   try {
-    await fetch(`${API_BASE}/watch/progress`, {
+    await apiFetch('/watch/progress', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({
@@ -695,20 +827,48 @@ async function apiSaveProgress(ct, td) {
   } catch(e) {}
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // TRAILER & WATCHLIST
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function openTrailer() {
   const url = currentMovie?.trailerUrl;
   if (!url) return;
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+async function deleteMovie() {
+  if (!currentMovieId || !window.confirm(`Delete "${currentMovie?.title || 'this movie'}"? This action cannot be undone.`)) {
+    return;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    toast('You must be logged in as an admin to delete movies.', 'error');
+    return;
+  }
+
+  try {
+    const res = await apiFetch(`/movies/${currentMovieId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    const payload = await readJsonResponse(res);
+    if (res.ok && payload.success) {
+      toast('Movie deleted successfully.', 'success');
+      window.location.href = '/';
+    } else {
+      toast(payload.message || 'Delete failed', 'error');
+    }
+  } catch (error) {
+    toast(error.message || 'Delete failed', 'error');
+  }
+}
+
 async function toggleWatchlist() {
   if (!userLoggedIn) { toast('Login to add to your list', 'error'); return; }
   const token = localStorage.getItem('token');
   try {
-    const res  = await fetch(`${API_BASE}/auth/watchlist/${currentMovieId}`, {
+    const res  = await apiFetch(`/auth/watchlist/${currentMovieId}`, {
       method:  'PUT',
       headers: { 'Authorization': `Bearer ${token}` },
     });
@@ -727,9 +887,9 @@ async function toggleWatchlist() {
   } catch(e) { toast('Failed', 'error'); }
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // EPISODES
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function loadEpisodes(seriesId) {
   const section = document.getElementById('episodesSection');
   const grid    = document.getElementById('episodesGrid');
@@ -737,7 +897,7 @@ async function loadEpisodes(seriesId) {
   section.style.display = 'block';
 
   try {
-    const res  = await fetch(`${API_BASE}/episodes/series/${seriesId}`);
+    const res  = await apiFetch(`/episodes/series/${seriesId}`, { silent: true });
     const data = await readJsonResponse(res);
     const { seasons } = data;
     const nums = Object.keys(seasons || {}).sort((a, b) => +a - +b);
@@ -745,7 +905,7 @@ async function loadEpisodes(seriesId) {
     if (nums.length === 0) {
       grid.innerHTML = `
         <div class="empty-state" style="grid-column:1/-1;">
-          <div class="empty-state-icon">🎬</div>
+          <div class="empty-state-icon">ðŸŽ¬</div>
           <h3>No episodes yet</h3>
           <p style="color:var(--text-muted);">Upload episodes from the admin panel</p>
         </div>`;
@@ -789,15 +949,15 @@ function renderEpisodeCards(episodes) {
     </div>`).join('');
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // RECOMMENDATIONS
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function loadRecommendations(id, title) {
   const section = document.getElementById('recommendationsSection');
   const grid    = document.getElementById('recGrid');
 
   try {
-    const res  = await fetch(`${API_BASE}/movies/${id}/recommendations`);
+    const res  = await apiFetch(`/movies/${id}/recommendations`, { silent: true });
     if (!res.ok) return;
     const data = await readJsonResponse(res);
     const recs = data.recommendations || [];
@@ -805,7 +965,7 @@ async function loadRecommendations(id, title) {
 
     const subtitle = document.getElementById('recSubtitle');
     if (data.basedOn?.genre?.length > 0) {
-      subtitle.textContent = `Because you're watching "${title}" · ${data.basedOn.genre.slice(0,3).join(', ')}`;
+      subtitle.textContent = `Because you're watching "${title}" Â· ${data.basedOn.genre.slice(0,3).join(', ')}`;
     }
 
     grid.innerHTML = recs.map(m => {
@@ -827,8 +987,8 @@ async function loadRecommendations(id, title) {
           <div class="rec-card-info">
             <div class="rec-card-title">${escapeHtml(m.title)}</div>
             <div class="rec-card-meta">
-              <span>${m.releaseYear || ''}</span> <span>·</span> <span>${dur}</span>
-              <span class="rec-card-rating">${m.averageRating > 0 ? `⭐ ${m.averageRating}` : ''}</span>
+              <span>${m.releaseYear || ''}</span> <span>Â·</span> <span>${dur}</span>
+              <span class="rec-card-rating">${m.averageRating > 0 ? `â­ ${m.averageRating}` : ''}</span>
             </div>
           </div>
         </div>`;
@@ -838,9 +998,9 @@ async function loadRecommendations(id, title) {
   } catch(e) {}
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // COMMENTS
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function setupCommentSection() {
   const user = JSON.parse(localStorage.getItem('user') || 'null');
   if (user) {
@@ -856,7 +1016,7 @@ function setupCommentSection() {
   container.innerHTML = '';
   for (let i = 1; i <= 5; i++) {
     const star = document.createElement('button');
-    star.textContent    = '★';
+    star.textContent    = 'â˜…';
     star.dataset.rating = i;
     star.style.cssText  = 'background:none;border:none;cursor:pointer;font-size:22px;color:var(--text-muted);transition:color 0.15s,transform 0.1s;padding:2px;';
     star.addEventListener('mouseenter', () => highlightCommentStars(i));
@@ -885,7 +1045,7 @@ async function loadComments() {
   container.innerHTML = '<div class="spinner-container"><div class="spinner"></div></div>';
 
   try {
-    const res      = await fetch(`${API_BASE}/comments/movie/${currentMovieId}`);
+    const res      = await apiFetch(`/comments/movie/${currentMovieId}`, { silent: true });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data     = await readJsonResponse(res);
     const comments = data.comments || [];
@@ -898,15 +1058,15 @@ async function loadComments() {
     if (comments.length === 0) {
       container.innerHTML = `
         <div style="text-align:center;padding:40px 20px;color:var(--text-muted);">
-          <div style="font-size:48px;margin-bottom:12px;">💬</div>
-          <p style="font-size:15px;">No reviews yet — be the first!</p>
+          <div style="font-size:48px;margin-bottom:12px;">ðŸ’¬</div>
+          <p style="font-size:15px;">No reviews yet â€” be the first!</p>
         </div>`;
       return;
     }
 
     container.innerHTML = comments.map(c => {
-      const filled = c.rating ? '★'.repeat(c.rating) : '';
-      const empty  = c.rating ? `<span style="color:var(--text-muted);">${'★'.repeat(5 - c.rating)}</span>` : '';
+      const filled = c.rating ? 'â˜…'.repeat(c.rating) : '';
+      const empty  = c.rating ? `<span style="color:var(--text-muted);">${'â˜…'.repeat(5 - c.rating)}</span>` : '';
       const commentUserId = c.user?._id || c.user?.id || null;
       const isOwn = myId && commentUserId && commentUserId.toString() === myId.toString();
       const date  = new Date(c.createdAt).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
@@ -955,7 +1115,7 @@ async function submitComment() {
   btn.disabled  = true;
 
   try {
-    const res  = await fetch(`${API_BASE}/comments/movie/${currentMovieId}`, {
+    const res  = await apiFetch(`/comments/movie/${currentMovieId}`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ text, rating: selectedRating || null }),
@@ -968,7 +1128,7 @@ async function submitComment() {
       selectedRating = 0;
       highlightCommentStars(0);
       document.getElementById('commentRatingValue').style.display = 'none';
-      toast('Review posted! ✅', 'success');
+      toast('Review posted! âœ…', 'success');
       await loadComments();
     } else {
       toast(data.message || 'Failed to post', 'error');
@@ -983,7 +1143,7 @@ async function deleteComment(commentId) {
   if (!confirm('Delete your review?')) return;
   const token = localStorage.getItem('token');
   try {
-    const res = await fetch(`${API_BASE}/comments/movie/${currentMovieId}/${commentId}`, { 
+    const res = await apiFetch(`/comments/movie/${currentMovieId}/${commentId}`, { 
       method:'DELETE', headers:{ 'Authorization':`Bearer ${token}` } 
     });
     if (res.ok) { toast('Review deleted', 'success'); await loadComments(); }
@@ -995,7 +1155,7 @@ async function likeComment(commentId, btn) {
   if (!userLoggedIn) { toast('Login to like', 'error'); return; }
   const token = localStorage.getItem('token');
   try {
-    const res  = await fetch(`${API_BASE}/comments/movie/${currentMovieId}/${commentId}/like`, { 
+    const res  = await apiFetch(`/comments/movie/${currentMovieId}/${commentId}/like`, { 
       method:'PUT', headers:{ 'Authorization':`Bearer ${token}` } 
     });
     const data = await readJsonResponse(res);
@@ -1007,16 +1167,218 @@ async function likeComment(commentId, btn) {
   } catch(e) {}
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // HELPERS
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function shareMovie() {
   if (navigator.share) {
     navigator.share({ title: currentMovie?.title, url: window.location.href });
   } else {
     navigator.clipboard.writeText(window.location.href)
-      .then(()  => toast('Link copied! 🔗', 'success'))
+      .then(()  => toast('Link copied! ðŸ”—', 'success'))
       .catch(() => toast('Could not copy link', 'error'));
+  }
+}
+
+async function loadMaskedPlaybackSources(movieId) {
+  try {
+    const response = await apiFetch(`/watch/movie/${movieId}/sources`, { silent: true });
+    if (!response.ok) return [];
+
+    const payload = await readJsonResponse(response);
+    const maskedSources = Array.isArray(payload?.sources) ? payload.sources : [];
+    return (window.VideoEngine?.buildMovieSources?.({ sources: maskedSources }) || []).map((source) => ({
+      ...source,
+      isMasked: true,
+    }));
+  } catch (error) {
+    console.warn('Masked playback source load failed:', error.message);
+    return [];
+  }
+}
+
+async function loadProviderSubtitleTracks(source) {
+  try {
+    if (!source?.url || source.server === 'upload' || source.isMasked) return;
+
+    const response = await apiFetch(`/subtitles?url=${encodeURIComponent(source.url)}&sourceType=${encodeURIComponent(source.sourceType || source.server)}&langs=en,hi,ja`);
+    const payload = await readJsonResponse(response);
+    const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
+    if (!tracks.length) return;
+
+    const video = getVideoElement();
+    if (video && getNativeShell()?.classList.contains('is-active')) {
+      revokeProviderSubtitleUrls();
+      video.querySelectorAll('track[data-provider-track="true"]').forEach((track) => track.remove());
+
+      tracks.forEach((track, index) => {
+        try {
+          const blobUrl = URL.createObjectURL(new Blob([track.vtt], { type: 'text/vtt' }));
+          providerSubtitleBlobUrls.push(blobUrl);
+          const element = document.createElement('track');
+          element.kind = 'subtitles';
+          element.label = track.label || track.language || `Subtitle ${index + 1}`;
+          element.srclang = track.language || 'en';
+          element.src = blobUrl;
+          element.default = index === 0;
+          element.dataset.providerTrack = 'true';
+          video.appendChild(element);
+        } catch {}
+      });
+    } else {
+      showPlayerMessage(`Captions available: ${tracks.map((track) => track.language?.toUpperCase()).filter(Boolean).join(', ')}`);
+    }
+  } catch (error) {
+    console.warn('Provider subtitle load failed:', error.message);
+  }
+}
+
+function wireNativeFallback() {
+  const video = getVideoElement();
+  if (!video || video.dataset.multiSourceBound === 'true') return;
+
+  video.dataset.multiSourceBound = 'true';
+  video.addEventListener('error', () => {
+    if (activeSourceIndex < playbackSources.length - 1) {
+      showPlayerMessage('Switching source...');
+      setPlayerStatus('Current source failed. Trying the next source...', 'switching');
+      switchPlaybackSource(activeSourceIndex + 1, { auto: true }).catch(() => {});
+    } else {
+      showPlayerLoader(false);
+      setPlayerStatus('Playback failed for all available sources.', 'error');
+      showPlayerMessage('No working source is available right now.', 3200);
+    }
+  });
+}
+
+async function switchPlaybackSource(index, options = {}) {
+  if (!playbackSources[index]) return;
+
+  restoreNativeShellMarkup();
+  wireNativeFallback();
+  getVideoElement()?.pause();
+
+  activeSourceIndex = index;
+  renderServerSelector();
+  const source = playbackSources[index];
+  const switchToken = ++activePlayerSwitchToken;
+  const shortcutsBtn = document.getElementById('shortcutsBtn');
+  showPlayerLoader(true, options.auto ? 'Switching source...' : 'Loading stream...');
+  setPlayerStatus(options.auto ? `Switching to ${source.label}...` : `Loading ${source.label}...`, options.auto ? 'switching' : '');
+  if (shortcutsBtn) {
+    shortcutsBtn.style.opacity = source.server === 'upload' ? '1' : '0.55';
+  }
+
+  if (source.server === 'upload') {
+    revokeProviderSubtitleUrls();
+    stopEmbedPlayback();
+    activatePlaybackSurface('native');
+    const video = getVideoElement();
+    if (!video) return;
+
+    ensureNativePlayer(currentMovie);
+    video.poster = mediaUrl(currentMovie?.thumbnailUrl) || '';
+    video.src = mediaUrl(source.playUrl || source.url);
+    video.currentTime = 0;
+    video.load();
+
+    const onCanPlay = () => {
+      if (switchToken !== activePlayerSwitchToken) return;
+      clearTimeout(switchPlaybackSource.embedTimer);
+      showPlayerLoader(false);
+      setPlayerStatus(`Now playing â€¢ ${source.statusLabel || source.label}`);
+      if (startTime > 0 && video.currentTime < startTime) {
+        video.currentTime = startTime;
+      }
+      video.play().catch(() => {});
+      video.removeEventListener('canplay', onCanPlay);
+    };
+
+    video.addEventListener('canplay', onCanPlay);
+    return;
+  }
+
+  const frame = getEmbedFrame();
+  activatePlaybackSurface('embed');
+  if (!frame) return;
+  const sourceUrlForValidation = source.url || source.embedUrl || '';
+  if (!source.embedUrl || window.isOfflinePlaybackSource?.(sourceUrlForValidation, source.sourceType || source.server)) {
+    console.log('[PLAYER DEBUG] Source Object:', source);
+    renderSourceOffline(source, 'Content currently unavailable. Please try another server.');
+    return;
+  }
+  const video = getVideoElement();
+  if (video) {
+    video.removeAttribute('src');
+    video.load();
+  }
+
+  frame.onload = () => {
+    if (switchToken !== activePlayerSwitchToken) return;
+    clearTimeout(switchPlaybackSource.embedTimer);
+    initProviderPlayer(source);
+    showPlayerLoader(false);
+    setPlayerStatus(`Now playing â€¢ ${source.statusLabel || source.label}`);
+  };
+
+  frame.referrerPolicy = 'no-referrer';
+  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-presentation allow-forms');
+  frame.allow = 'autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer; clipboard-write;';
+  frame.allowFullscreen = true;
+  frame.setAttribute('allowfullscreen', 'true');
+  frame.setAttribute('webkitallowfullscreen', 'true');
+  frame.setAttribute('mozallowfullscreen', 'true');
+  frame.removeAttribute('srcdoc');
+  frame.src = source.embedUrl;
+  loadProviderSubtitleTracks(source).catch(() => {});
+
+  clearTimeout(switchPlaybackSource.embedTimer);
+  switchPlaybackSource.embedTimer = setTimeout(() => {
+    if (switchToken !== activePlayerSwitchToken) return;
+    if (index < playbackSources.length - 1) {
+      showPlayerMessage('Switching source...');
+      setPlayerStatus('This source is slow. Trying the next source...', 'switching');
+      switchPlaybackSource(index + 1, { auto: true }).catch(() => {});
+    } else {
+      renderSourceOffline(source, 'Content currently unavailable. Please try another server.');
+    }
+  }, 7000);
+}
+
+async function setupPlayback(movie) {
+  try {
+    playbackSources = await loadMaskedPlaybackSources(movie._id);
+    if (!playbackSources.length) {
+      playbackSources = (window.VideoEngine?.buildMovieSources?.(movie) || []);
+    }
+    activeSourceIndex = playbackSources.length ? 0 : -1;
+    renderServerSelector();
+
+    if (!userLoggedIn) {
+      document.getElementById('videoContainer').style.display = 'none';
+      document.getElementById('ratingWrapper').style.display  = 'none';
+      document.getElementById('loginGate').style.display      = 'block';
+      return;
+    }
+
+    document.getElementById('loginGate').style.display = 'none';
+    document.getElementById('videoContainer').style.display = 'block';
+    document.getElementById('ratingWrapper').style.display = 'flex';
+
+    if (!playbackSources.length) {
+      renderNoPlaybackState();
+      renderRatingStars();
+      return;
+    }
+
+    restoreNativeShellMarkup();
+    wireNativeFallback();
+    await switchPlaybackSource(activeSourceIndex);
+    renderRatingStars();
+  } catch (error) {
+    console.warn('Playback setup failed:', error.message);
+    renderNoPlaybackState();
+    renderRatingStars();
   }
 }
 
@@ -1028,7 +1390,7 @@ function scrollToPlayer() {
       if (activeSource?.server === 'upload') {
         document.getElementById('videoPlayer')?.play().catch(() => {});
       } else if (activeSource) {
-        showPlayerMessage(`Streaming from ${activeSource.label}`);
+        showPlayerMessage(`Streaming from ${activeSource.statusLabel || activeSource.label}`);
       }
     }, 700);
   }
@@ -1051,6 +1413,20 @@ function setupNavbar() {
     });
   } else {
     sec.innerHTML = `<a href="login.html"><button class="btn-nav">Sign In</button></a>`;
+  }
+}
+
+// Open embed in popup window (bypasses all iframe/X-Frame-Options restrictions)
+function openPopupPlayer(url) {
+  const width = Math.min(screen.availWidth - 40, 1280);
+  const height = Math.min(screen.availHeight - 40, 720);
+  const left = (screen.availWidth - width) / 2;
+  const top = (screen.availHeight - height) / 2;
+  const features = `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes,status=yes,toolbar=no,menubar=no,location=no`;
+  const popup = window.open(url, 'CineStreamPlayer', features);
+
+  if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+    alert('Popup blocked! Please allow popups for this site.');
   }
 }
 

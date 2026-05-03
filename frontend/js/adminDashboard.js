@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
 
 function unwrapResponse(payload) {
   if (payload && typeof payload === 'object' && 'success' in payload) {
@@ -39,17 +39,116 @@ function inferCategoryFromTitle(title = '') {
   }
 }
 
+const YOUTUBE_ID_REGEX = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|shorts\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+
+function extractYouTubeId(url = '') {
+  const match = String(url || '').trim().match(YOUTUBE_ID_REGEX);
+  return match ? match[1] : null;
+}
+
+function extractVimeoId(url = '') {
+  const match = String(url || '').trim().match(/vimeo\.com\/(\d+)/i);
+  return match ? match[1] : null;
+}
+
+function extractDailymotionId(url = '') {
+  const match = String(url || '').trim().match(/(?:dailymotion\.com\/(?:video|embed\/video)\/|dai\.ly\/)([^_?&/]+)/i);
+  return match ? match[1] : null;
+}
+
+function extractTmdbId(url = '') {
+  const raw = String(url || '').trim();
+  if (!raw) return null;
+
+  const patterns = [
+    /themoviedb\.org\/(?:movie|tv)\/(\d+)/i,
+    /tmdb\.org\/(?:movie|tv)\/(\d+)/i,
+    /(?:vidsrc|2embed|autoembed)[^?]*[\/=](\d{3,})/i,
+    /(?:[?&](?:tmdb|id|tmdbId)=)(\d{3,})/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+function buildProviderWatchUrl(type, id) {
+  if (!id) return '';
+  if (type === 'youtube') return `https://youtu.be/${id}`;
+  if (type === 'dailymotion') return `https://dai.ly/${id}`;
+  if (type === 'vimeo') return `https://vimeo.com/${id}`;
+  return '';
+}
+
+function buildMovieExternalSources() {
+  const youtubeInputValue = document.getElementById('youtubeUrl')?.value.trim() || '';
+  const dailymotionInputValue = document.getElementById('dailymotionUrl')?.value.trim() || '';
+  const vimeoInputValue = document.getElementById('vimeoUrl')?.value.trim() || '';
+  const tmdbMetadataUrl = [youtubeInputValue, dailymotionInputValue, vimeoInputValue]
+    .find((value) => extractTmdbId(value)) || '';
+
+  const yt = extractYouTubeId(youtubeInputValue);
+  const dm = extractDailymotionId(dailymotionInputValue);
+  const vm = extractVimeoId(vimeoInputValue);
+
+  const errors = [];
+  if (!yt && youtubeInputValue && !extractTmdbId(youtubeInputValue)) errors.push('Invalid YouTube URL');
+  if (!dm && dailymotionInputValue && !extractTmdbId(dailymotionInputValue)) errors.push('Invalid Dailymotion URL');
+  if (!vm && vimeoInputValue && !extractTmdbId(vimeoInputValue)) errors.push('Invalid Vimeo URL');
+
+  const seen = new Set();
+  const sources = [];
+  const appendSource = (type, id) => {
+    const normalizedId = String(id || '').trim();
+    if (!normalizedId) return;
+
+    const dedupeKey = `${type}:${normalizedId}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+
+    sources.push({
+      type,
+      id: normalizedId,
+      path: '',
+      url: buildProviderWatchUrl(type, normalizedId),
+      server: type,
+      sourceType: type,
+      quality: 'HD',
+    });
+  };
+
+  appendSource('dailymotion', dm);
+  appendSource('youtube', yt);
+  appendSource('vimeo', vm);
+
+  return { sources, errors, metadataUrl: tmdbMetadataUrl };
+}
+
+function syncMovieExternalSourceState() {
+  const hiddenUrlInput = document.getElementById('videoUrlInput');
+  const sourceTypeInput = document.getElementById('movieSourceType');
+  const hint = document.getElementById('movieMetadataHint');
+  const { sources, errors, metadataUrl } = buildMovieExternalSources();
+  const primary = sources[0] || null;
+
+  if (hiddenUrlInput) hiddenUrlInput.value = primary?.url || metadataUrl || '';
+  if (sourceTypeInput) sourceTypeInput.value = primary?.sourceType || 'local';
+
+  if (hint && !primary && !errors.length) {
+    hint.textContent = 'Paste provider URLs to build fallback sources and auto-fill available metadata.';
+  }
+
+  return { sources, errors, primary };
+}
+
 function getVideoIdFromUrl(url = '', sourceType = '') {
   try {
-    const type = window.getSourceType?.(url, sourceType) || 'local';
-    if (type === 'youtube') {
-      const match = String(url).match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i);
-      return match?.[1] || '';
-    }
-    if (type === 'dailymotion') {
-      const match = String(url).match(/(?:dailymotion\.com\/(?:video|embed\/video)\/|dai\.ly\/)([A-Za-z0-9]+)/i);
-      return match?.[1] || '';
-    }
+    const type = window.getSourceType?.(url, sourceType) || sourceType || 'local';
+    if (type === 'youtube') return extractYouTubeId(url) || '';
+    if (type === 'dailymotion') return extractDailymotionId(url) || '';
+    if (type === 'vimeo') return extractVimeoId(url) || '';
     return '';
   } catch {
     return '';
@@ -81,6 +180,27 @@ async function fetchMediaMetadata(url) {
   try {
     const sourceType = window.getSourceType?.(url) || 'local';
     const videoId = getVideoIdFromUrl(url, sourceType);
+    const tmdbId = extractTmdbId(url);
+
+    if (tmdbId) {
+      const response = await apiFetch(`/tmdb/details/${tmdbId}?type=movie`, { silent: true });
+      const payload = await readJsonResponse(response);
+      const details = payload?.details;
+      if (!details?.id) {
+        return null;
+      }
+
+      return {
+        sourceType: 'tmdb',
+        videoId: String(details.id),
+        title: details.title || details.name || '',
+        description: details.overview || '',
+        durationSeconds: (parseInt(details.runtime, 10) || 0) * 60,
+        durationLabel: formatDurationSeconds((parseInt(details.runtime, 10) || 0) * 60),
+        thumbnailUrl: details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : '',
+        thumbnailFallbackUrl: details.backdrop_path ? `https://image.tmdb.org/t/p/w780${details.backdrop_path}` : '',
+      };
+    }
 
     if (!videoId || (sourceType !== 'youtube' && sourceType !== 'dailymotion')) {
       return null;
@@ -142,12 +262,14 @@ async function handleMetadataIngestion(kind) {
       sourceTypeInput.value = 'local';
       thumbnailInput.value = '';
       setPosterPreview(kind, '');
-      hint.textContent = 'Paste a provider URL to auto-fill title, duration, thumbnail, and source type.';
+      hint.textContent = kind === 'movie'
+        ? 'Paste provider URLs to build fallback sources and auto-fill available metadata.'
+        : 'Paste a provider URL to auto-fill episode metadata and thumbnail.';
       return;
     }
 
     spinner.style.display = 'block';
-    hint.textContent = 'Fetching metadata…';
+    hint.textContent = 'Fetching metadata...';
 
     const metadata = await fetchMediaMetadata(url);
     if (!metadata) {
@@ -164,6 +286,7 @@ async function handleMetadataIngestion(kind) {
 
     const form = input.closest('form');
     const titleInput = form?.querySelector('input[name="title"]');
+    const descriptionInput = form?.querySelector('textarea[name="description"]');
     const durationInput = form?.querySelector('input[name="duration"]');
     const categorySelect = form?.querySelector('select[name="category"]');
 
@@ -175,6 +298,10 @@ async function handleMetadataIngestion(kind) {
       durationInput.value = Math.max(1, Math.ceil(metadata.durationSeconds / 60));
     }
 
+    if (descriptionInput && !descriptionInput.value.trim() && metadata.description) {
+      descriptionInput.value = metadata.description;
+    }
+
     if (categorySelect && !categorySelect.value) {
       const smartCategory = inferCategoryFromTitle(metadata.title);
       if (smartCategory) categorySelect.value = smartCategory;
@@ -182,8 +309,8 @@ async function handleMetadataIngestion(kind) {
 
     setPosterPreview(kind, metadata.thumbnailUrl || metadata.thumbnailFallbackUrl, `${metadata.sourceType.toUpperCase()} preview ready`);
     hint.textContent = metadata.durationSeconds > 0
-      ? `Detected ${metadata.sourceType} source • ${metadata.durationLabel}`
-      : `Detected ${metadata.sourceType} source • duration unavailable`;
+      ? `Detected ${metadata.sourceType.toUpperCase()} source - ${metadata.durationLabel}`
+      : `Detected ${metadata.sourceType.toUpperCase()} source - duration unavailable`;
   } catch (error) {
     const hint = document.getElementById(kind === 'movie' ? 'movieMetadataHint' : 'episodeMetadataHint');
     if (hint) hint.textContent = 'Metadata unavailable. You can still fill the form manually.';
@@ -217,6 +344,36 @@ function bindMetadataInput(kind) {
   }
 }
 
+function bindMovieSourceInputs() {
+  try {
+    const inputIds = ['youtubeUrl', 'dailymotionUrl', 'vimeoUrl'];
+    const debounced = debounce(() => {
+      syncMovieExternalSourceState();
+      handleMetadataIngestion('movie').catch(() => {});
+    }, 450);
+
+    inputIds.forEach((id) => {
+      const input = document.getElementById(id);
+      if (!input) return;
+      input.addEventListener('input', debounced);
+      input.addEventListener('paste', () => {
+        setTimeout(() => {
+          syncMovieExternalSourceState();
+          handleMetadataIngestion('movie').catch(() => {});
+        }, 0);
+      });
+      input.addEventListener('blur', () => {
+        syncMovieExternalSourceState();
+        handleMetadataIngestion('movie').catch(() => {});
+      });
+    });
+
+    syncMovieExternalSourceState();
+  } catch (error) {
+    console.warn('bindMovieSourceInputs failed:', error.message);
+  }
+}
+
   async function uploadQuality(quality) {
   const inputMap = { '360p': 'q360Input', '720p': 'q720Input', '1080p': 'q1080Input' };
   const file   = document.getElementById(inputMap[quality])?.files[0];
@@ -232,28 +389,28 @@ function bindMetadataInput(kind) {
   formData.append('quality', quality);
 
   try {
-    const res  = await fetch(`${API_BASE}/movies/${movieId}/quality`, {
+    const res  = await apiFetch(`/movies/${movieId}/quality`, {
       method:  'POST',
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
       body:    formData,
     });
     const data = await readJsonResponse(res);
     if (res.ok) {
-      status.textContent = `✅ ${quality} uploaded successfully!`;
+      status.textContent = `âœ… ${quality} uploaded successfully!`;
       status.style.color = '#34d399';
       showToast(`${quality} quality uploaded!`, 'success');
     } else {
-      status.textContent = `❌ ${data.message}`;
+      status.textContent = `âŒ ${data.message}`;
       status.style.color = 'var(--accent)';
     }
   } catch (e) {
-    status.textContent = '❌ Upload failed';
+    status.textContent = 'âŒ Upload failed';
   }
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // INIT
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 window.addEventListener('DOMContentLoaded', () => {
   const user  = JSON.parse(localStorage.getItem('user') || 'null');
   const token = localStorage.getItem('token');
@@ -281,6 +438,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('episodeForm').addEventListener('submit', submitEpisode);
   bindMetadataInput('movie');
   bindMetadataInput('episode');
+  bindMovieSourceInputs();
 
   // Subtitle events
   document.getElementById('subtitleMovieSelect').addEventListener('change', loadExistingSubtitles);
@@ -300,7 +458,7 @@ window.addEventListener('DOMContentLoaded', () => {
     button.addEventListener('click', () => uploadQuality(button.dataset.quality));
   });
 
-  // Event delegation on document — prevents listener stacking every time list reloads
+  // Event delegation on document â€” prevents listener stacking every time list reloads
   document.addEventListener('click', (e) => {
     const delBtn  = e.target.closest('.delete-movie-btn');
     const editBtn = e.target.closest('.edit-movie-btn');
@@ -327,9 +485,9 @@ window.addEventListener('DOMContentLoaded', () => {
   toggleAdminPanel('contentOps');
 });
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // DRAG AND DROP
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function setupFileDrop(dropId, inputId) {
   const drop  = document.getElementById(dropId);
   const input = document.getElementById(inputId);
@@ -362,15 +520,15 @@ function setupFileDrop(dropId, inputId) {
   });
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // STATS
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function loadStats() {
   try {
     const [allPayload, animePayload, seriesPayload] = await Promise.all([
-      fetch(`${API_BASE}/movies?limit=1000`).then(readJsonResponse),
-      fetch(`${API_BASE}/movies?category=anime&limit=1`).then(readJsonResponse),
-      fetch(`${API_BASE}/movies?category=series&limit=1`).then(readJsonResponse),
+      apiFetch('/movies?limit=1000', { silent: true }).then(readJsonResponse),
+      apiFetch('/movies?category=anime&limit=1', { silent: true }).then(readJsonResponse),
+      apiFetch('/movies?category=series&limit=1', { silent: true }).then(readJsonResponse),
     ]);
     const all = allPayload || {};
     const anime = animePayload || {};
@@ -394,9 +552,9 @@ async function loadStats() {
   } catch(e) { console.error('Stats error:', e); }
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // FILE PREVIEWS
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function onVideoChange(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -429,9 +587,9 @@ function onEpVideoChange(e) {
   document.getElementById('epVideoPreview').style.display = 'flex';
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // UPLOAD MOVIE
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function submitMovie(e) {
   e.preventDefault();
   const token     = localStorage.getItem('token');
@@ -443,9 +601,10 @@ async function submitMovie(e) {
 
   const genres = [...document.querySelectorAll('input[name="genre"]:checked')]
     .map(cb => cb.value);
-  const externalUrl = document.getElementById('videoUrlInput')?.value.trim() || '';
-  const sourceType = document.getElementById('movieSourceType')?.value || 'local';
-  const hasExternal = !!externalUrl && sourceType !== 'local';
+  const { sources, errors, primary } = syncMovieExternalSourceState();
+  const externalUrl = primary?.url || '';
+  const sourceType = primary?.sourceType || 'local';
+  const hasExternal = sources.length > 0;
   const videoFile = document.getElementById('videoInput')?.files[0];
   const thumbnailFile = document.getElementById('thumbnailInput')?.files[0];
   const thumbnailUrl = document.getElementById('movieThumbnailUrl')?.value || '';
@@ -459,10 +618,19 @@ async function submitMovie(e) {
     return;
   }
 
+  if (errors.length > 0) {
+    alertBox.innerHTML = `
+      <div class="alert alert-error">
+        <i class="ri-error-warning-line"></i> ${errors[0]}
+      </div>`;
+    alertBox.style.display = 'block';
+    return;
+  }
+
   if (!videoFile && !hasExternal) {
     alertBox.innerHTML = `
       <div class="alert alert-error">
-        <i class="ri-error-warning-line"></i> Upload a video file or paste a YouTube/Dailymotion URL
+        <i class="ri-error-warning-line"></i> Upload a video file or add at least one provider URL
       </div>`;
     alertBox.style.display = 'block';
     return;
@@ -483,13 +651,12 @@ async function submitMovie(e) {
   formData.delete('genre');
   genres.forEach(g => formData.append('genre', g));
 
-  // isFeatured — set explicitly as string 'true'/'false'
+  // isFeatured â€” set explicitly as string 'true'/'false'
   formData.delete('isFeatured');
   formData.append('isFeatured', document.getElementById('isFeatured').checked ? 'true' : 'false');
   formData.set('sourceType', hasExternal ? sourceType : 'local');
-  if (hasExternal) {
-    formData.set('videoUrl', externalUrl);
-  }
+  formData.set('videoUrl', hasExternal ? externalUrl : '');
+  formData.set('sources', JSON.stringify(sources));
   if (thumbnailUrl) {
     formData.set('thumbnailUrl', thumbnailUrl);
   }
@@ -507,7 +674,7 @@ async function submitMovie(e) {
   }, 500);
 
   try {
-    const res  = await fetch(`${API_BASE}/movies`, {
+    const res  = await apiFetch('/movies', {
       method:  'POST',
       headers: { 'Authorization': `Bearer ${token}` },
       body:    formData,
@@ -522,9 +689,9 @@ async function submitMovie(e) {
       alertBox.innerHTML = `
         <div class="alert alert-success">
           <i class="ri-checkbox-circle-line"></i>
-          "${data.movie.title}" uploaded successfully!
+          "${escapeHtml(data.movie.title)}" uploaded successfully!
           <a href="movie-details.html?id=${data.movie._id}"
-             style="color:#34d399;margin-left:8px;">View →</a>
+             style="color:#34d399;margin-left:8px;">View â†’</a>
         </div>`;
       alertBox.style.display = 'block';
       resetMovieForm();
@@ -535,7 +702,7 @@ async function submitMovie(e) {
     } else {
       alertBox.innerHTML = `
         <div class="alert alert-error">
-          <i class="ri-error-warning-line"></i> ${getResponseMessage(payload)}
+          <i class="ri-error-warning-line"></i> ${escapeHtml(getResponseMessage(payload))}
         </div>`;
       alertBox.style.display = 'block';
     }
@@ -543,7 +710,7 @@ async function submitMovie(e) {
     clearInterval(interval);
     alertBox.innerHTML = `
       <div class="alert alert-error">
-        <i class="ri-error-warning-line"></i> ${error.message}
+        <i class="ri-error-warning-line"></i> ${escapeHtml(error.message)}
       </div>`;
     alertBox.style.display = 'block';
   }
@@ -556,19 +723,19 @@ async function submitMovie(e) {
   }, 2000);
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // LOAD SERIES DROPDOWN
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function loadSeriesList() {
   try {
-    const res  = await fetch(`${API_BASE}/movies?limit=200`);
+    const res  = await apiFetch('/movies?limit=200', { silent: true });
     const payload = await res.json();
     const data = unwrapResponse(payload) || {};
     const all  = data.movies || [];
     const sel  = document.getElementById('seriesSelect');
 
     if (all.length === 0) {
-      sel.innerHTML = '<option value="">No content — upload something first!</option>';
+      sel.innerHTML = '<option value="">No content â€” upload something first!</option>';
       return;
     }
 
@@ -580,13 +747,13 @@ async function loadSeriesList() {
 
 async function loadSubtitleMovieSelect() {
   try {
-    const res  = await fetch(`${API_BASE}/movies?limit=200`);
+    const res  = await apiFetch('/movies?limit=200', { silent: true });
     const payload = await res.json();
     const data = unwrapResponse(payload) || {};
     const all  = data.movies || [];
     const sel  = document.getElementById('subtitleMovieSelect');
     if (all.length === 0) {
-      sel.innerHTML = '<option value="">No content — upload something first!</option>';
+      sel.innerHTML = '<option value="">No content â€” upload something first!</option>';
       return;
     }
     sel.innerHTML = buildGroupedOptions(all);
@@ -595,8 +762,8 @@ async function loadSubtitleMovieSelect() {
 
 function buildGroupedOptions(movies) {
   const emoji = {
-    movie:'🎬', anime:'⚡', series:'📺',
-    cartoon:'🎨', documentary:'🌍', short:'🎞️',
+    movie:'ðŸŽ¬', anime:'âš¡', series:'ðŸ“º',
+    cartoon:'ðŸŽ¨', documentary:'ðŸŒ', short:'ðŸŽžï¸',
   };
   const grouped = {};
   movies.forEach(m => {
@@ -605,7 +772,7 @@ function buildGroupedOptions(movies) {
   });
   let html = '<option value="">-- Select Content --</option>';
   Object.keys(grouped).sort().forEach(cat => {
-    html += `<optgroup label="${emoji[cat] || '🎬'} ${cat.toUpperCase()}">`;
+    html += `<optgroup label="${emoji[cat] || 'ðŸŽ¬'} ${cat.toUpperCase()}">`;
     grouped[cat].forEach(m => {
       html += `<option value="${m._id}">${m.title}</option>`;
     });
@@ -614,9 +781,9 @@ function buildGroupedOptions(movies) {
   return html;
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // UPLOAD EPISODE
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function submitEpisode(e) {
   e.preventDefault();
   const token    = localStorage.getItem('token');
@@ -661,7 +828,7 @@ async function submitEpisode(e) {
     if (thumbnailUrl) {
       formData.set('thumbnailUrl', thumbnailUrl);
     }
-    const res  = await fetch(`${API_BASE}/episodes`, {
+    const res  = await apiFetch('/episodes', {
       method:  'POST',
       headers: { 'Authorization': `Bearer ${token}` },
       body:    formData,
@@ -679,7 +846,7 @@ async function submitEpisode(e) {
           S${data.episode.season}E${data.episode.episodeNumber}:
           "${data.episode.title}" uploaded!
           <a href="episode.html?id=${data.episode._id}"
-             style="color:#34d399;margin-left:8px;">Watch →</a>
+             style="color:#34d399;margin-left:8px;">Watch â†’</a>
         </div>`;
       alertBox.style.display = 'block';
       resetEpisodeForm();
@@ -687,7 +854,7 @@ async function submitEpisode(e) {
     } else {
       alertBox.innerHTML = `
         <div class="alert alert-error">
-          <i class="ri-error-warning-line"></i> ${getResponseMessage(payload)}
+          <i class="ri-error-warning-line"></i> ${escapeHtml(getResponseMessage(payload))}
         </div>`;
       alertBox.style.display = 'block';
     }
@@ -695,7 +862,7 @@ async function submitEpisode(e) {
     clearInterval(interval);
     alertBox.innerHTML = `
       <div class="alert alert-error">
-        <i class="ri-error-warning-line"></i> ${error.message}
+        <i class="ri-error-warning-line"></i> ${escapeHtml(error.message)}
       </div>`;
     alertBox.style.display = 'block';
   }
@@ -708,9 +875,9 @@ async function submitEpisode(e) {
   }, 2000);
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // SUBTITLE UPLOAD
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function loadExistingSubtitles() {
   const movieId   = document.getElementById('subtitleMovieSelect').value;
   const container = document.getElementById('existingSubtitles');
@@ -718,7 +885,7 @@ async function loadExistingSubtitles() {
 
   try {
     const token = localStorage.getItem('token');
-    const res   = await fetch(`${API_BASE}/movies/${movieId}`, {
+    const res   = await apiFetch(`/movies/${movieId}`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     const payload = await res.json();
@@ -798,7 +965,7 @@ async function uploadSubtitle() {
 
   try {
     const token = localStorage.getItem('token');
-    const res   = await fetch(`${API_BASE}/movies/${movieId}/subtitles`, {
+    const res   = await apiFetch(`/movies/${movieId}/subtitles`, {
       method:  'POST',
       headers: { 'Authorization': `Bearer ${token}` },
       body:    formData,
@@ -825,7 +992,7 @@ async function deleteSubtitle(movieId, subId) {
   if (!confirm('Remove this subtitle?')) return;
   try {
     const token = localStorage.getItem('token');
-    const res   = await fetch(`${API_BASE}/movies/${movieId}/subtitles/${subId}`, {
+    const res   = await apiFetch(`/movies/${movieId}/subtitles/${subId}`, {
       method:  'DELETE',
       headers: { 'Authorization': `Bearer ${token}` },
     });
@@ -838,13 +1005,13 @@ async function deleteSubtitle(movieId, subId) {
   }
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // MOVIES LIST
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function loadMoviesList() {
   const listDiv = document.getElementById('moviesList');
   try {
-    const res    = await fetch(`${API_BASE}/movies?limit=100`);
+    const res    = await apiFetch('/movies?limit=100', { silent: true });
     const payload = await res.json();
     const data = unwrapResponse(payload) || {};
     const movies = data.movies || [];
@@ -855,7 +1022,7 @@ async function loadMoviesList() {
       return;
     }
 
-    // thumbnailUrl helper — handles both Cloudinary and local paths safely
+    // thumbnailUrl helper â€” handles both Cloudinary and local paths safely
     const thumbSrc = (url) => {
       if (!url) return '';
       if (url.startsWith('http')) return url;
@@ -877,8 +1044,8 @@ async function loadMoviesList() {
                 ${movie.title}
               </div>
               <div style="font-size:12px;color:var(--text-muted);">
-                ${movie.category} • ${movie.releaseYear} •
-                ${movie.duration} min •
+                ${movie.category} â€¢ ${movie.releaseYear} â€¢
+                ${movie.duration} min â€¢
                 ${(movie.views || 0).toLocaleString()} views
               </div>
             </div>
@@ -952,7 +1119,7 @@ async function loadMovieSources(movieId = document.getElementById('sourceMovieId
 
   try {
     const token = localStorage.getItem('token');
-    const res = await fetch(`${API_BASE}/movies/${movieId}`, {
+    const res = await apiFetch(`/movies/${movieId}`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -972,12 +1139,12 @@ async function loadMovieSources(movieId = document.getElementById('sourceMovieId
 
     listDiv.innerHTML = `
       <div style="display:grid;gap:12px;">
-        ${sources.map((source) => `
+        ${sources.map((source, index) => `
           <div class="card" style="padding:14px;">
             <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;">
               <div style="min-width:0;flex:1;">
                 <div style="font-weight:600;margin-bottom:6px;">
-                  ${escapeHtml(source.server || 'unknown')} • ${escapeHtml(source.quality || 'HD')}
+                  ${escapeHtml(source.server || 'unknown')} â€¢ ${escapeHtml(source.quality || 'HD')}
                 </div>
                 <div style="font-size:12px;color:var(--text-muted);word-break:break-all;">
                   ${escapeHtml(source.url || '')}
@@ -993,6 +1160,21 @@ async function loadMovieSources(movieId = document.getElementById('sourceMovieId
           </div>
         `).join('')}
       </div>`;
+
+    [...listDiv.querySelectorAll('.card')].forEach((card, index) => {
+      const infoBlocks = card.querySelectorAll('div[style]');
+      const titleBlock = infoBlocks[3];
+      const detailBlock = infoBlocks[4];
+      if (titleBlock) {
+        titleBlock.textContent = `${index === 0 ? 'Primary' : `Fallback ${index}`} â€¢ ${sources[index]?.quality || 'HD'}`;
+      }
+      if (detailBlock) {
+        detailBlock.style.wordBreak = 'normal';
+        detailBlock.textContent = sources[index]?.server === 'upload'
+          ? 'Stored upload source ready.'
+          : 'External stream source saved.';
+      }
+    });
   } catch (error) {
     listDiv.innerHTML = '<p style="color:var(--text-muted);">Failed to load sources.</p>';
     showAlert(document.getElementById('sourceAlert'), 'error', error.message);
@@ -1004,7 +1186,7 @@ async function submitSourceForm(event) {
 
   const movieId = document.getElementById('sourceMovieId').value;
   const server = document.getElementById('sourceServer').value;
-  const url = document.getElementById('sourceUrl').value.trim();
+  const rawUrl = document.getElementById('sourceUrl').value.trim();
   const quality = document.getElementById('sourceQuality').value;
   const button = document.getElementById('saveSourceBtn');
   const alertBox = document.getElementById('sourceAlert');
@@ -1014,12 +1196,40 @@ async function submitSourceForm(event) {
     return;
   }
 
+  let url = rawUrl;
+  if (server === 'youtube') {
+    const id = extractYouTubeId(rawUrl);
+    if (!id) {
+      showAlert(alertBox, 'error', 'Invalid YouTube URL');
+      return;
+    }
+    url = buildProviderWatchUrl('youtube', id);
+  }
+
+  if (server === 'dailymotion') {
+    const id = extractDailymotionId(rawUrl);
+    if (!id) {
+      showAlert(alertBox, 'error', 'Invalid Dailymotion URL');
+      return;
+    }
+    url = buildProviderWatchUrl('dailymotion', id);
+  }
+
+  if (server === 'vimeo') {
+    const id = extractVimeoId(rawUrl);
+    if (!id) {
+      showAlert(alertBox, 'error', 'Invalid Vimeo URL');
+      return;
+    }
+    url = buildProviderWatchUrl('vimeo', id);
+  }
+
   button.innerHTML = '<i class="ri-loader-4-line"></i> Saving...';
   button.disabled = true;
 
   try {
     const token = localStorage.getItem('token');
-    const res = await fetch(`${API_BASE}/movies/${movieId}/source`, {
+    const res = await apiFetch(`/movies/${movieId}/source`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -1053,7 +1263,7 @@ async function deleteMovieSource(movieId, sourceId) {
 
   try {
     const token = localStorage.getItem('token');
-    const res = await fetch(`${API_BASE}/movies/${movieId}/source/${sourceId}`, {
+    const res = await apiFetch(`/movies/${movieId}/source/${sourceId}`, {
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -1109,7 +1319,7 @@ async function loadBrokenSources() {
 
   try {
     const token = localStorage.getItem('token');
-    const res = await fetch(`${API_BASE}/movies/sources/broken`, {
+    const res = await apiFetch('/movies/sources/broken', {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -1134,7 +1344,7 @@ async function loadBrokenSources() {
               <div style="min-width:0;flex:1;">
                 <div style="font-weight:600;margin-bottom:6px;">${escapeHtml(source.movieTitle || 'Untitled')}</div>
                 <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">
-                  ${escapeHtml(source.server || 'unknown')} • ${escapeHtml(source.quality || 'HD')}
+                  ${escapeHtml(source.server || 'unknown')} â€¢ ${escapeHtml(source.quality || 'HD')}
                 </div>
                 <div style="font-size:12px;color:var(--accent);word-break:break-all;">${escapeHtml(source.url || '')}</div>
                 <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">
@@ -1176,7 +1386,7 @@ async function onBrokenSourceAction(event) {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE}/movies/${deleteButton.dataset.movieId}/source/${deleteButton.dataset.sourceId}`, {
+      const res = await apiFetch(`/movies/${deleteButton.dataset.movieId}/source/${deleteButton.dataset.sourceId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1203,7 +1413,7 @@ async function onBrokenSourceAction(event) {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE}/movies/${replaceButton.dataset.movieId}/source/${replaceButton.dataset.sourceId}`, {
+      const res = await apiFetch(`/movies/${replaceButton.dataset.movieId}/source/${replaceButton.dataset.sourceId}`, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1226,9 +1436,9 @@ async function onBrokenSourceAction(event) {
   }
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // EDIT MODAL
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function toggleEditModal(show) {
   document.getElementById('editModal').style.display = show ? 'flex' : 'none';
 }
@@ -1236,7 +1446,7 @@ function toggleEditModal(show) {
 async function openEditModal(movieId) {
   try {
     const token = localStorage.getItem('token');
-    const res   = await fetch(`${API_BASE}/movies/${movieId}`, {
+    const res   = await apiFetch(`/movies/${movieId}`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     const payload = await res.json();
@@ -1285,7 +1495,7 @@ async function saveEdit(e) {
       isFeatured:  document.getElementById('editFeatured').checked,
     };
 
-    const res  = await fetch(`${API_BASE}/movies/${movieId}`, {
+    const res  = await apiFetch(`/movies/${movieId}`, {
       method:  'PUT',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -1312,14 +1522,14 @@ async function saveEdit(e) {
   btn.disabled  = false;
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // DELETE MOVIE
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function deleteMovie(id, title) {
   if (!confirm(`Delete "${title}"?\n\nThis cannot be undone!`)) return;
   const token = localStorage.getItem('token');
   try {
-    const res  = await fetch(`${API_BASE}/movies/${id}`, {
+    const res  = await apiFetch(`/movies/${id}`, {
       method:  'DELETE',
       headers: { 'Authorization': `Bearer ${token}` },
     });
@@ -1334,20 +1544,24 @@ async function deleteMovie(id, title) {
       showToast(getResponseMessage(payload, 'Delete failed'), 'error');
     }
   } catch(e) {
-    showToast('Delete failed — server error', 'error');
+    showToast('Delete failed â€” server error', 'error');
   }
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // RESET FORMS
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function resetMovieForm() {
   document.getElementById('videoPreview').style.display     = 'none';
   document.getElementById('thumbnailPreview').style.display = 'none';
   document.getElementById('uploadAlert').style.display      = 'none';
   document.getElementById('movieSourceType').value          = 'local';
+  document.getElementById('videoUrlInput').value            = '';
+  document.getElementById('youtubeUrl').value               = '';
+  document.getElementById('dailymotionUrl').value           = '';
+  document.getElementById('vimeoUrl').value                 = '';
   document.getElementById('movieThumbnailUrl').value        = '';
-  document.getElementById('movieMetadataHint').textContent  = 'Paste a provider URL to auto-fill title, duration, thumbnail, and source type.';
+  document.getElementById('movieMetadataHint').textContent  = 'Paste provider URLs to build fallback sources and auto-fill available metadata.';
   setPosterPreview('movie', '');
   document.getElementById('uploadForm').reset();
 }
@@ -1363,9 +1577,9 @@ function resetEpisodeForm() {
   loadSeriesList();
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // HELPERS
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function showAlert(el, type, msg) {
   el.innerHTML = `
     <div class="alert alert-${type}">

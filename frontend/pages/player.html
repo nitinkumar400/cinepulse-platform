@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
   <title>CINE STREAM Player</title>
+  <link rel="stylesheet" href="../css/player.css">
   <style>
     :root {
       color-scheme: dark;
@@ -39,34 +40,31 @@
       box-shadow: 0 36px 90px rgba(0,0,0,0.7);
     }
 
+    .player-title {
+      font-size: 14px;
+      color: var(--muted);
+      margin: 0 0 12px;
+      letter-spacing: 0.4px;
+    }
+
     .video-frame-wrapper {
       position: relative;
       width: 100%;
-      height: 0;
-      padding-top: 56.25%;
+      aspect-ratio: 16 / 9;
       overflow: hidden;
       border-radius: 18px;
       background: #000;
     }
 
     .video-frame-wrapper iframe,
+    .video-frame-wrapper .player-embed-shell,
     .video-frame-wrapper .player-offline {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
       border: 0;
-    }
-
-    .title-mask {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 56px;
-      z-index: 2;
-      pointer-events: auto;
-      background: linear-gradient(to bottom, rgba(0,0,0,0.92), rgba(0,0,0,0));
+      display: block;
     }
 
     .player-offline {
@@ -88,21 +86,38 @@
 </head>
 <body>
   <div class="player-shell">
+    <p class="player-title" id="playerTitle">Loading player...</p>
     <div class="video-frame-wrapper">
-      <div class="title-mask" aria-hidden="true"></div>
-      <iframe
-        id="universalPlayerFrame"
-        title="CINE STREAM Universal Player"
-        sandbox="allow-same-origin allow-scripts allow-presentation"
-        allow="autoplay; encrypted-media; picture-in-picture"
-        allowfullscreen
-        referrerpolicy="no-referrer"
-      ></iframe>
+      <div id="universalPlayerFrame"></div>
       <div class="player-offline" id="playerOffline">
         <h2>Source Offline</h2>
         <p>This stream is unavailable right now. Try another source in CineStream.</p>
       </div>
     </div>
   </div>
+  <script src="../js/config.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/embedServers.js"></script>
+  <script src="../js/videoEngine.js"></script>
+  <script src="../js/videoUtils.js"></script>
+  <script src="../js/player.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const episodeId = params.get('id');
+      if (!episodeId || !window.CineStreamPlayer) {
+        document.getElementById('playerOffline').classList.add('is-visible');
+        document.getElementById('playerTitle').textContent = 'Playback unavailable';
+        return;
+      }
+
+      window.CineStreamPlayer.bootstrapMaskedPlayer({
+        containerId: 'universalPlayerFrame',
+        offlineId: 'playerOffline',
+        titleId: 'playerTitle',
+        episodeId,
+      });
+    });
+  </script>
 </body>
 </html>

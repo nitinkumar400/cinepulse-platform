@@ -5,6 +5,8 @@ const express      = require('express');
 const router       = express.Router();
 const mongoose     = require('mongoose');
 const WatchHistory = require('../models/WatchHistory');
+const Episode      = require('../models/Episode');
+const Movie        = require('../models/Movie');
 const { protect }  = require('../middleware/authMiddleware');
 
 // ══════════════════════════════════════════
@@ -13,6 +15,124 @@ const { protect }  = require('../middleware/authMiddleware');
 // a bad/malformed id is passed in the URL or body
 // ══════════════════════════════════════════
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
+
+function normalizeWatchSource(url = '', fallbackType = '') {
+  const raw = String(url || '').trim();
+  const explicitType = String(fallbackType || '').trim().toLowerCase();
+
+  const youtubeMatch = raw.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i);
+  if (youtubeMatch?.[1]) {
+    return { type: 'youtube', id: youtubeMatch[1] };
+  }
+
+  const dailymotionMatch = raw.match(/(?:dailymotion\.com\/(?:video|embed\/video)\/|dai\.ly\/)([A-Za-z0-9]+)/i);
+  if (dailymotionMatch?.[1]) {
+    return { type: 'dailymotion', id: dailymotionMatch[1] };
+  }
+
+  const vimeoMatch = raw.match(/(?:vimeo\.com\/)(\d+)/i);
+  if (vimeoMatch?.[1]) {
+    return { type: 'vimeo', id: vimeoMatch[1] };
+  }
+
+  if (explicitType === 'youtube' || explicitType === 'dailymotion' || explicitType === 'vimeo') {
+    return { type: explicitType, id: '' };
+  }
+
+  return null;
+}
+
+function normalizeStoragePath(url = '') {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const parsed = new URL(raw);
+      return `${parsed.pathname}${parsed.search || ''}`;
+    } catch {
+      return raw;
+    }
+  }
+
+  return raw;
+}
+
+function getSourcePriority(type = '') {
+  const normalized = String(type || '').trim().toLowerCase();
+  if (normalized === 'storage') return 0;
+  if (normalized === 'dailymotion') return 1;
+  if (normalized === 'youtube') return 2;
+  if (normalized === 'vimeo') return 3;
+  return 99;
+}
+
+function buildMaskedMovieSources(movie) {
+  const rawSources = [];
+
+  if (movie?.videoUrl) {
+    rawSources.push({
+      type: movie.sourceType === 'local' ? 'storage' : movie.sourceType,
+      url: movie.videoUrl,
+      quality: movie.qualities?.['1080p'] ? 'Full HD' : 'HD',
+    });
+  }
+
+  if (Array.isArray(movie?.sources)) {
+    rawSources.push(...movie.sources.map((source) => ({
+      type: source?.server || source?.sourceType,
+      url: source?.url,
+      quality: source?.quality || source?.meta?.quality || 'HD',
+    })));
+  }
+
+  const deduped = [];
+  const seen = new Set();
+
+  for (const source of rawSources) {
+    const normalizedType = String(source?.type || '').trim().toLowerCase();
+    const storageLike = ['upload', 'local', 'storage'].includes(normalizedType);
+
+    if (storageLike) {
+      const path = normalizeStoragePath(source?.url);
+      if (!path) continue;
+      const key = `storage:${path}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push({
+        type: 'storage',
+        path,
+        quality: source?.quality || 'HD',
+      });
+      continue;
+    }
+
+    const normalized = normalizeWatchSource(source?.url, normalizedType);
+    if (!normalized?.type || !normalized?.id) continue;
+    const key = `${normalized.type}:${normalized.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push({
+      type: normalized.type,
+      id: normalized.id,
+      quality: source?.quality || 'HD',
+    });
+  }
+
+  const ordered = deduped.sort((left, right) => {
+    return getSourcePriority(left.type) - getSourcePriority(right.type);
+  });
+
+  return ordered.map((source, index) => ({
+    key: `${source.type}-${source.id || source.path || index}`,
+    type: source.type,
+    id: source.id || '',
+    path: source.path || '',
+    label: index === 0 ? 'Primary' : `Fallback ${index}`,
+    quality: source.quality || 'HD',
+    availability: 'available',
+  }));
+}
 
 // ══════════════════════════════════════════
 // GET WATCH HISTORY
@@ -314,6 +434,57 @@ router.delete('/history', protect, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/movie/:id/sources', protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isValidId(id)) {
+      return res.status(400).json({ message: 'Invalid movie id' });
+    }
+
+    const movie = await Movie.findById(id).select('title videoUrl sourceType qualities sources');
+    if (!movie) {
+      return res.status(404).json({ message: 'Movie not found' });
+    }
+
+    const sources = buildMaskedMovieSources(movie);
+    return res.json({
+      title: movie.title,
+      sources,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/:id', protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isValidId(id)) {
+      return res.status(400).json({ message: 'Invalid episode id' });
+    }
+
+    const episode = await Episode.findById(id).select('title videoUrl sourceType');
+    if (!episode) {
+      return res.status(404).json({ message: 'Episode not found' });
+    }
+
+    const source = normalizeWatchSource(episode.videoUrl, episode.sourceType);
+    if (!source?.type || !source?.id) {
+      return res.status(400).json({ message: 'Unsupported or unavailable video source' });
+    }
+
+    return res.json({
+      type: source.type,
+      id: source.id,
+      title: episode.title,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
 });
 

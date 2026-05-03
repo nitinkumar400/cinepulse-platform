@@ -55,6 +55,7 @@ const htmlPageMap = {
   'player.html': 'player.html',
   'anilist-import.html': 'anilist-import.html',
   'tmdb-import.html': 'tmdb-import.html',
+  'embed-demo.html': 'embed-demo.html',
 };
 
 function corsOriginHandler(origin, callback) {
@@ -92,24 +93,80 @@ app.use(helmet({
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  permissionsPolicy: {
+    features: {
+      pictureInPicture: ['*'],
+      fullscreen: ['self', '*'],
+    },
+  },
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       baseUri: ["'self'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "'unsafe-eval'",
+        'https://cdn.jsdelivr.net',
+        'https://www.youtube.com',
+        'https://www.youtube-nocookie.com',
+        'https://s.ytimg.com',
+        'https://www.gstatic.com',
+        'https://www.dailymotion.com',
+        'https://geo.dailymotion.com',
+        'https://api.dailymotion.com',
+        'https://static1.dmcdn.net',
+        'https://player.vimeo.com',
+      ],
+      scriptSrcElem: [
+        "'self'",
+        "'unsafe-inline'",
+        "'unsafe-eval'",
+        'https://cdn.jsdelivr.net',
+        'https://www.youtube.com',
+        'https://www.youtube-nocookie.com',
+        'https://s.ytimg.com',
+        'https://www.gstatic.com',
+        'https://www.dailymotion.com',
+        'https://geo.dailymotion.com',
+        'https://api.dailymotion.com',
+        'https://static1.dmcdn.net',
+        'https://player.vimeo.com',
+      ],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdn.jsdelivr.net'],
       styleSrcElem: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdn.jsdelivr.net'],
       fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdn.jsdelivr.net'],
-      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      imgSrc: [
+        "'self'",
+        'data:',
+        'blob:',
+        'https:',
+        'https://i.ytimg.com',
+        'https://*.ytimg.com',
+        'https://static1.dmcdn.net',
+        'https://*.dailymotion.com',
+        'https://cdn.jsdelivr.net',
+      ],
       mediaSrc: ["'self'", 'blob:', 'data:', 'https:'],
       connectSrc: [
         "'self'",
         frontendOrigin,
         getEnv('OLLAMA_URL', 'http://127.0.0.1:11434/api/generate').replace(/\/api\/generate$/, ''),
+        'https://cdn.jsdelivr.net',
         'https://api.dailymotion.com',
         'https://www.youtube.com',
+        'https://www.youtube-nocookie.com',
+        'https://www.youtube.com/youtubei/',
+        'https://*.youtube.com',
+        'https://*.ytimg.com',
+        'https://s.ytimg.com',
+        'https://www.dailymotion.com',
+        'https://geo.dailymotion.com',
+        'https://static1.dmcdn.net',
+        'https://player.vimeo.com',
+        'https://vimeo.com',
       ],
       frameSrc: [
         "'self'",
@@ -118,6 +175,7 @@ app.use(helmet({
         'https://www.dailymotion.com',
         'https://geo.dailymotion.com',
         'https://player.vimeo.com',
+        'https://vimeo.com',
       ],
     },
   },
@@ -200,6 +258,8 @@ app.get('/anilist-import', servePage('anilist-import.html'));
 app.get('/anilist-import.html', servePage('anilist-import.html'));
 app.get('/tmdb-import', servePage('tmdb-import.html'));
 app.get('/tmdb-import.html', servePage('tmdb-import.html'));
+app.get('/embed-demo', servePage('embed-demo.html'));
+app.get('/embed-demo.html', servePage('embed-demo.html'));
 app.get([
   '/signup',
   '/signup.html',
@@ -255,3 +315,6 @@ startServer().catch((error) => {
   });
   process.exit(1);
 });
+
+// Export for Vercel serverless deployment
+module.exports = app;

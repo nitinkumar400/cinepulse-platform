@@ -1,0 +1,16 @@
+.player-embed-shell,
+.player-embed-shell iframe,
+.player-embed-shell video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: 0;
+  background: #000;
+}
+
+.player-embed-shell {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  overflow: hidden;
+}

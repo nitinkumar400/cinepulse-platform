@@ -1,0 +1,45 @@
+# Files to exclude from Vercel deployment
+
+# Documentation
+README.md
+DEPLOY.md
+AGENT.md
+docs/
+
+# Development scripts
+start-dev.bat
+start-ngrok.bat
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Local environment files (will use Vercel env vars instead)
+.env
+.env.development
+.env.docker
+.env.local
+
+# Tests
+tests/
+
+# Tools
+tools/
+
+# Node modules (installed during build)
+node_modules/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

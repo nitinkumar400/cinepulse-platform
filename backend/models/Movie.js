@@ -21,9 +21,26 @@ const QualitySchema = new mongoose.Schema({
 }, { _id: false });
 
 const SourceSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ['youtube', 'vimeo', 'dailymotion', 'storage'],
+    default: undefined,
+    lowercase: true,
+    trim: true,
+  },
+  id: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  path: {
+    type: String,
+    default: '',
+    trim: true,
+  },
   sourceType: {
     type: String,
-    enum: ['local', 'youtube', 'dailymotion'],
+    enum: ['local', 'youtube', 'dailymotion', 'vimeo'],
     default: 'local',
     lowercase: true,
     trim: true,
@@ -92,7 +109,7 @@ const MovieSchema = new mongoose.Schema({
   // ── Media URLs ──
   sourceType:   {
     type: String,
-    enum: ['local', 'youtube', 'dailymotion'],
+    enum: ['local', 'youtube', 'dailymotion', 'vimeo'],
     default: 'local',
     lowercase: true,
     trim: true,

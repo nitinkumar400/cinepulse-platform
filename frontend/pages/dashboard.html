@@ -337,7 +337,7 @@
             <th>Rating</th>
             <th>Views</th>
             <th>Performance</th>
-            <th></th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="topContentTable">
@@ -474,6 +474,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('refreshBtn').addEventListener('click', refreshAll);
   document.getElementById('exportBtn').addEventListener('click', exportCSV);
+  setupDashboardActions();
 
   setupTabs();
   loadAll();
@@ -669,12 +670,55 @@ function buildTopTable(movies) {
           <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${pct}%</div>
         </td>
         <td>
-          <a href="movie-details.html?id=${m._id}" style="font-size:12px;color:var(--accent);display:flex;align-items:center;gap:4px;">
-            <i class="ri-eye-line"></i> View
-          </a>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <a href="movie-details.html?id=${m._id}" style="font-size:12px;color:var(--accent);display:flex;align-items:center;gap:4px;">
+              <i class="ri-eye-line"></i> View
+            </a>
+            <button type="button"
+                    class="dash-delete-btn"
+                    data-id="${m._id}"
+                    data-title="${escapeHtml(m.title)}"
+                    style="font-size:12px;border:1px solid rgba(229,9,20,0.3);background:rgba(229,9,20,0.1);color:var(--accent);border-radius:6px;padding:5px 8px;cursor:pointer;">
+              <i class="ri-delete-bin-line"></i> Delete
+            </button>
+          </div>
         </td>
       </tr>`;
   }).join('');
+}
+
+function setupDashboardActions() {
+  const table = document.getElementById('topContentTable');
+  if (!table || table.dataset.bound === 'true') return;
+  table.dataset.bound = 'true';
+
+  table.addEventListener('click', async (event) => {
+    const deleteBtn = event.target.closest('.dash-delete-btn');
+    if (!deleteBtn) return;
+
+    const movieId = deleteBtn.dataset.id;
+    const title = deleteBtn.dataset.title || 'this title';
+    if (!movieId) return;
+    if (!confirm(`Delete "${title}" from dashboard? This cannot be undone.`)) return;
+
+    const original = deleteBtn.innerHTML;
+    deleteBtn.disabled = true;
+    deleteBtn.innerHTML = '<i class="ri-loader-4-line"></i> Deleting...';
+
+    try {
+      const response = await apiFetch(`/movies/${movieId}`, { method: 'DELETE' });
+      const payload = await readJsonResponse(response);
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || payload.error || 'Delete failed');
+      }
+      showToast(`"${title}" deleted`, 'success');
+      await refreshAll();
+    } catch (error) {
+      showToast(error.message || 'Delete failed', 'error');
+      deleteBtn.disabled = false;
+      deleteBtn.innerHTML = original;
+    }
+  });
 }
 
 function bindDashboardImageFallback(root = document) {

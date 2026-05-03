@@ -171,14 +171,25 @@
       </div>
 
       <div class="form-group">
-        <label>External Video URL (YouTube / Dailymotion optional)</label>
+        <label>YouTube URL</label>
+        <input type="url" id="youtubeUrl" placeholder="https://youtu.be/...">
+      </div>
+
+      <div class="form-group">
+        <label>Dailymotion URL</label>
+        <input type="url" id="dailymotionUrl" placeholder="https://dai.ly/...">
+      </div>
+
+      <div class="form-group">
+        <label>Vimeo URL</label>
         <div style="position:relative;">
-          <input type="url" id="videoUrlInput" name="videoUrl" placeholder="https://youtu.be/... or https://www.dailymotion.com/video/...">
+          <input type="url" id="vimeoUrl" placeholder="https://vimeo.com/...">
+          <input type="hidden" id="videoUrlInput" name="videoUrl" value="">
           <div id="movieMetadataSpinner" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);display:none;color:var(--text-muted);">
             <i class="ri-loader-4-line ri-spin"></i>
           </div>
         </div>
-        <p class="form-hint" id="movieMetadataHint">Paste a provider URL to auto-fill title, duration, thumbnail, and source type.</p>
+        <p class="form-hint" id="movieMetadataHint">Paste provider URLs to build fallback sources and auto-fill available metadata.</p>
         <input type="hidden" id="movieSourceType" name="sourceType" value="local">
         <input type="hidden" id="movieThumbnailUrl" name="thumbnailUrl" value="">
         <div id="moviePosterPreview" style="display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card);align-items:center;gap:12px;">

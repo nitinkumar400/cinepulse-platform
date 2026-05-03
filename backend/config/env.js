@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 
-const projectRoot = process.cwd();
+const projectRoot = path.resolve(__dirname, '..', '..');
 const runtime = process.env.APP_ENV || process.env.NODE_ENV || 'development';
 
 const DEFAULTS = {

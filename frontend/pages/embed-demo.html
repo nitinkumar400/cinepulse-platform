@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>Multi-Server Embed Demo - CINE STREAM</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #05070c;
+      --panel: #0b0f18;
+      --border: rgba(255,255,255,0.1);
+      --accent: #e50914;
+      --text: #f5f7fb;
+      --muted: #98a2b3;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", sans-serif;
+      padding: 24px;
+    }
+
+    .demo-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .demo-header {
+      text-align: center;
+      margin-bottom: 40px;
+      padding: 40px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .demo-header h1 {
+      font-size: 42px;
+      margin: 0 0 12px;
+      background: linear-gradient(135deg, #e50914, #ff6b6b);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .demo-header p {
+      color: var(--muted);
+      font-size: 16px;
+      max-width: 600px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    .demo-section {
+      margin-bottom: 40px;
+    }
+
+    .section-title {
+      font-size: 24px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-title::before {
+      content: '';
+      width: 4px;
+      height: 24px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    /* Movie Input */
+    .input-group {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .input-group input, .input-group select {
+      padding: 12px 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-group input:focus, .input-group select:focus {
+      border-color: var(--accent);
+    }
+
+    .input-group button {
+      padding: 12px 24px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: transform 0.1s, box-shadow 0.2s;
+    }
+
+    .input-group button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(229, 9, 20, 0.3);
+    }
+
+    /* Player Container */
+    .player-container {
+      background: linear-gradient(180deg, rgba(17,24,39,0.98), rgba(3,7,18,1));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .player-wrapper {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .player-wrapper iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* Server Selector */
+    .server-selector {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 16px 0;
+      margin-bottom: 16px;
+    }
+
+    .server-btn {
+      padding: 10px 18px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: transparent;
+      color: rgba(255,255,255,0.8);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .server-btn:hover {
+      border-color: rgba(255,255,255,0.4);
+      background: rgba(255,255,255,0.05);
+    }
+
+    .server-btn.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: white;
+    }
+
+    .server-btn.failed {
+      opacity: 0.5;
+      text-decoration: line-through;
+      pointer-events: none;
+    }
+
+    .server-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #fbbf24;
+    }
+
+    .server-btn.active .server-indicator,
+    .server-indicator.working { background: #22c55e; }
+    .server-indicator.failed { background: #ef4444; }
+
+    /* TV Controls */
+    .tv-controls {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      padding: 16px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .tv-controls label {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .tv-controls select {
+      padding: 8px 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .tv-controls button {
+      padding: 8px 20px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    /* Server List */
+    .server-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .server-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .server-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .server-card h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .server-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .server-card .url-pattern {
+      margin-top: 12px;
+      padding: 10px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #60a5fa;
+      word-break: break-all;
+    }
+
+    /* Status Badge */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .status-badge.unknown {
+      background: rgba(251, 191, 36, 0.15);
+      color: #fbbf24;
+    }
+
+    .status-badge.working {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+    }
+
+    .status-badge.failed {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+    }
+
+    /* Info Box */
+    .info-box {
+      background: rgba(229, 9, 20, 0.08);
+      border: 1px solid rgba(229, 9, 20, 0.2);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .info-box h4 {
+      margin: 0 0 12px;
+      color: var(--accent);
+      font-size: 16px;
+    }
+
+    .info-box ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+
+    .info-box li {
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+
+    /* Loading State */
+    .loading-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.9);
+      z-index: 10;
+    }
+
+    .loading-state.hidden {
+      display: none;
+    }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid rgba(255,255,255,0.1);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Error State */
+    .error-state {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.95);
+      z-index: 10;
+      flex-direction: column;
+      gap: 16px;
+      text-align: center;
+      padding: 24px;
+    }
+
+    .error-state.visible {
+      display: flex;
+    }
+
+    .error-state i {
+      font-size: 48px;
+      color: #ef4444;
+    }
+
+    .error-state h3 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .error-state p {
+      margin: 0;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-container">
+    <div class="demo-header">
+      <h1><i class="ri-server-line"></i> Multi-Server Auto-Embed</h1>
+      <p>Automatic video streaming with 6+ embed servers. If one server fails, the system automatically switches to the next available server. Just enter a TMDb ID and start watching!</p>
+    </div>
+
+    <!-- Info Box -->
+    <div class="info-box">
+      <h4><i class="ri-information-line"></i> How It Works</h4>
+      <ul>
+        <li><strong>Automatic Failover:</strong> If a server fails to load within 8 seconds, the system automatically tries the next server.</li>
+        <li><strong>6+ Servers:</strong> VidSrc, 2Embed, AutoEmbed, VidLink, SuperEmbed, and MultiEmbed.</li>
+        <li><strong>TV Show Support:</strong> Select season and episode numbers for series playback.</li>
+        <li><strong>TMDb Integration:</strong> Uses TMDb (The Movie Database) IDs for universal content matching.</li>
+      </ul>
+    </div>
+
+    <!-- Movie Input Section -->
+    <div class="demo-section">
+      <h2 class="section-title">Enter Content</h2>
+      <div class="input-group">
+        <input type="number" id="tmdbId" placeholder="TMDb ID (e.g., 157336 for Interstellar)" style="flex: 1; min-width: 250px;">
+        <select id="contentType">
+          <option value="movie">Movie</option>
+          <option value="tv">TV Show</option>
+        </select>
+        <button id="btnLoadPlayer">
+          <i class="ri-play-line"></i> Load Player
+        </button>
+      </div>
+
+      <!-- TV Controls -->
+      <div id="tvControls" class="tv-controls" style="display: none;">
+        <div>
+          <label>Season:</label>
+          <select id="seasonNum">
+            <option value="1">Season 1</option>
+            <option value="2">Season 2</option>
+            <option value="3">Season 3</option>
+            <option value="4">Season 4</option>
+            <option value="5">Season 5</option>
+          </select>
+        </div>
+        <div>
+          <label>Episode:</label>
+          <select id="episodeNum">
+            <option value="1">Episode 1</option>
+            <option value="2">Episode 2</option>
+            <option value="3">Episode 3</option>
+            <option value="4">Episode 4</option>
+            <option value="5">Episode 5</option>
+            <option value="6">Episode 6</option>
+            <option value="7">Episode 7</option>
+            <option value="8">Episode 8</option>
+            <option value="9">Episode 9</option>
+            <option value="10">Episode 10</option>
+            <option value="11">Episode 11</option>
+            <option value="12">Episode 12</option>
+            <option value="13">Episode 13</option>
+            <option value="14">Episode 14</option>
+            <option value="15">Episode 15</option>
+            <option value="16">Episode 16</option>
+            <option value="17">Episode 17</option>
+            <option value="18">Episode 18</option>
+            <option value="19">Episode 19</option>
+            <option value="20">Episode 20</option>
+          </select>
+        </div>
+        <button id="btnUpdateEpisode">
+          <i class="ri-refresh-line"></i> Update
+        </button>
+      </div>
+    </div>
+
+    <!-- Player Section -->
+    <div class="demo-section">
+      <h2 class="section-title">Player</h2>
+      <div class="player-container">
+        <!-- Server Selector -->
+        <div id="serverSelector" class="server-selector">
+          <span style="color: var(--muted); font-size: 14px; margin-right: 8px;">Select Server:</span>
+          <!-- Server buttons will be injected here -->
+        </div>
+
+        <!-- Player -->
+        <div class="player-wrapper">
+          <!-- Error state hidden - popup is primary -->
+          <div id="errorState" class="error-state" style="display:none;"></div>
+          <!-- Iframe hidden - embed servers block with X-Frame-Options -->
+          <iframe
+            id="playerFrame"
+            style="display:none;"
+          ></iframe>
+
+          <!-- Primary: Open in Popup Button -->
+          <div id="popupPlayerArea" style="display:none;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;">
+            <div style="text-align:center;color:var(--muted);">
+              <i class="ri-video-line" style="font-size:48px;color:var(--accent);margin-bottom:12px;"></i>
+              <p style="margin:0;font-size:16px;">Ready to play from <strong id="currentServerName">VidSrc</strong></p>
+              <p style="margin:8px 0 0;font-size:13px;opacity:0.7;">Opens in secure popup window</p>
+            </div>
+            <button id="btnOpenPopup" style="padding:14px 32px;background:linear-gradient(135deg,var(--accent),#dc2626);color:white;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(220,38,38,0.3);">
+              <i class="ri-play-fill"></i> Watch Now
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Server Information -->
+    <div class="demo-section">
+      <h2 class="section-title">Available Servers</h2>
+      <div class="server-list" id="serverList">
+        <!-- Server cards will be injected here -->
+      </div>
+    </div>
+
+    <!-- Local Dev Mode (Chrome with disabled security) -->
+    <div class="demo-section" id="devModeGuide" style="display:none;">
+      <h2 class="section-title">Local Dev Mode (iframe works!)</h2>
+      <div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(124,58,237,0.05));border:1px solid rgba(139,92,246,0.3);border-radius:12px;padding:24px;">
+        <p style="margin:0 0 16px;color:var(--muted);line-height:1.6;">
+          For <strong>pure local testing</strong>, run Chrome with web security disabled.
+          This allows embeds to load in the iframe on <code>localhost</code>.
+        </p>
+        <div style="background:rgba(0,0,0,0.3);border-radius:8px;padding:16px;margin-bottom:16px;">
+          <p style="margin:0 0 12px;font-weight:600;color:#a78bfa;">Option 1: Double-click (Easiest)</p>
+          <p style="margin:0 0 8px;color:var(--muted);font-size:13px;">Run this file in your project folder:</p>
+          <code style="display:block;background:rgba(0,0,0,0.4);padding:10px 14px;border-radius:6px;font-family:monospace;font-size:13px;color:#c4b5fd;">
+            start-dev.bat
+          </code>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);border-radius:8px;padding:16px;">
+          <p style="margin:0 0 12px;font-weight:600;color:#a78bfa;">Option 2: Manual Command</p>
+          <p style="margin:0 0 8px;color:var(--muted);font-size:13px;">Close all Chrome, then run in PowerShell:</p>
+          <code style="display:block;background:rgba(0,0,0,0.4);padding:10px 14px;border-radius:6px;font-family:monospace;font-size:12px;color:#c4b5fd;word-break:break-all;">
+            & "C:\Program Files\Google\Chrome\Application\chrome.exe" --disable-web-security --disable-site-isolation-trials --user-data-dir="$env:TEMP\cinestream-dev" http://localhost:5001
+          </code>
+        </div>
+        <p style="margin:16px 0 0;color:#fbbf24;font-size:13px;">
+          <i class="ri-alert-line"></i> ⚠️ Only use for local dev! Don't browse sensitive sites in this Chrome window.
+        </p>
+      </div>
+    </div>
+
+    <!-- ngrok HTTPS Guide -->
+    <div class="demo-section" id="ngrokGuide" style="display:none;">
+      <h2 class="section-title">Test on HTTPS (ngrok)</h2>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px;">
+        <p style="margin:0 0 16px;color:var(--muted);line-height:1.6;">
+          For <strong>production-like testing</strong> with HTTPS.
+          Creates a public HTTPS URL that embed servers trust.
+        </p>
+        <ol style="color:var(--muted);line-height:1.8;margin:0;padding-left:20px;">
+          <li>Install ngrok: <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px;">npm install -g ngrok</code></li>
+          <li>Run: <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px;">ngrok http 5001</code></li>
+          <li>Copy the <strong>https://</strong> URL (e.g., <code>https://abc123.ngrok.io</code>)</li>
+          <li>Open that URL + <code>/embed-demo</code></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../js/embedServers.js"></script>
+  <script>
+    let currentSources = [];
+    let currentSourceIndex = 0;
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      // Check if EmbedServers loaded
+      if (typeof EmbedServers === 'undefined') {
+        console.error('EmbedServers module failed to load');
+        document.getElementById('serverSelector').innerHTML =
+          '<span style="color:#ef4444">Error: EmbedServers module not loaded. Check console.</span>';
+        return;
+      }
+
+      renderServerList();
+
+      // Wire up buttons (CSP-safe, no inline onclick)
+      document.getElementById('btnLoadPlayer').addEventListener('click', loadContent);
+      document.getElementById('btnUpdateEpisode').addEventListener('click', updateEpisode);
+
+      // Show guides on localhost/HTTP (embed servers block non-HTTPS origins)
+      if (location.protocol === 'http:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        document.getElementById('ngrokGuide').style.display = 'block';
+        document.getElementById('devModeGuide').style.display = 'block';
+        console.log('[EmbedDemo] Running on localhost/HTTP. Guides shown for ngrok and Dev Mode.');
+      }
+
+      // Dev Mode button scrolls to guide
+      document.getElementById('btnDevMode').addEventListener('click', () => {
+        document.getElementById('devModeGuide').scrollIntoView({ behavior: 'smooth' });
+      });
+
+
+      // Allow Enter key on TMDb input
+      document.getElementById('tmdbId').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') loadContent();
+      });
+
+      // Show/hide TV controls based on content type
+      document.getElementById('contentType').addEventListener('change', (e) => {
+        document.getElementById('tvControls').style.display = e.target.value === 'tv' ? 'flex' : 'none';
+      });
+
+      console.log('[EmbedDemo] Initialized. EmbedServers loaded:', !!EmbedServers);
+    });
+
+    // Render server information cards
+    function renderServerList() {
+      const servers = EmbedServers.getServerList();
+      const container = document.getElementById('serverList');
+
+      container.innerHTML = servers.map(server => {
+        const urls = EmbedServers.SERVERS[server.key];
+        return `
+          <div class="server-card">
+            <h3>
+              <span class="server-indicator"></span>
+              ${server.name}
+            </h3>
+            <p>Priority: ${server.priority} • Timeout: ${urls.timeout}ms</p>
+            <div class="url-pattern">
+              Movie: ${urls.movieUrl('{TMDB_ID}')}
+            </div>
+            <div class="url-pattern">
+              TV: ${urls.tvUrl('{TMDB_ID}', 1, 1)}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Load content
+    function loadContent() {
+      const tmdbId = document.getElementById('tmdbId').value.trim();
+      const type = document.getElementById('contentType').value;
+      const season = parseInt(document.getElementById('seasonNum').value || 1, 10);
+      const episode = parseInt(document.getElementById('episodeNum').value || 1, 10);
+
+      if (!tmdbId) {
+        showDemoMessage('Please enter a TMDb ID', 'error');
+        return;
+      }
+
+      if (!/^[0-9]+$/.test(tmdbId)) {
+        showDemoMessage('TMDb ID must be numeric', 'error');
+        return;
+      }
+
+      try {
+        // Build all sources
+        currentSources = EmbedServers.buildAllSources(tmdbId, type, season, episode);
+        currentSourceIndex = 0;
+
+        if (!currentSources || !currentSources.length) {
+          showDemoMessage('No embed sources available', 'error');
+          return;
+        }
+
+        console.log('[EmbedDemo] Loaded', currentSources.length, 'sources:', currentSources.map(s => s.serverName));
+
+        // Render server buttons
+        renderServerButtons();
+
+        // Load first source
+        loadSource(0);
+      } catch (err) {
+        console.error('[EmbedDemo] Error building sources:', err);
+        showDemoMessage('Failed to build sources: ' + err.message, 'error');
+      }
+    }
+
+    // Demo-safe message display (avoids CSP issues with toast)
+    function showDemoMessage(text, type = 'info') {
+      const selector = document.getElementById('serverSelector');
+      const msg = document.createElement('div');
+      msg.style.cssText = 'padding:8px 16px;border-radius:6px;font-size:13px;' +
+        (type === 'error' ? 'background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3);' :
+         'background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(34,197,94,0.3);');
+      msg.textContent = text;
+      selector.insertAdjacentElement('afterbegin', msg);
+      setTimeout(() => msg.remove(), 4000);
+    }
+
+    // Update episode for TV shows
+    function updateEpisode() {
+      const tmdbId = document.getElementById('tmdbId').value;
+      if (!tmdbId) return;
+
+      loadContent();
+    }
+
+    // Render server selector buttons
+    function renderServerButtons() {
+      const selector = document.getElementById('serverSelector');
+      selector.innerHTML = '<span style="color: var(--muted); font-size: 14px; margin-right: 8px;">Select Server:</span>';
+
+      if (!currentSources || !currentSources.length) {
+        selector.innerHTML += '<span style="color:#fbbf24;font-size:13px;">No sources loaded</span>';
+        return;
+      }
+
+      currentSources.forEach((source, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'server-btn' + (idx === 0 ? ' active' : '');
+        btn.dataset.index = idx;
+
+        // Status indicator color (ready = green for popup-first design)
+        const statusColor = (source.status === 'working' || source.status === 'ready') ? '#22c55e' :
+                            source.status === 'failed'  ? '#ef4444' : '#fbbf24';
+
+        btn.innerHTML = `
+          <span class="server-indicator" style="background:${statusColor};"></span>
+          <span>${source.serverName}</span>
+        `;
+
+        btn.addEventListener('click', () => switchServer(idx));
+        selector.appendChild(btn);
+      });
+    }
+
+    // Switch to specific server
+    function switchServer(index) {
+      if (index === currentSourceIndex) return;
+
+      // Mark previous as not active
+      if (currentSourceIndex >= 0 && currentSources[currentSourceIndex]) {
+        currentSources[currentSourceIndex].status = 'ready';
+      }
+
+      loadSource(index);
+    }
+
+    // Load specific source (now opens popup directly - iframe blocked by X-Frame-Options)
+    function loadSource(index) {
+      if (!currentSources[index]) return;
+
+      const source = currentSources[index];
+
+      // Update UI
+      currentSourceIndex = index;
+      document.querySelectorAll('.server-btn').forEach((btn, idx) => {
+        btn.classList.toggle('active', idx === index);
+      });
+
+      // Update popup area
+      document.getElementById('currentServerName').textContent = source.serverName;
+      document.getElementById('popupPlayerArea').style.display = 'flex';
+
+      // Wire up Watch Now button
+      document.getElementById('btnOpenPopup').onclick = () => openPopupPlayer(source.url);
+
+      // Mark as ready
+      source.status = 'ready';
+      updateServerIndicators();
+
+      console.log(`[EmbedDemo] ${source.serverName} selected - click "Watch Now" to open popup`);
+    }
+
+    // Open embed in popup window (bypasses all iframe/X-Frame-Options restrictions)
+    function openPopupPlayer(url) {
+      const width = Math.min(screen.availWidth - 40, 1280);
+      const height = Math.min(screen.availHeight - 40, 720);
+      const left = (screen.availWidth - width) / 2;
+      const top = (screen.availHeight - height) / 2;
+      const features = `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes,status=yes,toolbar=no,menubar=no,location=no`;
+      const popup = window.open(url, 'CineStreamPlayer', features);
+
+      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+        alert('Popup blocked! Please allow popups for this site.');
+      }
+    }
+
+    // Update server indicator colors
+    function updateServerIndicators() {
+      document.querySelectorAll('.server-btn').forEach((btn, idx) => {
+        const source = currentSources[idx];
+        if (!source) return;
+        const indicator = btn.querySelector('.server-indicator');
+        if (indicator) {
+          const color = (source.status === 'working' || source.status === 'ready') ? '#22c55e' :
+                        source.status === 'failed'  ? '#ef4444' : '#fbbf24';
+          indicator.style.background = color;
+        }
+        btn.classList.toggle('failed', source.status === 'failed');
+        btn.classList.toggle('active', idx === currentSourceIndex);
+      });
+    }
+  </script>
+</body>
+</html>

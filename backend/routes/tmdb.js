@@ -1,9 +1,11 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs/promises');
 
 const Movie = require('../models/Movie');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 const { sendSuccess, sendError, asyncHandler } = require('../utils/apiResponse');
-const { fetchList, fetchDetails, normalizeRoutePayload, buildMovieDocument } = require('../services/tmdbService');
+const { fetchList, fetchDetails, normalizeRoutePayload, buildMovieDocument, TMDB_IMG, TMDB_IMG_W } = require('../services/tmdbService');
 
 const router = express.Router();
 const importJobs = new Map();
@@ -14,6 +16,41 @@ async function markImported(items) {
   const existing = await Movie.find({ tmdbId: { $in: ids } }).select('tmdbId');
   const imported = new Set(existing.map((movie) => movie.tmdbId));
   return items.map((item) => ({ ...item, alreadyImported: imported.has(item.tmdbId) }));
+}
+
+async function ensureUploadFolder(folderName) {
+  const folderPath = path.join(__dirname, '../uploads', folderName);
+  await fs.mkdir(folderPath, { recursive: true });
+  return folderPath;
+}
+
+function formatMediaFilename(baseName, url) {
+  const urlPath = url ? new URL(url).pathname : '';
+  const extension = path.extname(urlPath) || '.jpg';
+  return `${baseName}${extension}`;
+}
+
+async function saveTmdbImage(url, folderName, baseName) {
+  if (!url) return '';
+
+  try {
+    const buffer = await fetch(url).then((response) => {
+      if (!response.ok) {
+        throw new Error(`Failed to download image: ${response.status}`);
+      }
+      return response.arrayBuffer();
+    });
+
+    const folderPath = await ensureUploadFolder(folderName);
+    const fileName = formatMediaFilename(baseName, url);
+    const filePath = path.join(folderPath, fileName);
+
+    await fs.writeFile(filePath, Buffer.from(buffer));
+    return `/uploads/${folderName}/${fileName}`;
+  } catch (error) {
+    console.warn(`TMDb image download failed for ${url}:`, error.message);
+    return '';
+  }
 }
 
 async function upsertTmdbMovie(tmdbId, type, uploadedBy) {
@@ -46,6 +83,20 @@ async function upsertTmdbMovie(tmdbId, type, uploadedBy) {
 
     const details = await fetchDetails(numericTmdbId, type);
     const payload = buildMovieDocument(details, type, uploadedBy);
+
+    const localPoster = await saveTmdbImage(
+      details.poster_path ? `${TMDB_IMG_W}${details.poster_path}` : '',
+      'posters',
+      `tmdb-${details.id}-poster`
+    );
+    const localBanner = await saveTmdbImage(
+      details.backdrop_path ? `${TMDB_IMG}${details.backdrop_path}` : '',
+      'banners',
+      `tmdb-${details.id}-banner`
+    );
+
+    if (localPoster) payload.thumbnailUrl = localPoster;
+    if (localBanner) payload.bannerUrl = localBanner;
 
     try {
       const movie = await Movie.create(payload);
@@ -182,6 +233,28 @@ router.get('/popular', protect, adminOnly, asyncHandler(async (req, res) => {
   );
 }));
 
+router.get('/details/:id', asyncHandler(async (req, res) => {
+  const tmdbId = parseInt(req.params.id, 10);
+  const type = req.query.type === 'tv' ? 'tv' : 'movie';
+
+  if (!tmdbId) {
+    return sendError(res, new Error('TMDb ID required'), {
+      status: 400,
+      code: 'TMDB_ID_REQUIRED',
+    });
+  }
+
+  const details = await fetchDetails(tmdbId, type);
+  return sendSuccess(res, { details }, {
+    message: 'TMDb details loaded',
+    meta: {
+      source: 'tmdb',
+      type,
+      tmdbId,
+    },
+  });
+}));
+
 router.get('/top-rated', protect, adminOnly, asyncHandler(async (req, res) => {
   const type = req.query.type === 'tv' ? 'tv' : 'movie';
 
@@ -280,6 +353,85 @@ router.get('/bulk-import/:jobId', protect, adminOnly, asyncHandler(async (req, r
 
   return sendSuccess(res, job, {
     message: 'Bulk import status loaded',
+  });
+}));
+
+router.post('/auto-import', protect, adminOnly, asyncHandler(async (req, res) => {
+  const type = req.body.type === 'tv' ? 'tv' : 'movie';
+  const page = Math.max(1, parseInt(req.body.page, 10) || 1);
+  const forceUpdate = req.body.forceUpdate === true || req.query.forceUpdate === 'true';
+
+  const listResponse = await fetchList(type, 'popular', {
+    page,
+    language: 'en-US',
+    region: req.body.region || req.query.region || '',
+  });
+
+  const items = Array.isArray(listResponse.results) ? listResponse.results : [];
+  if (!items.length) {
+    return sendError(res, new Error('No TMDb items found for auto-import'), {
+      status: 404,
+      code: 'TMDB_AUTO_IMPORT_EMPTY',
+    });
+  }
+
+  const results = { imported: [], updated: [], skipped: [], failed: [] };
+
+  for (const item of items) {
+    const tmdbId = item.id;
+    if (!tmdbId) {
+      results.failed.push('Missing TMDb ID for item');
+      continue;
+    }
+
+    try {
+      const details = await fetchDetails(tmdbId, type);
+      const payload = buildMovieDocument(details, type, req.user._id);
+
+      const localPoster = await saveTmdbImage(
+        details.poster_path ? `${TMDB_IMG_W}${details.poster_path}` : '',
+        'posters',
+        `tmdb-${details.id}-poster`
+      );
+      const localBanner = await saveTmdbImage(
+        details.backdrop_path ? `${TMDB_IMG}${details.backdrop_path}` : '',
+        'banners',
+        `tmdb-${details.id}-banner`
+      );
+
+      if (localPoster) payload.thumbnailUrl = localPoster;
+      if (localBanner) payload.bannerUrl = localBanner;
+
+      const existing = await Movie.findOne({ tmdbId: payload.tmdbId });
+      if (existing) {
+        if (forceUpdate) {
+          const updated = await Movie.findByIdAndUpdate(existing._id, payload, { new: true });
+          results.updated.push(updated.title);
+        } else {
+          results.skipped.push(existing.title);
+        }
+        continue;
+      }
+
+      const movie = await Movie.create(payload);
+      results.imported.push(movie.title);
+    } catch (error) {
+      results.failed.push(`TMDb ${tmdbId} - ${error.message}`);
+    }
+  }
+
+  return sendSuccess(res, {
+    page,
+    type,
+    forceUpdate,
+    summary: results,
+  }, {
+    status: 200,
+    message: 'TMDb auto-import completed',
+    meta: {
+      source: 'tmdb',
+      mode: 'auto-import',
+    },
   });
 }));
 

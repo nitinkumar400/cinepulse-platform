@@ -64,8 +64,23 @@ function getToken() {
   return localStorage.getItem('token') || null;
 }
 
-const YOUTUBE_ID_REGEX = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i;
+const originalFetch = window.fetch.bind(window);
+window.fetch = function fetchWithApiAuth(url, options = {}) {
+  if (typeof url === 'string' && url.includes('/api/')) {
+    const token = getToken();
+    const headers = new Headers(options.headers || {});
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    return originalFetch(url, { ...options, headers });
+  }
+
+  return originalFetch(url, options);
+};
+
+const YOUTUBE_ID_REGEX = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
 const DAILYMOTION_ID_REGEX = /(?:dailymotion\.com\/(?:video|embed\/video)\/|dai\.ly\/)([A-Za-z0-9]+)/i;
+const VIMEO_ID_REGEX = /(?:vimeo\.com\/(?:video\/)?)(\d+)/i;
 const CINESTREAM_ELITE_AVATARS = [
   { id: 'ayanokoji', name: 'Kiyotaka Ayanokoji', series: 'Classroom of the Elite', accent: '#ef4444', shadow: '#020617', glow: '#b91c1c' },
   { id: 'gojo', name: 'Satoru Gojo', series: 'Jujutsu Kaisen', accent: '#7dd3fc', shadow: '#111827', glow: '#38bdf8' },
@@ -219,6 +234,7 @@ function getSourceType(url = '', fallbackType = '') {
   if (!raw) return 'offline';
   if (YOUTUBE_ID_REGEX.test(raw)) return 'youtube';
   if (DAILYMOTION_ID_REGEX.test(raw)) return 'dailymotion';
+  if (VIMEO_ID_REGEX.test(raw)) return 'vimeo';
   return 'local';
 }
 
@@ -226,34 +242,56 @@ function getCleanEmbedUrl(url = '') {
   const raw = String(url || '').trim();
   if (!raw) return '';
 
-  const youtubeMatch = raw.match(YOUTUBE_ID_REGEX);
-  if (youtubeMatch?.[1]) {
-    const params = new URLSearchParams({
-      autoplay: '1',
-      controls: '1',
-      cc_load_policy: '1',
-      cc_lang_pref: 'en',
-      modestbranding: '1',
-      playsinline: '1',
-      rel: '0',
-    });
-    return `https://www.youtube-nocookie.com/embed/${youtubeMatch[1]}?${params.toString()}`;
+  const youtubeEmbedUrl = buildYouTubeEmbed(raw);
+  if (youtubeEmbedUrl) {
+    return youtubeEmbedUrl;
   }
 
   const dailymotionMatch = raw.match(DAILYMOTION_ID_REGEX);
   if (dailymotionMatch?.[1]) {
     const params = new URLSearchParams({
       autoplay: '1',
-      'ui-logo': 'false',
-      'subtitles-default': 'en',
-      'queue-enable': 'false',
-      'sharing-enable': 'false',
-      'endscreen-enable': 'false',
     });
     return `https://www.dailymotion.com/embed/video/${dailymotionMatch[1]}?${params.toString()}`;
   }
 
+  const vimeoMatch = raw.match(VIMEO_ID_REGEX);
+  if (vimeoMatch?.[1]) {
+    const params = new URLSearchParams({
+      autoplay: '1',
+    });
+    return `https://player.vimeo.com/video/${vimeoMatch[1]}?${params.toString()}`;
+  }
+
   return '';
+}
+
+function buildYouTubeEmbed(url = '') {
+  const match = String(url || '').match(YOUTUBE_ID_REGEX);
+
+  if (!match?.[1]) return null;
+
+  const id = match[1];
+  const params = new URLSearchParams({
+    autoplay: '1',
+    rel: '0',
+    modestbranding: '1',
+    controls: '1',
+    fs: '1',
+    cc_load_policy: '1',
+    enablejsapi: '1',
+    origin: window.location.origin,
+    playsinline: '1',
+  });
+
+  return `https://www.youtube.com/embed/${id}?${params.toString()}`;
+}
+
+function getProviderIframeAttributes() {
+  return {
+    allow: 'autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer; clipboard-write;',
+    referrerPolicy: 'strict-origin-when-cross-origin',
+  };
 }
 
 function isOfflinePlaybackSource(url = '', sourceType = '') {
@@ -261,7 +299,7 @@ function isOfflinePlaybackSource(url = '', sourceType = '') {
   if (!raw) return true;
 
   const resolvedType = getSourceType(raw, sourceType);
-  if (resolvedType === 'youtube' || resolvedType === 'dailymotion') {
+  if (resolvedType === 'youtube' || resolvedType === 'dailymotion' || resolvedType === 'vimeo') {
     return !getCleanEmbedUrl(raw);
   }
 
@@ -272,8 +310,10 @@ window.parseApiPayload = parseApiPayload;
 window.readJsonResponse = readJsonResponse;
 window.setQueryParam = setQueryParam;
 window.getSourceType = getSourceType;
+window.buildYouTubeEmbed = buildYouTubeEmbed;
 window.getCleanEmbedUrl = getCleanEmbedUrl;
 window.isOfflinePlaybackSource = isOfflinePlaybackSource;
+window.getProviderIframeAttributes = getProviderIframeAttributes;
 window.CINESTREAM_ELITE_AVATARS = CINESTREAM_ELITE_AVATARS;
 window.isEliteAvatarId = isEliteAvatarId;
 window.getEliteAvatarById = getEliteAvatarById;
