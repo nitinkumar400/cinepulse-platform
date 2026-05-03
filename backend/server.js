@@ -40,7 +40,7 @@ const HOST = getEnv('HOST', '0.0.0.0');
 const PORT = getNumberEnv('PORT', 5001);
 const frontendOrigin = getFrontendOrigin();
 const corsOrigins = getCorsOrigins();
-const pagesDir = path.join(__dirname, '../frontend/pages');
+const pagesDir = path.join(__dirname, '../public/pages');
 const servePage = (fileName) => (req, res) => res.sendFile(path.join(pagesDir, fileName));
 const htmlPageMap = {
   'index.html': 'index.html',
@@ -237,11 +237,11 @@ app.get('/:pageName', (req, res, next) => {
 });
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use(express.static(path.join(__dirname, '../frontend')));
+app.use(express.static(path.join(__dirname, '../public')));
 
 app.get('/manifest.json', (req, res) => {
   res.setHeader('Content-Type', 'application/manifest+json');
-  res.sendFile(path.join(__dirname, '../frontend/manifest.json'));
+  res.sendFile(path.join(__dirname, '../public/manifest.json'));
 });
 
 app.use('/api/auth', authLimiter, authRoutes);
