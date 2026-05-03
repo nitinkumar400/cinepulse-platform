@@ -195,6 +195,21 @@ app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use('/api', responseFormatter);
 app.use('/api', globalApiLimiter);
 
+// Ensure database connection for all API routes (serverless-safe)
+app.use('/api', async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    logger.error('Database connection failed on request', { error: error.message });
+    return res.status(503).json({
+      success: false,
+      message: 'Database connection failed. Please try again later.',
+      error: { code: 'DB_CONNECTION_ERROR' },
+    });
+  }
+});
+
 app.get('/health', (req, res) => {
   const mongo = getMongoHealth();
   const healthy = mongo.readyState === 1;
