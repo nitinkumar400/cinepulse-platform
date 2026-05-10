@@ -4,3 +4,12 @@ node_modules/
 .vercel/
 .vercel
 .env*.local
+
+# Local-only helper scripts and generated artifacts
+checkImportStatus.js
+importMoviesAndAnime.js
+cine-stream-platform/
+
+# Keep uploaded/generated media local by default; retain placeholder files only
+backend/uploads/**
+!backend/uploads/**/.gitkeep

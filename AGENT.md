@@ -293,3 +293,26 @@ Backend default port: `5001`
 - If multiple server processes run, stale routes can appear. Always kill old Node processes before re-testing routes.
 - The directory name ends in `.zip` but is a folder; do not delete it during cleanup scans.
 
+## 12) Vercel Deployment Verification
+
+Use this checklist to verify the Vercel frontend deployment and what to do after deploy:
+
+- **Verify site loads**: open the deployment URL (for example, `https://cine-stream-kappa.vercel.app`). Confirm it lands on `/pages/index.html` (or redirects to `/login`) and the UI renders.
+- **Check console & network**: open browser devtools → Console / Network. Look for build/runtime errors and blocked API calls (CORS, 4xx/5xx).
+- **Check Vercel build logs**: In the Vercel dashboard, select the project → Deployments → open the latest deployment → View Build & Server Logs. Fix any build errors shown there.
+- **Confirm environment variables**: In Vercel project settings → Environment Variables, ensure all required frontend env vars are present (e.g., `FRONTEND_URL`, API_BASE or similar). If the app depends on a backend, confirm the backend URL is set and reachable.
+- **API health**: If your backend is hosted separately, confirm `GET <backend_url>/health` returns a healthy response. If backend is expected to be part of the same deployment, verify server logs for successful connections to Mongo/third-party APIs.
+- **Redeploy (if needed)**: From the project root you can redeploy with the Vercel CLI:
+
+```
+vercel deploy --prod
+```
+
+- **If you see 500s or missing data**: check the Vercel build logs for missing secrets (e.g., `MONGODB_URI`, `TMDB_API_KEY`). Add them to Vercel env settings and redeploy.
+- **If assets are stale**: purge CDN / re-deploy to ensure new static assets are served.
+
+Add any Vercel-specific notes or team contacts below so the next engineer can act quickly.
+
+---
+
+

@@ -11,6 +11,7 @@ const { protect, adminOnly } = require('./middleware/authMiddleware');
 const { ensureAdminAccount } = require('./services/adminBootstrapService');
 const {
   getCorsOrigins,
+  getCanonicalHost,
   getEnv,
   getFrontendOrigin,
   getNumberEnv,
@@ -41,7 +42,9 @@ const Movie = require('./models/Movie');
 const app = express();
 const HOST = getEnv('HOST', '0.0.0.0');
 const PORT = getNumberEnv('PORT', 5001);
+const runtime = getEnv('NODE_ENV', 'development').toLowerCase();
 const frontendOrigin = getFrontendOrigin();
+const canonicalHost = getCanonicalHost();
 const corsOrigins = getCorsOrigins();
 const pagesDir = path.join(__dirname, '../public/pages');
 const servePage = (fileName) => (req, res) => res.sendFile(path.join(pagesDir, fileName));
@@ -157,6 +160,15 @@ app.use(helmet({
 
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+if (runtime === 'production' && canonicalHost) {
+  app.use((req, res, next) => {
+    const hostHeader = String(req.headers.host || '').toLowerCase();
+    if (!hostHeader || hostHeader === canonicalHost) return next();
+    return res.redirect(308, `https://${canonicalHost}${req.originalUrl || '/'}`);
+  });
+}
+
 app.use('/api', responseFormatter);
 app.use('/api', globalApiLimiter);
 

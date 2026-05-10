@@ -5,6 +5,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#e50914">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="CineStream">
@@ -371,7 +372,7 @@
         <label>Current Password</label>
         <div class="input-with-icon">
           <i class="ri-lock-line input-icon"></i>
-          <input type="password" id="currentPassword" placeholder="Your current password">
+          <input type="password" id="currentPassword" placeholder="Your current password" autocomplete="current-password">
           <i class="ri-eye-line password-toggle" id="toggleCurrent"></i>
         </div>
       </div>
@@ -379,7 +380,7 @@
         <label>New Password</label>
         <div class="input-with-icon">
           <i class="ri-lock-2-line input-icon"></i>
-          <input type="password" id="newPassword" placeholder="Minimum 6 characters">
+          <input type="password" id="newPassword" placeholder="Minimum 6 characters" autocomplete="new-password">
           <i class="ri-eye-line password-toggle" id="toggleNew"></i>
         </div>
       </div>
@@ -387,7 +388,7 @@
         <label>Confirm New Password</label>
         <div class="input-with-icon">
           <i class="ri-lock-2-line input-icon"></i>
-          <input type="password" id="confirmNewPassword" placeholder="Repeat new password">
+          <input type="password" id="confirmNewPassword" placeholder="Repeat new password" autocomplete="new-password">
         </div>
       </div>
       <button class="btn btn-primary" id="changePasswordBtn">

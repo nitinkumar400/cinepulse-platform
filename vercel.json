@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "npm install",
+  "buildCommand": "npm run check",
   "installCommand": "npm install",
   "framework": null,
   "functions": {
@@ -11,6 +11,14 @@
     }
   },
   "rewrites": [
+    {
+      "source": "/health",
+      "destination": "/api/server.js"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/server.js"
+    },
     {
       "source": "/api/(.*)",
       "destination": "/api/server.js"

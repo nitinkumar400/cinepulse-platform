@@ -411,15 +411,33 @@ function bindMovieSourceInputs() {
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // INIT
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-window.addEventListener('DOMContentLoaded', () => {
-  const user  = JSON.parse(localStorage.getItem('user') || 'null');
+window.addEventListener('DOMContentLoaded', async () => {
   const token = localStorage.getItem('token');
+  let user = JSON.parse(localStorage.getItem('user') || 'null');
 
-  if (!token || !user) { window.location.href = 'login.html'; return; }
-  if (user.role !== 'admin') {
-    alert('Admins only!');
-    window.location.href = 'index.html';
+  if (!token) {
+    window.location.href = 'login.html';
     return;
+  }
+
+  if (!user || user.role !== 'admin') {
+    try {
+      const res = await apiFetch('/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await res.json();
+      const me = unwrapResponse(payload)?.user || unwrapResponse(payload);
+      if (!res.ok || !payload.success || !me || me.role !== 'admin') {
+        throw new Error('ADMIN_SESSION_INVALID');
+      }
+      user = me;
+      localStorage.setItem('user', JSON.stringify(user));
+    } catch {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = 'login.html';
+      return;
+    }
   }
 
   // All event listeners in one place
@@ -1609,4 +1627,3 @@ loadSubtitleMovieSelect();
 
 
 })();
-

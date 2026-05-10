@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#e50914">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="CineStream">
@@ -30,7 +31,7 @@
           <label>Email Address</label>
           <div class="input-with-icon">
             <i class="ri-mail-line input-icon"></i>
-            <input type="email" id="email" placeholder="your@email.com" required>
+            <input type="email" id="email" placeholder="your@email.com" autocomplete="email" required>
           </div>
         </div>
 
@@ -38,7 +39,7 @@
           <label>Password</label>
           <div class="input-with-icon">
             <i class="ri-lock-line input-icon"></i>
-            <input type="password" id="password" placeholder="Enter your password" required>
+            <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password" required>
             <i class="ri-eye-line password-toggle" id="togglePassword"></i>
           </div>
         </div>
@@ -60,15 +61,26 @@
   <script src="../js/api.js"></script>
   <script src="../js/pwa.js"></script>
   <script>
-    if (localStorage.getItem('token')) {
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
-      if (user?.role === 'admin') {
-        window.location.href = 'admin.html';
-      } else {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-      }
-    }
+    (async function guardLoginPage() {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      try {
+        const payload = await apiRequest('/auth/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const me = payload?.user || null;
+        if (me?.role === 'admin') {
+          saveAuth(token, me);
+          window.location.href = 'admin.html';
+          return;
+        }
+      } catch {}
+
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    })();
 
     document.getElementById('togglePassword').addEventListener('click', function () {
       const passwordInput = document.getElementById('password');

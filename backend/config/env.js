@@ -113,6 +113,16 @@ function getFrontendOrigin() {
   return getEnv('FRONTEND_URL', DEFAULTS.FRONTEND_URL).replace(/\/+$/, '');
 }
 
+function getCanonicalHost() {
+  const frontend = getFrontendOrigin();
+  if (!frontend) return '';
+  try {
+    return new URL(frontend).host.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
 function getCorsOrigins() {
   const explicit = getArrayEnv('CORS_ORIGINS');
   const frontend = getFrontendOrigin();
@@ -132,5 +142,6 @@ module.exports = {
   hasEnv,
   getTmdbCredentials,
   getFrontendOrigin,
+  getCanonicalHost,
   getCorsOrigins,
 };
