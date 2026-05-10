@@ -21,14 +21,21 @@ async function connectDB() {
 
   const mongoUri = getEnv('MONGODB_URI') || getEnv('MONGO_URI', 'mongodb://127.0.0.1:27017/cine-stream');
 
-  // Production-ready pooled settings
+  // Production-ready pooled settings with TLS configuration for MongoDB Atlas
   const options = {
-    serverSelectionTimeoutMS: 5000,
+    serverSelectionTimeoutMS: 10000,
     socketTimeoutMS: 45000,
+    connectTimeoutMS: 10000,
     maxPoolSize: Number(getEnv('MONGO_MAX_POOL_SIZE', '40')),
     minPoolSize: Number(getEnv('MONGO_MIN_POOL_SIZE', '5')),
     maxIdleTimeMS: Number(getEnv('MONGO_MAX_IDLE_MS', '30000')),
     waitQueueTimeoutMS: Number(getEnv('MONGO_WAIT_QUEUE_TIMEOUT_MS', '10000')),
+    // TLS/SSL configuration for MongoDB Atlas
+    tls: true,
+    tlsAllowInvalidCertificates: false,
+    tlsAllowInvalidHostnames: false,
+    retryWrites: true,
+    retryReads: true,
   };
 
   try {
