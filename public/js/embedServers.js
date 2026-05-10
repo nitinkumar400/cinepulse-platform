@@ -12,45 +12,38 @@ const EmbedServers = (() => {
   const SERVERS = {
     vidsrc: {
       name: 'VidSrc',
-      priority: 1,
-      movieUrl: (tmdbId) => `https://vidsrc-embed.ru/embed/movie?tmdb=${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidsrc-embed.ru/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
-      timeout: 8000,
-    },
-    superembed: {
-      name: 'SuperEmbed',
-      priority: 2,
-      movieUrl: (tmdbId) => `https://embed.su/embed/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://embed.su/embed/tv/${tmdbId}/${season}/${episode}`,
-      timeout: 8000,
-    },
-    multiembed: {
-      name: 'MultiEmbed',
-      priority: 3,
-      movieUrl: (tmdbId) => `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`,
-      tvUrl: (tmdbId, season, episode) => `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${season}&e=${episode}`,
-      timeout: 8000,
-    },
-    vidlink: {
-      name: 'VidLink',
       priority: 4,
-      movieUrl: (tmdbId) => `https://vidlink.pro/embed/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidlink.pro/embed/tv/${tmdbId}/${season}/${episode}`,
+      movieUrl: (tmdbId) => `https://vidsrc.to/embed/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}`,
+      timeout: 8000,
+    },
+    embed2: {
+      name: '2Embed',
+      priority: 1,
+      movieUrl: (tmdbId) => `https://www.2embed.cc/embed/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`,
       timeout: 7000,
     },
     autoembed: {
       name: 'AutoEmbed',
-      priority: 5,
-      movieUrl: (tmdbId) => `https://autoembed.cc/embed/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://autoembed.cc/embed/tv/${tmdbId}-${season}-${episode}`,
+      priority: 3,
+      movieUrl: (tmdbId) => `https://autoembed.to/movie/tmdb/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://autoembed.to/tv/tmdb/${tmdbId}-${season}-${episode}`,
       timeout: 7000,
     },
-    embed2: {
-      name: '2Embed',
-      priority: 6,
-      movieUrl: (tmdbId) => `https://www.2embed.cc/embed/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`,
+    vidlink: {
+      name: 'VidLink',
+      priority: 5,
+      movieUrl: (tmdbId) => `https://vidlink.pro/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}`,
       timeout: 7000,
+    },
+    superembed: {
+      name: 'SuperEmbed',
+      priority: 2,
+      movieUrl: (tmdbId) => `https://superembed.stream/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://superembed.stream/tv/${tmdbId}/${season}/${episode}`,
+      timeout: 8000,
     },
   };
 
@@ -135,7 +128,6 @@ const EmbedServers = (() => {
   // ═══════════════════════════════════════════════════════════════════════════
   const markServerStatus = (serverKey, status) => {
     serverStatus[serverKey] = status;
-    console.log(`[EmbedServers] ${SERVERS[serverKey]?.name || serverKey}: ${status}`);
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -181,7 +173,6 @@ const EmbedServers = (() => {
   const getIframeAttributes = () => ({
     allow: 'autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write',
     referrerPolicy: 'no-referrer',
-    sandbox: 'allow-scripts allow-same-origin allow-popups allow-presentation allow-forms',
     loading: 'eager',
   });
 

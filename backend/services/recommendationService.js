@@ -108,7 +108,7 @@ async function getPersonalizedRecommendations(userId, limit = 12) {
 }
 
 async function getBecauseYouWatched(movieId, limit = 12) {
-  const movie = await Movie.findById(movieId).select('title genre category _id');
+  const movie = await Movie.findById(movieId).select('title genre category language spoken_languages _id');
   if (!movie) {
     const error = new Error('Movie not found');
     error.status = 404;
@@ -116,6 +116,10 @@ async function getBecauseYouWatched(movieId, limit = 12) {
   }
 
   const genres = movie.genre || [];
+  const baseLanguages = [
+    ...(Array.isArray(movie.spoken_languages) ? movie.spoken_languages : []),
+    movie.language,
+  ].map((item) => String(item || '').trim().toLowerCase()).filter(Boolean);
   const pipeline = [
     {
       $match: {
@@ -158,7 +162,10 @@ async function getBecauseYouWatched(movieId, limit = 12) {
       const sharedGenres = (candidate.genre || []).filter((genre) => genres.includes(genre)).length;
       return {
         movie: candidate,
-        score: (relatedById.get(String(candidate._id)) || 0) * 5 + sharedGenres * 3 + (candidate.averageRating || 0),
+        score: (relatedById.get(String(candidate._id)) || 0) * 5
+          + sharedGenres * 3
+          + (candidate.averageRating || 0)
+          + (baseLanguages.includes(String(candidate.language || '').trim().toLowerCase()) ? 4 : 0),
       };
     })
     .sort((a, b) => b.score - a.score)
@@ -171,6 +178,7 @@ async function getBecauseYouWatched(movieId, limit = 12) {
       $or: [
         { genre: { $in: genres } },
         { category: movie.category },
+        { language: { $in: baseLanguages.map((lang) => new RegExp(`^${lang}$`, 'i')) } },
       ],
     })
       .sort({ averageRating: -1, views: -1 })
@@ -186,6 +194,7 @@ async function getBecauseYouWatched(movieId, limit = 12) {
       title: movie.title,
       genre: genres,
       category: movie.category,
+      language: baseLanguages,
     },
   };
 }

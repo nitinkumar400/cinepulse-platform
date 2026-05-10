@@ -1,261 +1,295 @@
-# CINE STREAM - Multi-Server Video Embed System
-
-## Project Overview
-A multi-server video embedding system for Cine Stream that supports 6+ embed providers with automatic failover and popup player support.
-
----
-
-## What Was Built
-
-### Core Features
-- **6 Embed Servers**: VidSrc, SuperEmbed, MultiEmbed, VidLink, AutoEmbed, 2Embed
-- **Smart Server Selection**: Visual buttons with status indicators
-- **Popup Player**: Bypasses all iframe/X-Frame-Options restrictions
-- **TMDb Integration**: Uses TMDb IDs for universal content matching
-- **TV Show Support**: Season/episode selectors for series
-- **HTTPS/ngrok Support**: Works on localhost with ngrok tunnel
-
-### Why Popup Player?
-Embed servers (VidSrc, etc.) block iframe embedding via `X-Frame-Options`. The popup player opens embeds in a new window, bypassing all restrictions and working on any domain.
-
----
-
-## Key Files
-
-### Frontend
-| File | Purpose |
-|------|---------|
-| `frontend/js/embedServers.js` | Server configurations, URL builders, exports |
-| `frontend/pages/embed-demo.html` | Demo page with server buttons, popup player UI |
-| `frontend/js/videoEngine.js` | Integrated with existing video engine |
-| `frontend/js/movieDetailsPage.js` | **UPDATED**: Now uses popup player for external embeds |
-| `frontend/pages/movie-details.html` | Server button UI in movie details, now uses popup player |
-
-### Backend
-| File | Purpose |
-|------|---------|
-| `backend/server.js` | Added routing for embed-demo.html |
-| `backend/scripts/resetAdmin.js` | Admin account reset utility |
-
-### Utilities
-| File | Purpose |
-|------|---------|
-| `start-dev.bat` | Launch Chrome with disabled security (local dev) |
-| `start-ngrok.bat` | Start ngrok HTTPS tunnel |
-
----
-
-## How to Test
-
-### Option 1: Popup Player (Recommended - Always Works)
-1. Start server: `npm start`
-2. Open: `http://localhost:5001/embed-demo`
-3. Enter TMDb ID: `157336` (Interstellar)
-4. Click **Load Player** then **Watch Now**
-5. Video opens in popup window ✅
-
-### Testing on Local Website (Movies Page)
-1. Start server: `npm start`
-2. Open: `http://localhost:5001/movies.html`
-3. Click any movie poster
-4. Click a server button (VidSrc, SuperEmbed, etc.)
-5. Click **Watch Now** → Video opens in popup ✅
-
-### Option 2: ngrok HTTPS (Iframe Test)
-1. Install ngrok: `npm install -g ngrok`
-2. Add authtoken: `ngrok authtoken YOUR_TOKEN`
-3. Run: `ngrok http 5001`
-4. Copy HTTPS URL + `/embed-demo`
-5. Test on HTTPS domain
-
-### Option 3: Dev Mode Chrome (Local Iframe)
-Double-click `start-dev.bat` → Opens Chrome with disabled security
-
----
-
-## Server Priority (Current)
-
-| Priority | Server | URL Format |
-|----------|--------|------------|
-| 1 | **VidSrc** | `https://vidsrc-embed.ru/embed/movie?tmdb={id}` |
-| 2 | SuperEmbed | `https://embed.su/embed/movie/{id}` |
-| 3 | MultiEmbed | `https://multiembed.mov/?video_id={id}&tmdb=1` |
-| 4 | VidLink | `https://vidlink.pro/embed/movie/{id}` |
-| 5 | AutoEmbed | `https://autoembed.cc/embed/movie/{id}` |
-| 6 | 2Embed | `https://www.2embed.cc/embed/{id}` |
+# CinePulse / Cine Stream Platform - Agent Handoff Notes
+
+This file is a practical handoff for continuing development, production hardening, and QA. It summarizes what was built, what is verified working, what was changed for scale/stability, and what is still blocked or pending.
+
+Repository root: `C:\Users\NITIN MISHRA\Workspace\01_Development\Active\cine-stream-platform-main.zip`
+
+## 1) What This Project Is
+
+Backend: Node.js + Express + Mongoose (MongoDB)
+Frontend: static HTML pages in `public/pages` + vanilla JS in `public/js`
+Primary goal: streaming UI with an embedded universal player, automated media ingestion (TMDB + AniList), SEO/sitemaps, and retention loops.
+
+Note: Some earlier requirements referenced Next.js (`generateMetadata`, `layout.tsx`, `<Image />`). The current repo implementation is not Next.js; it is Express + static frontend. Equivalent SEO + sitemap features were implemented within Express/static pages instead.
+
+## 2) High-Level Architecture
+
+- `backend/server.js`
+  - Express app, middleware, rate limits, routes wiring
+  - Serves `public/` as static assets
+  - Serves `public/pages/*.html` via simple mappings
+  - Exposes `/sitemap.xml` (cursor/streamed)
+- `backend/database/db.js`
+  - Mongoose connection caching + pooling (env configurable)
+- `backend/models/Movie.js`
+  - Main media collection schema (movies, series, anime)
+  - Indexes for search + ingestion stability
+- `backend/routes/*`
+  - `movies`, `watch`, `episodes`, `anilist`, `tmdb`, `sync`, etc.
+- `public/pages/*`
+  - `index.html`, `movie-details.html`, `search.html`, `episode.html`, etc.
+- `public/js/*`
+  - `app.js` (home UI), `movieDetailsPage.js` (watch/details + player UI),
+    `videoEngine.js` + `embedServers.js` (external embed sources),
+    `videoPlayer.js` (local video player v2), etc.
+
+## 3) Environment / Secrets
+
+All sensitive keys must come from `.env` (and related env files). Typical env vars used:
+
+- `MONGODB_URI` or `MONGO_URI`
+- `TMDB_API_KEY` (used by `backend/services/tmdbService.js`)
+- `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (admin bootstrap)
+- DB pooling (production hardening):
+  - `MONGO_MAX_POOL_SIZE` (default `40`)
+  - `MONGO_MIN_POOL_SIZE` (default `5`)
+  - `MONGO_MAX_IDLE_MS` (default `30000`)
+  - `MONGO_WAIT_QUEUE_TIMEOUT_MS` (default `10000`)
+
+## 4) Data Model (MongoDB)
+
+Primary collection: `movies` (Mongoose model `Movie`).
+Key fields used by features:
+
+- Identity
+  - `tmdbId`, `tmdb_id` (Number)
+  - `anilistId`, `anilist_id` (Number)
+  - `idMal` (Number, AniList MAL id)
+- Classification
+  - `category`: `movie | series | anime | ...`
+  - `provider`: `tmdb | anilist | manual`
+  - `genre`: string array
+  - `tmdb_genre_ids`: number array
+  - `original_language`: string
+  - `spoken_languages`: string array (used for language tags)
+- Anime-specific UX
+  - `subDubTag`: `Subbed | Dubbed`
+  - `nextAiringEpisode: { episode, airingAt }`
+  - `animeSeasonNumber`
+  - `franchiseKey`
+  - `trailerUrl`
+- Ratings
+  - `averageRating`, `vote_average`, `anilistScore`
 
----
+### Index Hardening (critical for sync stability)
 
-## Architecture
-
-```
-User clicks "Load Player"
-         ↓
-EmbedServers.buildAllSources(tmdbId, type, season, episode)
-         ↓
-Renders server buttons (VidSrc active by default)
-         ↓
-User clicks "Watch Now" OR switches server
-         ↓
-openPopupPlayer(url) → window.open(embedURL, 'CineStreamPlayer')
-         ↓
-Video plays in centered popup window ✅
-```
-
----
-
-## API References Used
+The unique-index blocker was caused by writing `tmdb_id: null` into many docs. Fix strategy:
 
-### VidSrc API
-- Docs: `https://vidsrcme.su/api/`
-- Movie: `https://vidsrc-embed.ru/embed/movie?tmdb={id}`
-- TV: `https://vidsrc-embed.ru/embed/tv?tmdb={id}&season={s}&episode={e}`
+- Keep `tmdbId` and `tmdb_id` as `unique: true, sparse: true`
+  - This allows:
+    - uniqueness when a real ID exists
+    - many docs to omit the field entirely (no collisions)
+- Ensure sync logic deletes missing IDs instead of writing `null`
 
-### Other Providers
-- SuperEmbed: `https://embed.su/`
-- MultiEmbed: `https://multiembed.mov/`
-- VidLink: `https://vidlink.pro/`
-- AutoEmbed: `https://autoembed.cc/`
-- 2Embed: `https://www.2embed.cc/`
+Implemented in:
+- `backend/models/Movie.js` (unique + sparse on `tmdbId` and `tmdb_id`)
+- `backend/routes/sync.js` (prunes ID fields + `$unset` when missing)
 
----
+Important: Mongo indexes do not auto-update if they already exist with old options. If Mongo already has a non-sparse unique index, it must be dropped and recreated in the database (one-time ops task).
 
-## Common Issues & Fixes
+## 5) API / Feature Work Completed
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| "This content is blocked" | X-Frame-Options header | Use popup player instead of iframe |
-| "404 Not Found" | Wrong URL format | Updated to `?tmdb=` query param |
-| "Media unavailable" | Movie not on server | Try different server button |
-| ngrok ERR_NGROK_8012 | Backend not running | Run `npm start` first |
-| localhost blocked | Embed servers reject localhost | Use ngrok HTTPS or popup |
+### A) TMDB Sync (`/api/sync`)
 
----
+Status: implemented and working.
+
+- Route: `POST /api/sync`
+- Uses TMDB lists:
+  - Popular (movie + tv) + Trending (all)
+- Dedupes and `findOneAndUpdate` with upsert:
+  - `upsert: true, new: true, setDefaultsOnInsert: true`
+- Saves:
+  - `vote_average` (rating)
+  - `spoken_languages` (from details endpoint)
 
-## Next Steps / Improvements
+Implementation: `backend/routes/sync.js`
 
-### Potential Enhancements
-1. **Backend Proxy**: Create `/proxy-embed?url=` route to fetch embed HTML server-side
-2. **Subtitle Support**: Add `&ds_lang=en` parameter for default subtitles
-3. **Autoplay Toggle**: Add `&autoplay=1/0` user preference
-4. **Quality Selector**: Detect and offer multiple quality sources
-5. **Analytics**: Track which servers work best per region
-6. **Caching**: Cache working server per movie to skip failed ones
-7. **PWA Support**: Make embed demo a standalone installable app
+### B) AniList Anime Sync (`/api/sync/anime`)
 
-### Deployment
-- For production: Deploy to HTTPS domain (Vercel, Netlify, etc.)
-- VidSrc and other embedders work better on HTTPS than HTTP
-- Consider backend proxy for true iframe embedding without popup
+Status: implemented, but final QA for Blue Lock countdown was blocked by admin login (see Pending section).
 
----
+- Route: `POST /api/sync/anime?limit=50`
+- Fetches:
+  - `Naruto`
+  - `Classroom of the Elite`
+  - `Blue Lock`
+  - Popular (top X by popularity)
+- Captures:
+  - `idMal`, `title.romaji`
+  - `nextAiringEpisode { airingAt, episode }`
+  - `trailer { id, site }` (YouTube -> `trailerUrl`)
+- Maps to TMDB:
+  - Uses TMDB TV search by title + year
+  - Stores `tmdbId/tmdb_id` if found
+- Upsert collision strategy:
+  - Primary filter for anime is now AniList ID (`anilistId/anilist_id`)
+  - Missing/invalid IDs are pruned (not set to null)
 
-## Admin Credentials
+Implementation: `backend/routes/sync.js`
 
-If you need admin access:
-- **Email**: `admin@cinestream.local`
-- **Password**: `Admin@12345`
+### C) Anime Episode Buttons + Multi-Season Support
 
-Reset if needed: `node backend/scripts/resetAdmin.js`
+Status: implemented (UI-side).
 
----
+- Anime renders episode grid based on `nextAiringEpisode` or `totalEpisodes`
+- Episode embed URL:
+  - `https://vidsrc.to/embed/tv/{tmdb_id}/{season}/{episode}`
+- Season mapping:
+  - If title includes `Season 2`, `Season 3`, etc., use that season in the URL
+  - Episode numbers restart at 1 per season
 
-## Quick Commands
+Implementation:
+- `public/js/movieDetailsPage.js` (episode grid + embed URL builder)
 
-```bash
-# Start backend
-npm start
+### D) Next Episode Countdown ("Next Ep in ...")
 
-# Install ngrok
-npm install -g ngrok
+Status: implemented (backend stores `nextAiringEpisode.airingAt`, UI should render countdown if data exists).
 
-# Start ngrok tunnel
-ngrok http 5001
+Implementation:
+- `backend/routes/sync.js` saves `nextAiringEpisode.airingAt` as Date
+- `public/js/app.js` / cards + `public/js/movieDetailsPage.js` used to show countdown (depending on where card rendering occurs)
 
-# Reset admin
-node backend/scripts/resetAdmin.js
+### E) “More Like This” Recommendations
 
-# Dev mode Chrome
-start-dev.bat
-```
+Status: implemented and previously smoke-tested as returning results.
 
----
+- Watch/detail page queries MongoDB for same genre and/or language.
+- Implementation is in backend movie/watch routes and/or recommendation service.
 
-## File Tree (Key Files)
+Files touched previously (verify exact wiring if modifying):
+- `backend/routes/movies.js`
+- `backend/routes/watch.js`
+- `backend/services/recommendationService.js`
 
-```
-cine-stream-platform-main/
-├── frontend/
-│   ├── js/
-│   │   ├── embedServers.js          # Server configs
-│   │   ├── videoEngine.js           # Integrated engine
-│   │   └── movieDetailsPage.js      # Movie page integration
-│   └── pages/
-│       ├── embed-demo.html          # Demo page (main)
-│       └── movie-details.html       # Movie details page
-├── backend/
-│   ├── server.js                    # Routes
-│   └── scripts/
-│       └── resetAdmin.js            # Admin reset
-├── start-dev.bat                    # Chrome dev mode
-├── start-ngrok.bat                  # ngrok launcher
-└── AGENT.md                         # This file
-```
+### F) Social Share Locker (WhatsApp/Telegram)
 
----
+Status: implemented in frontend UX (simulated unlock).
 
-## Summary
+- “Share” click simulates unlocking “High-Speed Server 1”.
+- Source selection is driven by `public/js/embedServers.js` + `public/js/videoEngine.js`.
+
+### G) Sitemap (`/sitemap.xml`) - Cursor/Streaming
+
+Status: implemented and verified returning valid XML earlier; now additionally hardened to stream response (no memory blowups).
+
+- Route: `GET /sitemap.xml`
+- Uses Mongo cursor on Movies, writes `<url>` entries progressively.
+
+Implementation: `backend/server.js`
+
+### H) Production Hardening Applied
+
+Status: applied in repo, with one remaining verification step (Blue Lock sync via protected endpoint).
+
+- `X-Powered-By` disabled: `app.disable('x-powered-by')` in `backend/server.js`
+- Global async crash safety:
+  - wraps Express route handlers to catch promise rejections
+- Static performance:
+  - adds immutable cache headers for JS/CSS/images
+- Mongo pooling:
+  - env-configured pool sizes in `backend/database/db.js`
+- Removed production-unsafe debug route:
+  - deleted `/api/auth/debug-admin` from `backend/routes/auth.js`
+- Removed runtime `console.log` noise from core frontend + some backend routes:
+  - `public/js/videoPlayer.js`, `public/js/embedServers.js`, `public/js/movieDetailsPage.js`, `public/pages/embed-demo.html`
+
+## 6) What Is Completed vs Pending
+
+### Completed (implemented + at least basic validation)
+
+- `/health` works and Mongo reports `connected`
+- `/sitemap.xml` returns XML (and is now streaming)
+- TMDB sync route exists and upserts correctly
+- AniList sync route exists and stores next airing + trailer fields
+- Universal player embeds work via external servers
+- “More Like This” endpoint previously returned results in smoke checks
+- Removed `/api/auth/debug-admin`
+- DB pooling settings improved for concurrency
+- Unique `tmdb_id` null-collision fix added (prune IDs + sparse unique indexes)
+
+### Pending / Blocked (must complete before “Ready for Launch” sign-off)
+
+1) Blue Lock protected QA verification
+   - Requirement: run `POST /api/sync/anime`, confirm Blue Lock doc has:
+     - `tmdbId/tmdb_id` populated
+     - `status` and `nextAiringEpisode.airingAt` populated
+     - UI shows “Next Ep in …” countdown
+   - Blocker encountered: admin login credentials mismatch during automated local call to `/api/auth/admin/login`.
+   - Action needed:
+     - Confirm correct admin email/password currently in DB, or reset admin credentials to known values.
+
+2) Mongo index migration (one-time ops)
+   - If old indexes exist (non-sparse unique), Mongo may still throw duplicate key errors.
+   - Action needed:
+     - Drop and recreate indexes for `tmdbId` and `tmdb_id` as `unique + sparse`.
+
+3) Remove remaining `console.log` in duplicated/legacy subproject
+   - There is a second folder `cine-stream-platform/` with its own backend/frontend copies and many `console.log` references.
+   - Decide:
+     - If `cine-stream-platform/` is not used, remove it from deploy path (or delete it).
+     - If it is used, repeat the same cleanup inside it.
+
+4) Frontend minification pipeline
+   - No minifier tooling is configured in `package.json`.
+   - Current optimization: cache headers + removal of logs.
+   - Optional next step:
+     - Add build step (terser/clean-css) and output `.min.js/.min.css` or enable a bundler.
+
+## 7) How To Run Locally
+
+From repo root:
+
+- Install: `npm install`
+- Run dev: `npm run dev`
+- Run prod: `npm start`
+
+Backend default port: `5001`
+- Health: `GET http://localhost:5001/health`
+
+## 8) Key URLs / Routes (Quick Reference)
+
+- Pages (static):
+  - `/` -> `public/pages/index.html`
+  - `/pages/movie-details.html?id=<mongo_id>`
+  - `/pages/search.html?q=<term>`
+- API:
+  - `POST /api/sync` (TMDB popular/trending)
+  - `POST /api/sync/anime` (AniList popular + Blue Lock + Naruto + COTE)
+  - `GET /sitemap.xml`
+  - `POST /api/auth/admin/login`
+  - `GET /api/movies/...` (listing endpoints)
+  - `GET /api/watch/...` (watch-related endpoints)
+
+## 9) QA Checklist (Last Mile)
+
+1) Confirm admin login works
+   - `POST /api/auth/admin/login`
+2) Trigger anime sync
+   - `POST /api/sync/anime?limit=50`
+3) Confirm Blue Lock in DB
+   - Has `tmdbId/tmdb_id`, `status`, `nextAiringEpisode.airingAt`
+4) Confirm UI card shows countdown
+   - “Next Ep in …” appears when `airingAt` in future
+5) Confirm multi-season URL correctness
+   - Example: `vidsrc.to/embed/tv/{tmdb_id}/2/1`
+6) Confirm sitemap does not spike memory
+   - `/sitemap.xml` responds for large DB without crashing
+
+## 10) Files Changed In Current Hardening Pass (Most Relevant)
+
+- `backend/routes/sync.js` (ID pruning + anime filter)
+- `backend/models/Movie.js` (unique sparse indexes)
+- `backend/database/db.js` (pool sizes)
+- `backend/routes/auth.js` (removed debug endpoint)
+- `backend/server.js` (stream sitemap + handler wrapping + cache headers)
+- `public/js/videoPlayer.js` (removed init log)
+- `public/js/embedServers.js` (removed server status log)
+- `public/js/movieDetailsPage.js` (removed player debug log)
+- `public/pages/embed-demo.html` (removed debug logs)
+
+## 11) Notes / Known Risks
+
+- Do not write `tmdb_id: null` or `tmdbId: null` in updates when using `unique + sparse`. Omit or `$unset` instead.
+- If multiple server processes run, stale routes can appear. Always kill old Node processes before re-testing routes.
+- The directory name ends in `.zip` but is a folder; do not delete it during cleanup scans.
 
-This system successfully handles the fundamental problem: **embed servers block iframes via X-Frame-Options**. The solution uses a popup player that:
-- Bypasses all iframe restrictions
-- Works on localhost, HTTP, HTTPS, any domain
-- Provides server switching with visual feedback
-- Maintains clean UX with centered popup window
-
-The code is production-ready and can be deployed to any HTTPS domain.
-
----
-
-## Changelog
-
-### May 2, 2026
-- ✅ **VidSrc API integrated** - Using correct `vidsrc-embed.ru` domain with `?tmdb=` format
-- ✅ **Popup player implemented** - Both embed-demo and movie-details pages use popup
-- ✅ **Server priority updated** - VidSrc is now primary server
-- ✅ **AGENT.md created** - Full documentation for future AI agents
-- ✅ **Vercel Deployment Ready** - `vercel.json`, `DEPLOY.md`, `.vercelignore` configured
-
-### Previous
-- Initial multi-server embed system with 6 providers
-- ngrok HTTPS tunnel support added
-- Dev mode Chrome script (`start-dev.bat`)
-
----
-
-## Vercel Deployment Quick Start
-
-```bash
-# 1. Install Vercel CLI
-npm i -g vercel
-
-# 2. Login
-vercel login
-
-# 3. Deploy
-vercel
-
-# 4. Add env vars in Vercel dashboard:
-#    - MONGODB_URI (from MongoDB Atlas)
-#    - JWT_SECRET
-#    - TMDB_API_KEY
-
-# 5. Deploy to production
-vercel --prod
-```
-
-See `DEPLOY.md` for full instructions.
-
----
-
-*Last updated: May 2, 2026*
-*Built for CINE STREAM video platform*

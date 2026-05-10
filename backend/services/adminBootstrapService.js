@@ -8,9 +8,9 @@ async function ensureAdminAccount() {
     return existingAdmin;
   }
 
-  const username = getEnv('ADMIN_USERNAME', runtime === 'production' ? '' : 'admin');
-  const email = getEnv('ADMIN_EMAIL', runtime === 'production' ? '' : 'admin@cinestream.local');
-  const password = getEnv('ADMIN_PASSWORD', runtime === 'production' ? '' : 'Admin@12345');
+  const username = getEnv('ADMIN_USERNAME') || (getEnv('ADMIN_EMAIL') ? getEnv('ADMIN_EMAIL').split('@')[0] : 'admin');
+  const email = getEnv('ADMIN_EMAIL') || 'admin@cinestream.local';
+  const password = getEnv('ADMIN_PASSWORD') || 'Admin@12345';
 
   if (!username || !email || !password) {
     logger.warn('Admin bootstrap skipped because ADMIN_USERNAME, ADMIN_EMAIL, or ADMIN_PASSWORD is missing');

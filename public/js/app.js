@@ -370,6 +370,20 @@ function createMovieCard(movie, opts = {}) {
   };
   const badgeCls = badgeMap[movie.category] || 'badge-movie';
   const rating   = movie.averageRating > 0 ? movie.averageRating : '—';
+  const liveViewers = Math.floor(Math.random() * (2500 - 500 + 1)) + 500;
+  const spokenLanguages = Array.isArray(movie.spoken_languages) ? movie.spoken_languages : [];
+  const normalizedLanguageSet = new Set(spokenLanguages.map((lang) => String(lang || '').trim().toLowerCase()));
+  const languageTags = [
+    normalizedLanguageSet.has('en') || normalizedLanguageSet.has('english') ? 'English' : '',
+    normalizedLanguageSet.has('hi') || normalizedLanguageSet.has('hindi') ? 'Hindi' : '',
+    normalizedLanguageSet.has('ko') || normalizedLanguageSet.has('korean') ? 'Korean' : '',
+  ].filter(Boolean);
+  const subDubTag = String(movie.subDubTag || '').trim() || (String(movie.category || '').toLowerCase() === 'anime' ? 'Subbed' : '');
+  const nextAiringAt = movie?.nextAiringEpisode?.airingAt ? new Date(movie.nextAiringEpisode.airingAt) : null;
+  const isOngoingAnime = String(movie?.status || '').toLowerCase() === 'ongoing' && String(movie?.category || '').toLowerCase() === 'anime';
+  const countdownMarkup = isOngoingAnime && nextAiringAt && !Number.isNaN(nextAiringAt.getTime())
+    ? `<div class="card-next-episode" data-airing-at="${nextAiringAt.toISOString()}">Next Ep in --</div>`
+    : '';
 
   // Optional progress bar (for Continue Watching)
   const progressBar = opts.progress > 0 ? `
@@ -406,7 +420,17 @@ function createMovieCard(movie, opts = {}) {
           ${movie.views > 0
             ? `<span>·</span><span>${formatNumber(movie.views)} views</span>`
             : ''}
+          <span>·</span>
+          <span class="live-viewers" data-live-viewers="true">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span class="live-viewer-count">${liveViewers}</span> live
+          </span>
         </div>
+        ${languageTags.length
+          ? `<div class="card-language-tags">${languageTags.map((lang) => `<span class="card-language-tag">${escapeHtml(lang)}</span>`).join('')}</div>`
+          : ''}
+        ${subDubTag ? `<div class="card-language-tags"><span class="card-language-tag">${escapeHtml(subDubTag)}</span></div>` : ''}
+        ${countdownMarkup}
       </div>
     </div>`;
 }
@@ -485,6 +509,12 @@ function initNavbar() {
       navbar.classList.toggle('scrolled', window.scrollY > 50);
     }, { passive: true });
   }
+}
+
+function applyCinePulseBranding() {
+  document.querySelectorAll('.nav-logo').forEach((logo) => {
+    logo.innerHTML = '<span>Cine</span><span class="logo-accent">Pulse</span><span class="logo-pulse" aria-hidden="true"></span>';
+  });
 }
 
 // ══════════════════════════════════════════
@@ -838,11 +868,43 @@ function enforceAdminPageAccess() {
 // AUTO INIT
 // ══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+  applyCinePulseBranding();
   if (!enforceAdminPageAccess()) return;
   initNavbar();
   if (isLoggedIn()) NotificationSystem.init();
   document.addEventListener('click', handleCardClick);
 });
+
+function refreshLiveViewerCounters() {
+  document.querySelectorAll('[data-live-viewers="true"] .live-viewer-count').forEach((node) => {
+    node.textContent = String(Math.floor(Math.random() * (2500 - 500 + 1)) + 500);
+  });
+  refreshAnimeCountdowns();
+}
+
+setInterval(refreshLiveViewerCounters, 4500);
+
+function getCountdownLabel(targetIsoDate = '') {
+  const target = new Date(targetIsoDate);
+  if (Number.isNaN(target.getTime())) return 'Next Ep soon';
+
+  const diffMs = target.getTime() - Date.now();
+  if (diffMs <= 0) return 'Next Ep airing now';
+
+  const totalHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return `Next Ep in ${days}d ${hours}h`;
+}
+
+function refreshAnimeCountdowns() {
+  document.querySelectorAll('.card-next-episode[data-airing-at]').forEach((node) => {
+    node.textContent = getCountdownLabel(node.dataset.airingAt || '');
+  });
+}
+
+setInterval(refreshAnimeCountdowns, 60000);
+document.addEventListener('DOMContentLoaded', refreshAnimeCountdowns);
 // ══════════════════════════════════════════
 // GLOBAL IMAGE REFERRER FIX
 // Patches ALL images on every page automatically

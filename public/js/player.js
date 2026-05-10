@@ -23,9 +23,9 @@
     const iframe = document.createElement('iframe');
     iframe.src = videoData.embedUrl;
     iframe.allow = iframeAttrs.allow;
+    iframe.removeAttribute('sandbox');
     iframe.referrerPolicy = iframeAttrs.referrerPolicy;
     iframe.setAttribute('allowfullscreen', '');
-    iframe.removeAttribute('sandbox');
 
     wrapper.appendChild(iframe);
     container.appendChild(wrapper);

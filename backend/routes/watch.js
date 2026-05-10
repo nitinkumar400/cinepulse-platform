@@ -437,7 +437,7 @@ router.delete('/history', protect, async (req, res) => {
   }
 });
 
-router.get('/movie/:id/sources', protect, async (req, res) => {
+router.get('/movie/:id/sources', async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -460,7 +460,7 @@ router.get('/movie/:id/sources', protect, async (req, res) => {
   }
 });
 
-router.get('/:id', protect, async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 

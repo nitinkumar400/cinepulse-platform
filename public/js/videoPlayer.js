@@ -58,7 +58,7 @@ const VideoPlayer = (() => {
     video.addEventListener('loadedmetadata', () => restoreProgress());
     window.addEventListener('resize', () => { isMobile = window.innerWidth <= 768; });
 
-    console.log('✅ VideoPlayer v2 initialized', contentId ? `(${contentId})` : '');
+    // Production mode: keep player init silent
   };
 
   // ══════════════════════════════════════════

@@ -5,15 +5,14 @@
 const VideoEngine = (() => {
   const SERVER_PRIORITY = {
     upload: 0,
-    dailymotion: 1,
-    youtube: 2,
-    vimeo: 3,
-    tmdb: 4,
-    vidsrc: 10,
-    embed2: 11,
-    autoembed: 12,
-    vidlink: 13,
-    superembed: 14,
+    embed2: 1,
+    superembed: 2,
+    autoembed: 3,
+    vidsrc: 4,
+    vidlink: 5,
+    dailymotion: 6,
+    youtube: 7,
+    vimeo: 8,
     multiembed: 15,
   };
 
@@ -98,18 +97,7 @@ const VideoEngine = (() => {
     return `https://2embed.cc/iframe/${tmdbType}?tmdb=${encodeURIComponent(movie.tmdbId)}`;
   }
 
-  function buildTmdbSource(movie) {
-    const url = buildTmdbEmbedUrl(movie);
-    if (!url) return null;
-    return createSourceConfig({
-      server: 'tmdb',
-      type: 'tmdb',
-      sourceType: 'tmdb',
-      url,
-      quality: 'Auto',
-      label: `TMDb Embed${String(movie.category || '').toLowerCase() === 'series' || String(movie.category || '').toLowerCase() === 'anime' ? ' (TV)' : ''}`,
-    }, 'tmdb');
-  }
+  // buildTmdbSource removed as requested
 
   // ═══════════════════════════════════════════════════════════════════════════
   // AUTO-EMBED SERVERS — Build URLs from TMDb ID
@@ -179,11 +167,7 @@ const VideoEngine = (() => {
       }
     }
 
-    // Add legacy TMDb embed if no tmdbId-based embeds exist
-    if (movie.tmdbId && !sources.some((source) => source.server === 'tmdb')) {
-      const tmdbSource = buildTmdbSource(movie);
-      if (tmdbSource) sources.push(tmdbSource);
-    }
+    // Legacy TMDb embed removed
 
     // ═══════════════════════════════════════════════════════════════════════════
     // AUTO-EMBED: Add multi-server sources from TMDb ID

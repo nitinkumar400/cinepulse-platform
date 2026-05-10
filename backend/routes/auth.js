@@ -38,48 +38,52 @@ function buildUserPayload(user) {
 }
 
 router.post('/admin/login', validate(loginSchema), asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
-  const user = await User.findOne({ email });
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
 
-  if (!user || !(await user.matchPassword(password))) {
-    return sendError(res, new Error('Invalid admin email or password.'), {
-      status: 401,
-      code: 'INVALID_CREDENTIALS',
+    if (!user || !(await user.matchPassword(password))) {
+      return sendError(res, new Error('Invalid admin email or password.'), {
+        status: 401,
+        code: 'INVALID_CREDENTIALS',
+      });
+    }
+
+    if (user.role !== 'admin') {
+      return sendError(res, new Error('Admin access required.'), {
+        status: 403,
+        code: 'ADMIN_REQUIRED',
+      });
+    }
+
+    if (user.isActive === false) {
+      return sendError(res, new Error('Admin account is disabled.'), {
+        status: 403,
+        code: 'ACCOUNT_SUSPENDED',
+      });
+    }
+
+    if (user.isVerified === false) {
+      user.isVerified = true;
+    }
+
+    user.lastLogin = new Date();
+    await user.save();
+
+    logger.info('Admin login successful', {
+      userId: user._id.toString(),
+      email: user.email,
     });
-  }
 
-  if (user.role !== 'admin') {
-    return sendError(res, new Error('Admin access required.'), {
-      status: 403,
-      code: 'ADMIN_REQUIRED',
+    return sendSuccess(res, {
+      token: generateToken(user._id),
+      user: buildUserPayload(user),
+    }, {
+      message: 'Admin login successful.',
     });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message, stack: err.stack });
   }
-
-  if (user.isActive === false) {
-    return sendError(res, new Error('Admin account is disabled.'), {
-      status: 403,
-      code: 'ACCOUNT_SUSPENDED',
-    });
-  }
-
-  if (user.isVerified === false) {
-    user.isVerified = true;
-  }
-
-  user.lastLogin = new Date();
-  await user.save();
-
-  logger.info('Admin login successful', {
-    userId: user._id.toString(),
-    email: user.email,
-  });
-
-  return sendSuccess(res, {
-    token: generateToken(user._id),
-    user: buildUserPayload(user),
-  }, {
-    message: 'Admin login successful.',
-  });
 }));
 
 router.get('/me', protect, adminOnly, asyncHandler(async (req, res) => {

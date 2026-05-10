@@ -4,9 +4,11 @@
 const express = require('express');
 const router  = express.Router();
 const Movie   = require('../models/Movie');
+const Episode = require('../models/Episode');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
 const ANILIST_API = 'https://graphql.anilist.co';
+const { requestTmdbWithRetry } = require('../services/tmdbService');
 
 // ══════════════════════════════════════════
 // HELPER — Fetch from AniList GraphQL
@@ -22,6 +24,110 @@ const fetchAniList = async (query, variables) => {
   if (data.errors) throw new Error(data.errors[0].message);
   return data.data;
 };
+
+async function resolveTmdbForAnime(media = {}) {
+  const title = media.title?.english || media.title?.romaji || media.title?.native || '';
+  const releaseYear = media.seasonYear || media.startDate?.year || undefined;
+  if (!title) return null;
+
+  try {
+    const search = await requestTmdbWithRetry('/search/tv', {
+      query: title,
+      year: releaseYear,
+      include_adult: false,
+      language: 'en-US',
+      page: 1,
+    }, { attempts: 2, timeoutMs: 6000 });
+
+    const results = Array.isArray(search?.results) ? search.results : [];
+    if (!results.length) return null;
+
+    const normalizedTitle = title.trim().toLowerCase();
+    const best = results.find((item) => String(item.name || '').trim().toLowerCase() === normalizedTitle) || results[0];
+    return {
+      tmdbId: best?.id || null,
+      originalLanguage: String(best?.original_language || '').toLowerCase(),
+      genreIds: Array.isArray(best?.genre_ids) ? best.genre_ids : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function importTmdbEpisodesForSeries(seriesId, tmdbId) {
+  if (!seriesId || !tmdbId) return { seasons: 0, episodes: 0, upserted: 0 };
+
+  try {
+    const details = await requestTmdbWithRetry(`/tv/${tmdbId}`, {
+      language: 'en-US',
+    }, { attempts: 2, timeoutMs: 7000 });
+
+    const seasons = Array.isArray(details?.seasons)
+      ? details.seasons.filter((season) => Number(season?.season_number) > 0)
+      : [];
+
+    if (!seasons.length) return { seasons: 0, episodes: 0, upserted: 0 };
+
+    const operations = [];
+    for (const season of seasons) {
+      const seasonNumber = Number(season.season_number);
+      const seasonPayload = await requestTmdbWithRetry(`/tv/${tmdbId}/season/${seasonNumber}`, {
+        language: 'en-US',
+      }, { attempts: 2, timeoutMs: 7000 });
+
+      const episodes = Array.isArray(seasonPayload?.episodes) ? seasonPayload.episodes : [];
+      for (const episode of episodes) {
+        const episodeNumber = Number(episode?.episode_number);
+        if (!episodeNumber || episodeNumber < 1) continue;
+
+        operations.push({
+          updateOne: {
+            filter: {
+              series: seriesId,
+              season: seasonNumber,
+              episodeNumber,
+            },
+            update: {
+              $setOnInsert: {
+                series: seriesId,
+                season: seasonNumber,
+                episodeNumber,
+                title: String(episode?.name || `Episode ${episodeNumber}`).trim(),
+                description: String(episode?.overview || '').trim(),
+                duration: Number(episode?.runtime || 24) || 24,
+                sourceType: 'local',
+                videoUrl: '',
+                thumbnailUrl: episode?.still_path
+                  ? `https://image.tmdb.org/t/p/w500${episode.still_path}`
+                  : '',
+                airDate: episode?.air_date ? new Date(episode.air_date) : null,
+              },
+            },
+            upsert: true,
+          },
+        });
+      }
+    }
+
+    if (!operations.length) return { seasons: seasons.length, episodes: 0, upserted: 0 };
+
+    let upserted = 0;
+    const chunkSize = 500;
+    for (let i = 0; i < operations.length; i += chunkSize) {
+      const chunk = operations.slice(i, i + chunkSize);
+      const result = await Episode.bulkWrite(chunk, { ordered: false });
+      upserted += result?.upsertedCount || 0;
+    }
+
+    return {
+      seasons: seasons.length,
+      episodes: operations.length,
+      upserted,
+    };
+  } catch {
+    return { seasons: 0, episodes: 0, upserted: 0 };
+  }
+}
 
 // ══════════════════════════════════════════
 // FIX: Status mapper — converts ANY AniList status
@@ -298,6 +404,8 @@ router.post('/import', protect, adminOnly, async (req, res) => {
     // FIX: Use mapStatus() — guaranteed valid enum value
     const safeStatus = mapStatus(media.status);
 
+    const tmdbMatch = await resolveTmdbForAnime(media);
+
     const movie = await Movie.create({
       title:         formatted.title,
       description:   formatted.description,
@@ -307,6 +415,8 @@ router.post('/import', protect, adminOnly, async (req, res) => {
       duration:      media.duration || 24,
       rating:        'TV-14',
       language:      'English',
+      spoken_languages: ['Japanese', 'English'],
+      provider:      'anilist',
       studio:        formatted.studio,
       director,
       cast,
@@ -316,6 +426,10 @@ router.post('/import', protect, adminOnly, async (req, res) => {
       isFeatured:    false,
       uploadedBy:    req.user._id,
       anilistId:     media.id,
+      tmdbId:        tmdbMatch?.tmdbId || null,
+      tmdb_id:       tmdbMatch?.tmdbId || null,
+      original_language: tmdbMatch?.originalLanguage || 'ja',
+      tmdb_genre_ids: tmdbMatch?.genreIds || [],
       anilistScore:  formatted.score,
       totalEpisodes: media.episodes || 0,
       status:        safeStatus,
@@ -324,11 +438,12 @@ router.post('/import', protect, adminOnly, async (req, res) => {
         : 0,
     });
 
-    console.log(`✅ Imported: ${movie.title} (status: ${safeStatus})`);
+    const episodeImport = await importTmdbEpisodesForSeries(movie._id, tmdbMatch?.tmdbId);
 
     res.status(201).json({
       message: `"${movie.title}" imported successfully!`,
       movie,
+      episodes: episodeImport,
     });
 
   } catch (error) {
@@ -391,7 +506,9 @@ router.post('/bulk-import', protect, adminOnly, async (req, res) => {
         // FIX: mapStatus() applied here too
         const safeStatus = mapStatus(media.status);
 
-        await Movie.create({
+        const tmdbMatch = await resolveTmdbForAnime(media);
+
+        const movie = await Movie.create({
           title:         formatted.title,
           description:   formatted.description,
           category:      'anime',
@@ -400,12 +517,18 @@ router.post('/bulk-import', protect, adminOnly, async (req, res) => {
           duration:      media.duration || 24,
           rating:        'TV-14',
           language:      'English',
+          spoken_languages: ['Japanese', 'English'],
+          provider:      'anilist',
           studio:        formatted.studio,
           thumbnailUrl:  formatted.posterUrl || '',
           bannerUrl:     formatted.bannerUrl || formatted.posterUrl || '',
           videoUrl:      '',
           uploadedBy:    req.user._id,
           anilistId:     media.id,
+          tmdbId:        tmdbMatch?.tmdbId || null,
+          tmdb_id:       tmdbMatch?.tmdbId || null,
+          original_language: tmdbMatch?.originalLanguage || 'ja',
+          tmdb_genre_ids: tmdbMatch?.genreIds || [],
           anilistScore:  formatted.score,
           totalEpisodes: media.episodes || 0,
           status:        safeStatus,
@@ -414,7 +537,12 @@ router.post('/bulk-import', protect, adminOnly, async (req, res) => {
             : 0,
         });
 
-        results.imported.push(formatted.title);
+        const episodeImport = await importTmdbEpisodesForSeries(movie._id, tmdbMatch?.tmdbId);
+
+        const episodeSuffix = episodeImport.episodes > 0
+          ? ` (episodes: ${episodeImport.upserted}/${episodeImport.episodes})`
+          : '';
+        results.imported.push(`${formatted.title}${episodeSuffix}`);
 
       } catch (err) {
         console.error(`Bulk import failed for ID ${id}:`, err.message);

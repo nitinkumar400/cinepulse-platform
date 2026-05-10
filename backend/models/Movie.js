@@ -84,6 +84,7 @@ const MovieSchema = new mongoose.Schema({
     type:     String,
     required: [true, 'Title is required'],
     trim:     true,
+    index:    true,
   },
 
   description: {
@@ -104,6 +105,7 @@ const MovieSchema = new mongoose.Schema({
   rating:      { type: String, default: 'PG' },
 
   averageRating: { type: Number, default: 0, min: 0, max: 10 },
+  vote_average: { type: Number, default: 0, min: 0, max: 10 },
   numRatings:    { type: Number, default: 0 },
 
   // ── Media URLs ──
@@ -137,6 +139,23 @@ const MovieSchema = new mongoose.Schema({
   subtitles: [SubtitleSchema],
 
   language:  { type: String, default: 'English' },
+  original_language: {
+    type: String,
+    default: '',
+    lowercase: true,
+    trim: true,
+    index: true,
+  },
+  spoken_languages: {
+    type: [String],
+    default: [],
+    set: (value) => {
+      if (!Array.isArray(value)) return [];
+      return value
+        .map((item) => String(item || '').trim())
+        .filter(Boolean);
+    },
+  },
   studio:    { type: String, default: '' },
   director:  { type: String, default: '' },
   cast:      [String],
@@ -153,11 +172,38 @@ const MovieSchema = new mongoose.Schema({
   },
 
   // ── AniList Fields ──
-  anilistId:    { type: Number, default: null },
+  anilistId:    { type: Number, default: null, index: true },
+  anilist_id:   { type: Number, default: null },
   anilistScore: { type: Number, default: 0 },
+  idMal: { type: Number, default: null, index: true },
+  subDubTag: {
+    type: String,
+    enum: ['Subbed', 'Dubbed'],
+    default: 'Subbed',
+  },
+  nextAiringEpisode: {
+    episode: { type: Number, default: 0 },
+    airingAt: { type: Date, default: null },
+  },
+  animeSeasonNumber: { type: Number, default: 1, min: 1 },
+  franchiseKey: { type: String, default: '', trim: true, lowercase: true, index: true },
+  provider: {
+    type: String,
+    enum: ['tmdb', 'anilist', 'manual'],
+    default: 'manual',
+    lowercase: true,
+    trim: true,
+    index: true,
+  },
 
   // ── TMDb Fields ──
-  tmdbId: { type: Number },
+  tmdbId: { type: Number, index: true },
+  tmdb_id: { type: Number },
+  tmdb_genre_ids: {
+    type: [Number],
+    default: [],
+    index: true,
+  },
   // ── Shared Fields ──
   totalEpisodes: { type: Number, default: 0 },
   status: {
@@ -181,6 +227,13 @@ MovieSchema.virtual('isActuallyNew').get(function () {
 MovieSchema.pre('save', function (next) {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   this.isNewRelease = this.createdAt > thirtyDaysAgo;
+  if (typeof this.tmdbId === 'number' && this.tmdbId > 0) this.tmdb_id = this.tmdbId;
+  if (typeof this.tmdb_id === 'number' && this.tmdb_id > 0) this.tmdbId = this.tmdb_id;
+  if (typeof this.anilistId === 'number' && this.anilistId > 0) this.anilist_id = this.anilistId;
+  if (typeof this.anilist_id === 'number' && this.anilist_id > 0) this.anilistId = this.anilist_id;
+  if ((!this.spoken_languages || this.spoken_languages.length === 0) && this.language) {
+    this.spoken_languages = [String(this.language).trim()].filter(Boolean);
+  }
   next();
 });
 
@@ -190,7 +243,9 @@ MovieSchema.index({ category:   1 });
 MovieSchema.index({ views:     -1 });
 MovieSchema.index({ createdAt: -1 });
 MovieSchema.index({ anilistId:  1 }, { sparse: true });
+MovieSchema.index({ anilist_id: 1 }, { sparse: true });
 MovieSchema.index({ tmdbId:     1 }, { unique: true, sparse: true });
+MovieSchema.index({ tmdb_id:    1 }, { unique: true, sparse: true });
 MovieSchema.index({ category: 1, genre: 1 });
 MovieSchema.index({ isFeatured: 1, createdAt: -1 });
 MovieSchema.index({ title: 'text', description: 'text' });

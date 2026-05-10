@@ -471,9 +471,11 @@
   <a href="index.html" class="nav-logo">CINE<span>STREAM</span></a>
   <div class="nav-links">
     <a href="index.html" class="active">Home</a>
-    <a href="?category=movie">Movies</a>
-    <a href="?category=anime">Anime</a>
-    <a href="?category=series">Series</a>
+    <a href="?sidebarCategory=hollywood">Hollywood</a>
+    <a href="?sidebarCategory=anime">Anime</a>
+    <a href="?sidebarCategory=chinese">Chinese (Donghua)</a>
+    <a href="?sidebarCategory=kdrama">K-Drama</a>
+    <a href="?sidebarCategory=hindi">Hindi Dubbed</a>
   </div>
   <div class="nav-right">
     <div class="nav-search" style="position:relative;">
@@ -505,11 +507,23 @@
   <section class="control-strip">
     <div class="filter-cluster" id="homeCategoryFilters">
       <button type="button" class="home-filter-btn" data-category="">Recommended</button>
-      <button type="button" class="home-filter-btn" data-category="movie">Movies</button>
+      <button type="button" class="home-filter-btn" data-category="hollywood">Hollywood</button>
       <button type="button" class="home-filter-btn" data-category="anime">Anime</button>
-      <button type="button" class="home-filter-btn" data-category="series">Series</button>
+      <button type="button" class="home-filter-btn" data-category="chinese">Chinese (Donghua)</button>
+      <button type="button" class="home-filter-btn" data-category="kdrama">K-Drama</button>
+      <button type="button" class="home-filter-btn" data-category="hindi">Hindi Dubbed</button>
     </div>
     <div class="control-hint" id="filterHint">All curated categories are visible right now.</div>
+  </section>
+
+  <section class="rail-section" id="continueWatchingSection" style="display:none;">
+    <div class="rail-head">
+      <div>
+        <h2 class="rail-title">Continue Watching</h2>
+        <div class="rail-subtitle">Jump back in where you left off.</div>
+      </div>
+    </div>
+    <div class="stream-rail" id="continueWatchingRail"></div>
   </section>
 
   <section class="rail-section" id="recommendedRailSection">
@@ -621,6 +635,14 @@
 <script src="../js/pwa.js"></script>
 <script>
 let activeCategory = '';
+const CONTINUE_WATCHING_KEY = 'cs_continue_watching';
+const SIDEBAR_FILTERS = {
+  hollywood: { original_language: 'en' },
+  anime: { original_language: 'ja', tmdb_genre_id: '16' },
+  chinese: { original_language: 'zh', tmdb_genre_id: '16' },
+  kdrama: { original_language: 'ko' },
+  hindi: { original_language: 'hi' },
+};
 
 const CATEGORY_COPY = {
   '': {
@@ -629,25 +651,46 @@ const CATEGORY_COPY = {
     subtitle: 'No category filter selected, so this panel is showing the strongest mix across the platform.',
     hint: 'All curated categories are visible right now.',
   },
-  movie: {
-    title: 'Movie Spotlight',
-    rail: 'Movie Spotlight',
-    subtitle: 'Only movie titles are being fetched right now, based on the live URL state.',
-    hint: 'Movie mode is active and the URL has been updated without a reload.',
-  },
   anime: {
     title: 'Anime Spotlight',
     rail: 'Anime Spotlight',
     subtitle: 'Only anime titles are being fetched right now, based on the live URL state.',
     hint: 'Anime mode is active and the URL has been updated without a reload.',
   },
-  series: {
-    title: 'Series Spotlight',
-    rail: 'Series Spotlight',
-    subtitle: 'Only series titles are being fetched right now, based on the live URL state.',
-    hint: 'Series mode is active and the URL has been updated without a reload.',
+  hollywood: {
+    title: 'Hollywood Spotlight',
+    rail: 'Hollywood Spotlight',
+    subtitle: 'Filtering by original language English.',
+    hint: 'Hollywood mode is active.',
+  },
+  chinese: {
+    title: 'Donghua Spotlight',
+    rail: 'Donghua Spotlight',
+    subtitle: 'Filtering by Chinese language and animation genre.',
+    hint: 'Chinese (Donghua) mode is active.',
+  },
+  kdrama: {
+    title: 'K-Drama Spotlight',
+    rail: 'K-Drama Spotlight',
+    subtitle: 'Filtering by Korean language titles.',
+    hint: 'K-Drama mode is active.',
+  },
+  hindi: {
+    title: 'Hindi Dubbed Spotlight',
+    rail: 'Hindi Dubbed Spotlight',
+    subtitle: 'Filtering by Hindi language titles.',
+    hint: 'Hindi Dubbed mode is active.',
   },
 };
+
+function buildSidebarQueryParams(categoryKey = '') {
+  const config = SIDEBAR_FILTERS[categoryKey] || {};
+  const params = new URLSearchParams();
+  Object.entries(config).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+  return params.toString();
+}
 
 function bindIndexImageFallback(root = document) {
   root.querySelectorAll('img[data-fallback-mode]').forEach((img) => {
@@ -696,17 +739,64 @@ function setupPageNavbar() {
 
 function setupSearch() {
   const input = document.getElementById('searchInput');
-  input?.addEventListener('keydown', (event) => {
+  if (!input) return;
+
+  let dropdown = document.getElementById('searchDropdown');
+  if (!dropdown) {
+    dropdown = document.createElement('div');
+    dropdown.id = 'searchDropdown';
+    dropdown.className = 'search-dropdown';
+    dropdown.style.display = 'none';
+    input.parentElement?.appendChild(dropdown);
+  }
+
+  const runSearch = debounce(async () => {
+    const q = input.value.trim();
+    if (q.length < 2) {
+      dropdown.style.display = 'none';
+      dropdown.innerHTML = '';
+      return;
+    }
+
+    try {
+      const payload = await fetchMovieList(`/movies/search?q=${encodeURIComponent(q)}&limit=6&sort=newest`);
+      const movies = payload.movies || [];
+      if (!movies.length) {
+        dropdown.innerHTML = '<div class="search-dropdown-item">No results found</div>';
+        dropdown.style.display = 'block';
+        return;
+      }
+
+      dropdown.innerHTML = movies.map((movie) => `
+        <a href="movie-details.html?id=${movie._id}" class="search-dropdown-item">
+          <div>${escapeHtml(movie.title)}</div>
+          <div class="search-dropdown-meta">${escapeHtml(String(movie.releaseYear || ''))} · ${escapeHtml(String(movie.category || ''))}</div>
+        </a>`).join('');
+      dropdown.style.display = 'block';
+    } catch {
+      dropdown.style.display = 'none';
+    }
+  }, 250);
+
+  input.addEventListener('input', runSearch);
+  input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && input.value.trim()) {
+      dropdown.style.display = 'none';
       window.location.href = `search.html?q=${encodeURIComponent(input.value.trim())}`;
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.nav-search')) {
+      dropdown.style.display = 'none';
     }
   });
 }
 
 function getCategoryFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  const category = params.get('category') || '';
-  return ['movie', 'anime', 'series'].includes(category) ? category : '';
+  const category = params.get('sidebarCategory') || '';
+  return ['', 'hollywood', 'anime', 'chinese', 'kdrama', 'hindi'].includes(category) ? category : '';
 }
 
 function applyActiveCategoryUI() {
@@ -728,7 +818,7 @@ function setupCategoryFilters() {
     if (!btn) return;
 
     activeCategory = btn.dataset.category || '';
-    setQueryParam('category', activeCategory, { replace: false });
+    setQueryParam('sidebarCategory', activeCategory, { replace: false });
     applyActiveCategoryUI();
     refreshCategorySections();
   });
@@ -765,6 +855,29 @@ function renderRail(containerId, items, options = {}) {
   bindIndexImageFallback(container);
 }
 
+function injectHomepageJsonLd(items = []) {
+  const existing = document.getElementById('homepage-jsonld');
+  if (existing) existing.remove();
+
+  const listItems = (items || []).slice(0, 20).map((movie, index) => ({
+    '@type': 'ListItem',
+    position: index + 1,
+    url: `${window.location.origin}/pages/movie-details.html?id=${movie._id}`,
+    name: movie.title || '',
+  }));
+
+  const ld = document.createElement('script');
+  ld.type = 'application/ld+json';
+  ld.id = 'homepage-jsonld';
+  ld.text = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'CinePulse Featured Movies',
+    itemListElement: listItems,
+  });
+  document.head.appendChild(ld);
+}
+
 function renderHero(movie) {
   const backdropUrl = getImageUrl(movie?.bannerUrl || movie?.thumbnailUrl || '');
   document.getElementById('heroBackdrop').style.backgroundImage = backdropUrl ? `url('${backdropUrl}')` : 'none';
@@ -785,6 +898,50 @@ function renderHero(movie) {
         <a href="movie-details.html?id=${movie._id}" class="btn btn-secondary"><i class="ri-information-line"></i> More Info</a>
       </div>`;
   }
+}
+
+function loadContinueWatchingRow() {
+  const section = document.getElementById('continueWatchingSection');
+  const rail = document.getElementById('continueWatchingRail');
+  if (!section || !rail) return;
+
+  let payload = null;
+  try {
+    payload = JSON.parse(localStorage.getItem(CONTINUE_WATCHING_KEY) || 'null');
+  } catch {
+    payload = null;
+  }
+
+  if (!payload || !payload.movieId || !payload.href) {
+    section.style.display = 'none';
+    rail.innerHTML = '';
+    return;
+  }
+
+  const progressPct = payload.totalDuration > 0
+    ? Math.min(100, Math.max(0, Math.round((payload.progress / payload.totalDuration) * 100)))
+    : 0;
+
+  section.style.display = 'block';
+  rail.innerHTML = `
+    <a href="${escapeHtml(payload.href)}" class="movie-card" style="min-width:240px;max-width:280px;">
+      <div class="card-thumbnail" style="aspect-ratio:16/9;">
+        <img
+          src="${getImageUrl(payload.thumbnailUrl) || ''}"
+          alt="${escapeHtml(payload.title || 'Continue Watching')}"
+          loading="lazy"
+          referrerpolicy="no-referrer">
+      </div>
+      <div class="card-info">
+        <div class="card-title">${escapeHtml(payload.title || 'Continue Watching')}</div>
+        <div class="card-meta">
+          <span>${progressPct}% completed</span>
+        </div>
+        <div style="margin-top:8px;height:4px;border-radius:99px;background:rgba(255,255,255,0.12);overflow:hidden;">
+          <div style="height:100%;width:${progressPct}%;background:var(--accent);"></div>
+        </div>
+      </div>
+    </a>`;
 }
 
 const sectionRequestState = {
@@ -843,8 +1000,9 @@ async function loadCategoryRail(category, containerId, emptyText) {
 
 async function loadRecommendedRail() {
   const requestId = ++sectionRequestState.recommended;
-  const endpoint = activeCategory
-    ? `/movies?category=${encodeURIComponent(activeCategory)}&limit=12&sort=highest_rated`
+  const filterParams = buildSidebarQueryParams(activeCategory);
+  const endpoint = filterParams
+    ? `/movies?${filterParams}&limit=12&sort=highest_rated`
     : '/movies?limit=12&sort=highest_rated';
 
   renderRailLoading('recommendedRail', 'Refreshing recommendations...');
@@ -856,6 +1014,7 @@ async function loadRecommendedRail() {
     renderRail('recommendedRail', payload.movies || [], {
       emptyText: 'Recommended titles will appear here once content is available.',
     });
+    injectHomepageJsonLd(payload.movies || []);
   } catch (error) {
     if (requestId !== sectionRequestState.recommended) return;
 
@@ -867,8 +1026,9 @@ async function loadRecommendedRail() {
 
 async function loadSpotlightGrid() {
   const requestId = ++sectionRequestState.spotlight;
-  const endpoint = activeCategory
-    ? `/movies?category=${encodeURIComponent(activeCategory)}&limit=12&sort=newest`
+  const filterParams = buildSidebarQueryParams(activeCategory);
+  const endpoint = filterParams
+    ? `/movies?${filterParams}&limit=12&sort=newest`
     : '/movies?limit=12&sort=newest';
 
   renderSpotlightLoading('Refreshing live catalog...');
@@ -897,8 +1057,9 @@ async function loadSpotlightGrid() {
 
 async function loadHomepagePosterGrid() {
   const requestId = ++sectionRequestState.homepagePosterGrid || 0;
-  const endpoint = activeCategory
-    ? `/movies?category=${encodeURIComponent(activeCategory)}&limit=12&sort=newest`
+  const filterParams = buildSidebarQueryParams(activeCategory);
+  const endpoint = filterParams
+    ? `/movies?${filterParams}&limit=12&sort=newest`
     : '/movies?limit=12&sort=newest';
 
   const grid = document.getElementById('homepagePosterGrid');
@@ -942,6 +1103,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   activeCategory = getCategoryFromUrl();
   applyActiveCategoryUI();
+  loadContinueWatchingRow();
 
   await Promise.all([
     loadHeroAndTrending(),

@@ -26,7 +26,7 @@ const { getEnv } = require('../config/env');
       user.isVerified = true;
       user.isActive = true;
       await user.save();
-      console.log('Admin user updated:', email);
+      console.info('Admin user updated:', email);
     } else {
       await User.create({
         email,
@@ -36,7 +36,7 @@ const { getEnv } = require('../config/env');
         isVerified: true,
         isActive: true,
       });
-      console.log('Admin user created:', email);
+      console.info('Admin user created:', email);
     }
 
     await mongoose.disconnect();

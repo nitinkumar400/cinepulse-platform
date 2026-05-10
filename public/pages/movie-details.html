@@ -281,7 +281,6 @@
               id="embedFrame"
               title="CINE STREAM Player"
               referrerpolicy="no-referrer"
-              sandbox="allow-scripts allow-same-origin allow-popups allow-presentation allow-forms"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
               allowfullscreen
             ></iframe>
@@ -293,6 +292,15 @@
     <div style="max-width:980px;margin:12px auto 0;padding:0 4px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
       <span id="playerTitle" style="font-size:15px;font-weight:600;color:var(--text-primary);"></span>
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div id="shareUnlockWrap" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button id="shareWhatsappBtn" class="btn-nav" style="padding:6px 10px;font-size:12px;">
+            <i class="ri-whatsapp-line"></i> Share WhatsApp
+          </button>
+          <button id="shareTelegramBtn" class="btn-nav" style="padding:6px 10px;font-size:12px;">
+            <i class="ri-telegram-line"></i> Share Telegram
+          </button>
+          <span id="unlockHint" style="font-size:11px;color:var(--text-muted);">Share to unlock High-Speed Server 1</span>
+        </div>
         <div class="rating-wrapper" id="ratingWrapper" style="display:none;">
           <span class="rating-label">Rate:</span>
           <div id="ratingStars"></div>
@@ -342,6 +350,14 @@
       <h2 class="rec-title">You Might Also Like</h2>
       <p class="rec-subtitle" id="recSubtitle">Based on this title</p>
       <div class="rec-grid" id="recGrid"></div>
+    </div>
+  </div>
+
+  <div class="recommendations-section" id="otherSeasonsSection" style="display:none;">
+    <div class="recommendations-inner">
+      <h2 class="rec-title">Other Seasons</h2>
+      <p class="rec-subtitle" id="otherSeasonsSubtitle">Continue the full franchise story arc.</p>
+      <div class="rec-grid" id="otherSeasonsGrid"></div>
     </div>
   </div>
 

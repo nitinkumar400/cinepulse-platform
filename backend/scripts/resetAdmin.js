@@ -17,7 +17,7 @@ const TARGET_PASSWORD = 'Admin@12345';
 
 async function resetAdmin() {
   await mongoose.connect(MONGO_URI);
-  console.log('Connected to MongoDB');
+  console.info('Connected to MongoDB');
 
   const userCollection = mongoose.connection.collection('users');
 
@@ -25,7 +25,7 @@ async function resetAdmin() {
   const existingAdmin = await userCollection.findOne({ role: 'admin' });
 
   if (!existingAdmin) {
-    console.log('No admin found. Creating new admin...');
+    console.info('No admin found. Creating new admin...');
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(TARGET_PASSWORD, salt);
 
@@ -39,10 +39,10 @@ async function resetAdmin() {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    console.log(`Admin created: ${TARGET_EMAIL} / ${TARGET_PASSWORD}`);
+    console.info(`Admin created: ${TARGET_EMAIL} / ${TARGET_PASSWORD}`);
   } else {
-    console.log('Existing admin found:', existingAdmin.email);
-    console.log('Resetting password...');
+    console.info('Existing admin found:', existingAdmin.email);
+    console.info('Resetting password...');
 
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(TARGET_PASSWORD, salt);
@@ -60,13 +60,13 @@ async function resetAdmin() {
         },
       }
     );
-    console.log(`Admin updated: ${TARGET_EMAIL} / ${TARGET_PASSWORD}`);
+    console.info(`Admin updated: ${TARGET_EMAIL} / ${TARGET_PASSWORD}`);
   }
 
   await mongoose.disconnect();
-  console.log('Done. You can now log in with:');
-  console.log(`  Email:    ${TARGET_EMAIL}`);
-  console.log(`  Password: ${TARGET_PASSWORD}`);
+  console.info('Done. You can now log in with:');
+  console.info(`  Email:    ${TARGET_EMAIL}`);
+  console.info(`  Password: ${TARGET_PASSWORD}`);
 }
 
 resetAdmin().catch(err => {

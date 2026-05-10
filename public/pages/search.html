@@ -412,7 +412,7 @@ window.addEventListener('DOMContentLoaded', () => {
     searchTimer = setTimeout(() => {
       currentPage = 1;
       performSearch(val);
-    }, 600);
+    }, 500);
   });
 
   document.getElementById('mainSearchInput').addEventListener('keydown', (e) => {
@@ -525,8 +525,8 @@ async function fetchSuggestions(q) {
     dropdown.innerHTML = data.movies.map(m => {
       // FIX: Use getImageUrl() — handles both Cloudinary and local paths
       const thumb  = getImageUrl(m.thumbnailUrl);
-      const title  = escapeHTML(m.title || '');
-      const cat    = escapeHTML(m.category || '');
+      const title  = highlightMatch(escapeHTML(m.title || ''), q);
+      const cat    = highlightMatch(escapeHTML(m.category || ''), q);
       const year   = m.releaseYear || '';
       const rating = m.averageRating || 'N/A';
 
@@ -695,6 +695,7 @@ function buildSearchCard(m) {
   const rating   = m.averageRating > 0 ? m.averageRating : '—';
   const dur      = m.duration ? `${m.duration} min` : '';
 
+  const highlightedTitle = highlightMatch(escapeHTML(m.title), currentQuery);
   return `
     <div class="movie-card" data-id="${m._id}">
       <div class="card-thumbnail">
@@ -710,13 +711,24 @@ function buildSearchCard(m) {
         <div class="card-rating"><i class="ri-star-fill"></i> ${rating}</div>
       </div>
       <div class="card-info">
-        <div class="card-title">${escapeHTML(m.title)}</div>
+        <div class="card-title">${highlightedTitle}</div>
         <div class="card-meta">
           <span>${m.releaseYear || ''}</span>
           ${dur ? `<span>·</span><span>${dur}</span>` : ''}
         </div>
       </div>
     </div>`;
+}
+
+function escapeRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function highlightMatch(text, query) {
+  const q = String(query || '').trim();
+  if (!q || q.length < 2) return text;
+  const regex = new RegExp(`(${escapeRegex(q)})`, 'ig');
+  return String(text).replace(regex, '<mark style="background:rgba(229,9,20,0.24);color:#fff;padding:0 2px;border-radius:3px;">$1</mark>');
 }
 
 // ── LOAD MORE ──

@@ -34,6 +34,9 @@ const subtitleRoutes = require('./routes/subtitleRoutes');
 const recommendRoutes = require('./routes/recommend');
 const userRoutes = require('./routes/users');
 const { aiRouter } = require('./routes/aiRoutes');
+const mcpRoutes = require('./routes/mcp');
+const syncRoutes = require('./routes/sync');
+const Movie = require('./models/Movie');
 
 const app = express();
 const HOST = getEnv('HOST', '0.0.0.0');
@@ -57,6 +60,37 @@ const htmlPageMap = {
   'tmdb-import.html': 'tmdb-import.html',
   'embed-demo.html': 'embed-demo.html',
 };
+
+function wrapLayerHandlers(stack = []) {
+  for (const layer of stack) {
+    if (layer.route && Array.isArray(layer.route.stack)) {
+      wrapLayerHandlers(layer.route.stack);
+      continue;
+    }
+
+    if (layer.name === 'router' && layer.handle && Array.isArray(layer.handle.stack)) {
+      wrapLayerHandlers(layer.handle.stack);
+      continue;
+    }
+
+    const original = layer.handle;
+    if (typeof original !== 'function' || original.__wrappedAsync) {
+      continue;
+    }
+
+    layer.handle = function wrappedAsyncHandler(req, res, next) {
+      try {
+        const maybePromise = original(req, res, next);
+        if (maybePromise && typeof maybePromise.then === 'function') {
+          maybePromise.catch(next);
+        }
+      } catch (error) {
+        next(error);
+      }
+    };
+    layer.handle.__wrappedAsync = true;
+  }
+}
 
 function corsOriginHandler(origin, callback) {
   // Allow requests with no origin (mobile apps, curl, server-to-server)
@@ -89,6 +123,16 @@ function getLocalIp() {
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    logger.error('Serverless DB connection middleware error', { error: error.message });
+    res.status(500).json({ success: false, message: 'Database connection error', error: error.message });
+  }
+});
+
 app.use(requestContext);
 app.use(cors({
   origin: corsOriginHandler,
@@ -98,7 +142,7 @@ app.use(cors({
 }));
 
 app.use(helmet({
-  frameguard: { action: 'sameorigin' },
+  frameguard: false,
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -108,86 +152,7 @@ app.use(helmet({
       fullscreen: ['self', '*'],
     },
   },
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      baseUri: ["'self'"],
-      objectSrc: ["'none'"],
-      frameAncestors: ["'self'"],
-      scriptSrc: [
-        "'self'",
-        "'unsafe-inline'",
-        "'unsafe-eval'",
-        'https://cdn.jsdelivr.net',
-        'https://www.youtube.com',
-        'https://www.youtube-nocookie.com',
-        'https://s.ytimg.com',
-        'https://www.gstatic.com',
-        'https://www.dailymotion.com',
-        'https://geo.dailymotion.com',
-        'https://api.dailymotion.com',
-        'https://static1.dmcdn.net',
-        'https://player.vimeo.com',
-      ],
-      scriptSrcElem: [
-        "'self'",
-        "'unsafe-inline'",
-        "'unsafe-eval'",
-        'https://cdn.jsdelivr.net',
-        'https://www.youtube.com',
-        'https://www.youtube-nocookie.com',
-        'https://s.ytimg.com',
-        'https://www.gstatic.com',
-        'https://www.dailymotion.com',
-        'https://geo.dailymotion.com',
-        'https://api.dailymotion.com',
-        'https://static1.dmcdn.net',
-        'https://player.vimeo.com',
-      ],
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdn.jsdelivr.net'],
-      styleSrcElem: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdn.jsdelivr.net'],
-      fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdn.jsdelivr.net'],
-      imgSrc: [
-        "'self'",
-        'data:',
-        'blob:',
-        'https:',
-        'https://i.ytimg.com',
-        'https://*.ytimg.com',
-        'https://static1.dmcdn.net',
-        'https://*.dailymotion.com',
-        'https://cdn.jsdelivr.net',
-      ],
-      mediaSrc: ["'self'", 'blob:', 'data:', 'https:'],
-      connectSrc: [
-        "'self'",
-        frontendOrigin,
-        getEnv('OLLAMA_URL', 'http://127.0.0.1:11434/api/generate').replace(/\/api\/generate$/, ''),
-        'https://cdn.jsdelivr.net',
-        'https://api.dailymotion.com',
-        'https://www.youtube.com',
-        'https://www.youtube-nocookie.com',
-        'https://www.youtube.com/youtubei/',
-        'https://*.youtube.com',
-        'https://*.ytimg.com',
-        'https://s.ytimg.com',
-        'https://www.dailymotion.com',
-        'https://geo.dailymotion.com',
-        'https://static1.dmcdn.net',
-        'https://player.vimeo.com',
-        'https://vimeo.com',
-      ],
-      frameSrc: [
-        "'self'",
-        'https://www.youtube.com',
-        'https://www.youtube-nocookie.com',
-        'https://www.dailymotion.com',
-        'https://geo.dailymotion.com',
-        'https://player.vimeo.com',
-        'https://vimeo.com',
-      ],
-    },
-  },
+  contentSecurityPolicy: false,
 }));
 
 app.use(express.json({ limit: '25mb' }));
@@ -237,18 +202,50 @@ app.get('/:pageName', (req, res, next) => {
 });
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, '../public'), {
+  maxAge: '7d',
+  etag: true,
+  setHeaders: (res, filePath) => {
+    if (/\.(js|css|png|jpg|jpeg|webp|svg|woff2?)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    }
+  },
+}));
 
 app.get('/manifest.json', (req, res) => {
   res.setHeader('Content-Type', 'application/manifest+json');
   res.sendFile(path.join(__dirname, '../public/manifest.json'));
 });
 
+app.get('/sitemap.xml', async (req, res) => {
+  try {
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const cursor = Movie.find({})
+      .select('_id updatedAt')
+      .sort({ updatedAt: -1 })
+      .lean()
+      .cursor();
+    res.setHeader('Content-Type', 'application/xml');
+    res.status(200);
+    res.write('<?xml version="1.0" encoding="UTF-8"?>');
+    res.write('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
+    for await (const movie of cursor) {
+      const loc = `${baseUrl}/pages/movie-details.html?id=${movie._id}`;
+      const lastmod = movie.updatedAt ? new Date(movie.updatedAt).toISOString() : new Date().toISOString();
+      res.write(`<url><loc>${loc}</loc><lastmod>${lastmod}</lastmod><changefreq>daily</changefreq><priority>0.8</priority></url>`);
+    }
+    res.write('</urlset>');
+    return res.end();
+  } catch (error) {
+    return res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>');
+  }
+});
+
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/movies', movieLimiter, movieRoutes);
-app.use('/api/watch', protect, watchRoutes);
-app.use('/api/episodes', protect, episodeRoutes);
-app.use('/api/comments', protect, commentRoutes);
+app.use('/api/watch', watchRoutes);
+app.use('/api/episodes', episodeRoutes);
+app.use('/api/comments', commentRoutes);
 app.use('/api/notifications', protect, notificationRoutes);
 app.use('/api/anilist', anilistRoutes);
 app.use('/api/tmdb', tmdbRoutes);
@@ -258,6 +255,12 @@ app.use('/api/subtitles', protect, subtitleRoutes);
 app.use('/api/recommend', protect, recommendRoutes);
 app.use('/api/users', protect, userRoutes);
 app.use('/api/ai', aiLimiter, protect, aiRouter);
+app.use('/api/mcp', mcpRoutes);
+app.use('/api/sync', syncRoutes);
+
+if (app._router && Array.isArray(app._router.stack)) {
+  wrapLayerHandlers(app._router.stack);
+}
 
 app.get('/', servePage('index.html'));
 app.get('/login', servePage('login.html'));
@@ -332,13 +335,20 @@ process.on('uncaughtException', (error) => {
   });
 });
 
-startServer().catch((error) => {
-  logger.error('Failed to start server infrastructure', {
-    error: error.message,
-    stack: error.stack,
+if (!process.env.VERCEL) {
+  startServer().catch((error) => {
+    logger.error('Failed to start server infrastructure', {
+      error: error.message,
+      stack: error.stack,
+    });
+    process.exit(1);
   });
-  process.exit(1);
-});
+} else {
+  // On Vercel, simply connect to DB and ensure admin
+  connectDB().then(() => ensureAdminAccount()).catch(err => {
+    logger.error('Vercel DB initialization failed', { error: err.message });
+  });
+}
 
 // Export for Vercel serverless deployment
 module.exports = app;

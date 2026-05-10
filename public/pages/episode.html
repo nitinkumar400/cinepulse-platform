@@ -363,7 +363,6 @@
             id="episodeEmbedFrame"
             class="video-embed-frame"
             title="Episode Player"
-            sandbox="allow-same-origin allow-scripts allow-presentation"
             allow="autoplay; encrypted-media; picture-in-picture"
             allowfullscreen
             referrerpolicy="no-referrer"
@@ -495,6 +494,7 @@ let countdownTimer = null;
 let saveTimer      = null;
 let seriesId       = null;
 let autoplayCancelled = false;
+const CONTINUE_WATCHING_KEY = 'cs_continue_watching';
 
 const COUNTDOWN_SECONDS = 5;
 const CIRCUMFERENCE     = 2 * Math.PI * 20; // r=20 → 125.66
@@ -1027,6 +1027,19 @@ function setupProgressTracking() {
 
   const doSave = (ct, td) => {
     if (!isFinite(td) || td < 1) return;
+    try {
+      localStorage.setItem(CONTINUE_WATCHING_KEY, JSON.stringify({
+        movieId: seriesId || '',
+        episodeId: episodeId || '',
+        title: `${currentEpisode?.series?.title || ''} · S${currentEpisode?.season || 1}E${currentEpisode?.episodeNumber || 1}`,
+        thumbnailUrl: currentEpisode?.thumbnailUrl || currentEpisode?.series?.thumbnailUrl || '',
+        progress: Math.floor(ct),
+        totalDuration: Math.floor(td),
+        updatedAt: new Date().toISOString(),
+        href: `/pages/episode.html?id=${episodeId}&t=${Math.floor(ct)}`,
+      }));
+    } catch {}
+
     fetch(`${API_BASE}/watch/progress`, {
       method:  'POST',
       headers: {

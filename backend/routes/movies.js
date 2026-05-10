@@ -213,6 +213,8 @@ router.get('/', async (req, res) => {
       category  = '',
       search    = '',
       genre     = '',
+      original_language = '',
+      tmdb_genre_id = '',
       year      = '',
       minRating = '',
       featured  = '',
@@ -237,6 +239,13 @@ router.get('/', async (req, res) => {
 
     if (category)            filter.category      = category;
     if (genre)               filter.genre         = { $in: [new RegExp(genre, 'i')] };
+    if (original_language)   filter.original_language = String(original_language).trim().toLowerCase();
+    if (tmdb_genre_id) {
+      const parsedGenreId = parseInt(tmdb_genre_id, 10);
+      if (Number.isFinite(parsedGenreId)) {
+        filter.tmdb_genre_ids = parsedGenreId;
+      }
+    }
     if (year)                filter.releaseYear   = parseInt(year);
     if (minRating)           filter.averageRating = { $gte: parseFloat(minRating) };
     if (featured === 'true') filter.isFeatured    = true;
@@ -264,7 +273,7 @@ router.get('/', async (req, res) => {
       .limit(limitNumber)
       .maxTimeMS(SEARCH_QUERY_TIMEOUT_MS)
       .lean()
-      .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating numRatings views isFeatured anilistId status createdAt');
+      .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average numRatings views isFeatured anilistId status createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes');
 
     return res.json({
       movies,
@@ -309,33 +318,14 @@ router.get('/search', async (req, res) => {
   try {
     const {
       q         = '',
-      category  = '',
-      genre     = '',
-      year      = '',
       sort      = 'newest',
-      minRating = '',
       page      = 1,
       limit     = 20,
     } = req.query;
 
-    const filter = {};
-
-    if (q.trim()) {
-      filter.$or = [
-        { title:       { $regex: q.trim(), $options: 'i' } },
-        { description: { $regex: q.trim(), $options: 'i' } },
-        { category:    { $regex: q.trim(), $options: 'i' } },
-        { genre:       { $in: [new RegExp(q.trim(), 'i')] } },
-        { director:    { $regex: q.trim(), $options: 'i' } },
-        { cast:        { $in: [new RegExp(q.trim(), 'i')] } },
-        { studio:      { $regex: q.trim(), $options: 'i' } },
-      ];
-    }
-
-    if (category)  filter.category      = category;
-    if (genre)     filter.genre         = { $in: [new RegExp(genre, 'i')] };
-    if (year)      filter.releaseYear   = parseInt(year);
-    if (minRating) filter.averageRating = { $gte: parseFloat(minRating) };
+    const filter = q.trim()
+      ? { title: { $regex: q.trim(), $options: 'i' } }
+      : {};
 
     const sortOptions = {
       newest:        { createdAt: -1 },
@@ -356,7 +346,7 @@ router.get('/search', async (req, res) => {
       .limit(limitNumber)
       .maxTimeMS(SEARCH_QUERY_TIMEOUT_MS)
       .lean()
-      .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating numRatings views createdAt');
+      .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average numRatings views createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes');
 
     res.json({
       movies,
@@ -366,7 +356,7 @@ router.get('/search', async (req, res) => {
         pages: Math.ceil(total / limitNumber),
         limit: limitNumber,
       },
-      query: { q, category, genre, year, sort, minRating },
+      query: { q, sort },
     });
 
   } catch (error) {
@@ -381,11 +371,7 @@ router.get('/search', async (req, res) => {
         },
         query: {
           q: req.query.q || '',
-          category: req.query.category || '',
-          genre: req.query.genre || '',
-          year: req.query.year || '',
           sort: req.query.sort || 'newest',
-          minRating: req.query.minRating || '',
         },
         degraded: true,
         message: 'Search is taking longer than expected. Please try again.',
@@ -414,14 +400,14 @@ router.get('/trending', asyncHandler(async (req, res) => {
   let trending = await Movie.find(filter)
     .sort({ averageRating: -1, views: -1, createdAt: -1 })
     .limit(limit)
-    .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating views createdAt')
+    .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average views createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes')
     .lean();
 
   if (!trending.length) {
     trending = await Movie.find(category ? { category } : {})
       .sort({ averageRating: -1, views: -1, createdAt: -1 })
       .limit(limit)
-      .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating views createdAt')
+      .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average views createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes')
       .lean();
   }
 
@@ -1046,6 +1032,82 @@ router.get('/:id/recommendations', asyncHandler(async (req, res) => {
   return sendSuccess(res, payload, {
     message: 'Recommendations loaded',
   });
+}));
+
+router.get('/:id/more-like-this', asyncHandler(async (req, res) => {
+  const limit = Math.min(24, Math.max(1, parseInt(req.query.limit, 10) || 12));
+  const current = await Movie.findById(req.params.id).lean().select('_id genre original_language category');
+  if (!current?._id) {
+    return res.status(404).json({ message: 'Movie not found' });
+  }
+
+  const genreList = Array.isArray(current.genre) ? current.genre.filter(Boolean) : [];
+  const language = String(current.original_language || '').trim().toLowerCase();
+
+  const filter = {
+    _id: { $ne: current._id },
+    $or: [
+      ...(genreList.length ? [{ genre: { $in: genreList } }] : []),
+      ...(language ? [{ original_language: language }] : []),
+      ...(current.category ? [{ category: current.category }] : []),
+    ],
+  };
+
+  const recommendations = await Movie.find(filter)
+    .sort({ averageRating: -1, views: -1, createdAt: -1 })
+    .limit(limit)
+    .lean()
+    .select('title thumbnailUrl bannerUrl category genre releaseYear duration averageRating views original_language spoken_languages');
+
+  return res.json({
+    recommendations,
+    basedOn: {
+      genre: genreList.slice(0, 5),
+      language: language || '',
+      category: current.category || '',
+    },
+  });
+}));
+
+router.get('/:id/other-seasons', asyncHandler(async (req, res) => {
+  const limit = Math.min(24, Math.max(1, parseInt(req.query.limit, 10) || 12));
+  const current = await Movie.findById(req.params.id)
+    .lean()
+    .select('_id title provider category franchiseKey animeSeasonNumber releaseYear averageRating thumbnailUrl');
+
+  if (!current?._id) {
+    return res.status(404).json({ message: 'Movie not found' });
+  }
+
+  const normalizedFromTitle = String(current.title || '')
+    .toLowerCase()
+    .replace(/\bseason\s*\d+\b/gi, '')
+    .replace(/\bs\d+\b/gi, '')
+    .replace(/[:\-–—].*$/g, '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const baseKey = String(current.franchiseKey || normalizedFromTitle).trim().toLowerCase();
+  if (!baseKey) {
+    return res.json({ seasons: [] });
+  }
+
+  const seasons = await Movie.find({
+    _id: { $ne: current._id },
+    provider: current.provider || 'anilist',
+    category: 'anime',
+    $or: [
+      { franchiseKey: baseKey },
+      { title: { $regex: `^${baseKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, $options: 'i' } },
+    ],
+  })
+    .sort({ animeSeasonNumber: 1, releaseYear: 1, createdAt: 1 })
+    .limit(limit)
+    .lean()
+    .select('title thumbnailUrl releaseYear averageRating animeSeasonNumber franchiseKey provider category');
+
+  return res.json({ seasons });
 }));
 
 // ══════════════════════════════════════════

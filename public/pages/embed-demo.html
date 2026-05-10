@@ -584,7 +584,6 @@
       if (location.protocol === 'http:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
         document.getElementById('ngrokGuide').style.display = 'block';
         document.getElementById('devModeGuide').style.display = 'block';
-        console.log('[EmbedDemo] Running on localhost/HTTP. Guides shown for ngrok and Dev Mode.');
       }
 
       // Dev Mode button scrolls to guide
@@ -603,7 +602,6 @@
         document.getElementById('tvControls').style.display = e.target.value === 'tv' ? 'flex' : 'none';
       });
 
-      console.log('[EmbedDemo] Initialized. EmbedServers loaded:', !!EmbedServers);
     });
 
     // Render server information cards
@@ -658,7 +656,6 @@
           return;
         }
 
-        console.log('[EmbedDemo] Loaded', currentSources.length, 'sources:', currentSources.map(s => s.serverName));
 
         // Render server buttons
         renderServerButtons();
@@ -755,7 +752,6 @@
       source.status = 'ready';
       updateServerIndicators();
 
-      console.log(`[EmbedDemo] ${source.serverName} selected - click "Watch Now" to open popup`);
     }
 
     // Open embed in popup window (bypasses all iframe/X-Frame-Options restrictions)

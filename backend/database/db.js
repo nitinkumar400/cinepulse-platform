@@ -1,8 +1,16 @@
 const mongoose = require('mongoose');
 const { getEnv } = require('../config/env');
 const logger = require('../config/logger');
+const dns = require('dns');
 
-// Connection caching for serverless (Vercel)
+// Force DNS in Node.js to Google public DNS
+try {
+  dns.setServers(['8.8.8.8', '8.8.4.4']);
+} catch (e) {
+  // ignore if any error
+}
+
+// Connection caching for serverless (Vercel) + pooled for high concurrency
 let cachedConnection = null;
 
 async function connectDB() {
@@ -11,15 +19,16 @@ async function connectDB() {
     return cachedConnection;
   }
 
-  const mongoUri = getEnv('MONGO_URI', 'mongodb://127.0.0.1:27017/cine-stream');
+  const mongoUri = getEnv('MONGODB_URI') || getEnv('MONGO_URI', 'mongodb://127.0.0.1:27017/cine-stream');
 
-  // Serverless-optimized settings
+  // Production-ready pooled settings
   const options = {
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
-    maxPoolSize: 1, // Single connection for serverless
-    minPoolSize: 0,
-    maxIdleTimeMS: 10000,
+    maxPoolSize: Number(getEnv('MONGO_MAX_POOL_SIZE', '40')),
+    minPoolSize: Number(getEnv('MONGO_MIN_POOL_SIZE', '5')),
+    maxIdleTimeMS: Number(getEnv('MONGO_MAX_IDLE_MS', '30000')),
+    waitQueueTimeoutMS: Number(getEnv('MONGO_WAIT_QUEUE_TIMEOUT_MS', '10000')),
   };
 
   try {
