@@ -21,31 +21,5 @@
   ],
   "env": {
     "NODE_ENV": "production"
-  },
-  "envs": {
-    "MONGODB_URI": {
-      "description": "MongoDB connection string"
-    },
-    "TMDB_API_KEY": {
-      "description": "TMDB API Key"
-    },
-    "CLOUDINARY_CLOUD_NAME": {
-      "description": "Cloudinary cloud name"
-    },
-    "CLOUDINARY_API_KEY": {
-      "description": "Cloudinary API key"
-    },
-    "CLOUDINARY_API_SECRET": {
-      "description": "Cloudinary API secret"
-    },
-    "ANILIST_CLIENT_ID": {
-      "description": "AniList client ID"
-    },
-    "ANILIST_CLIENT_SECRET": {
-      "description": "AniList client secret"
-    },
-    "JWT_SECRET": {
-      "description": "JWT secret key"
-    }
   }
 }
