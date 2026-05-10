@@ -7,7 +7,8 @@
     "check": "node --check backend/server.js",
     "dev": "nodemon backend/server.js",
     "start": "node backend/server.js",
-    "start:windows": "node backend/server.js"
+    "start:windows": "node backend/server.js",
+    "build": "echo 'Build complete' && npm install"
   },
   "dependencies": {
     "axios": "^1.13.6",
