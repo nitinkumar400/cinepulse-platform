@@ -938,38 +938,46 @@ function renderMovie(m) {
     loadEpisodes(m._id);
     // Re-check after episodes load; if the grid is still empty, force the upcoming card
     try { setTimeout(() => ensureUpcomingEpisodeFallback(m), 1200); } catch (e) {}
-    // Final hardcoded fallback: if grid is empty after 2.5s, inject upcoming episode card directly
-    if (m.category === 'anime' && m.nextAiringEpisode?.episode) {
-      setTimeout(() => {
-        const grid = document.getElementById('episodesGrid');
-        if (grid && (!grid.innerHTML || grid.innerHTML.trim() === '' || grid.innerHTML.includes('spinner-container'))) {
-          const nextEp = m.nextAiringEpisode.episode || 1;
-          const nextAt = m.nextAiringEpisode.airingAt ? new Date(m.nextAiringEpisode.airingAt) : null;
-          const nextAiringLabel = nextAt && !Number.isNaN(nextAt.getTime())
-            ? `Airs ${nextAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
-            : 'Airing soon';
-          const animeSeasonNumber = getAnimeSeasonNumber(m);
-          const tmdbId = Number(m?.tmdbId || m?.tmdb_id || 0);
-          const embedUrl = tmdbId ? buildAnimeEpisodeEmbedUrl(tmdbId, animeSeasonNumber, nextEp) : '';
-          grid.innerHTML = `
-            <div class="episode-card" data-anime-embed-url="${escapeHtml(embedUrl)}">
-              <img class="ep-card-thumb" src="${mediaUrl(m?.thumbnailUrl) || THUMB_PH}"
-                alt="${escapeHtml(m?.title || 'Anime Episode')}"
-                loading="lazy"
-                referrerpolicy="no-referrer"
-                onerror="this.src='${THUMB_PH}'">
-              <div style="flex:1;min-width:0;">
-                <div class="ep-card-num">Season ${animeSeasonNumber} · Episode ${nextEp}</div>
-                <div class="ep-card-title">${escapeHtml(m?.title || 'Anime')}</div>
-                <div class="ep-card-meta">
-                  <span><i class="ri-time-line"></i> ${escapeHtml(nextAiringLabel)}</span>
-                </div>
-              </div>
-              <div class="ep-play-btn"><i class="ri-play-fill" style="color:#fff;"></i></div>
-            </div>`;
-        }
-      }, 2500);
-    }
+  }
+
+  // AGGRESSIVE FALLBACK: Direct inject for anime with upcoming episode
+  if (m.category === 'anime' && m.nextAiringEpisode?.episode) {
+    const movieData = m;
+    setTimeout(() => {
+      const grid = document.getElementById('episodesGrid');
+      if (!grid) return;
+      const hasCards = Array.from(grid.children || []).some(c => c.classList?.contains('episode-card'));
+      if (hasCards) return; // Already has cards
+      
+      // Check if grid contains spinner or is empty
+      const gridHTML = grid.innerHTML || '';
+      if (!gridHTML.includes('spinner-container') && gridHTML.trim() !== '') return;
+      
+      // Inject the card
+      try {
+        const ep = movieData.nextAiringEpisode.episode || 1;
+        const airDate = movieData.nextAiringEpisode.airingAt;
+        const dateObj = airDate ? new Date(airDate) : null;
+        const label = dateObj && !Number.isNaN(dateObj.getTime()) 
+          ? `Airs ${dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` 
+          : 'Airing soon';
+        const tmdbId = Number(movieData?.tmdbId || movieData?.tmdb_id || 0);
+        const season = movieData.seasonNumber || movieData.season || 1;
+        const embedUrl = tmdbId ? `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${ep}` : '';
+        
+        grid.innerHTML = `<div class="episode-card" data-anime-embed-url="${embedUrl}">
+          <img class="ep-card-thumb" src="${mediaUrl(movieData?.thumbnailUrl) || THUMB_PH}" 
+            alt="Episode" loading="lazy" referrerpolicy="no-referrer" 
+            onerror="this.src='${THUMB_PH}'">
+          <div style="flex:1;min-width:0;">
+            <div class="ep-card-num">Season ${season} · Episode ${ep}</div>
+            <div class="ep-card-title">${(movieData?.title || 'Anime').substring(0, 50)}</div>
+            <div class="ep-card-meta"><span><i class="ri-time-line"></i> ${label}</span></div>
+          </div>
+          <div class="ep-play-btn"><i class="ri-play-fill" style="color:#fff;"></i></div>
+        </div>`;
+      } catch (err) {}
+    }, 2800);
   }
 
   // Harden: inject a simple CSS fallback so the episodesGrid is never visually empty for anime
