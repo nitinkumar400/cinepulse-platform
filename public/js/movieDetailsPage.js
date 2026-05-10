@@ -940,44 +940,33 @@ function renderMovie(m) {
     try { setTimeout(() => ensureUpcomingEpisodeFallback(m), 1200); } catch (e) {}
   }
 
-  // AGGRESSIVE FALLBACK: Direct inject for anime with upcoming episode
-  if (m.category === 'anime' && m.nextAiringEpisode?.episode) {
-    const movieData = m;
+  // ULTRA-AGGRESSIVE: Unconditional grid fill for anime after delay
+  if (String(m.category || '').toLowerCase() === 'anime') {
     setTimeout(() => {
       const grid = document.getElementById('episodesGrid');
       if (!grid) return;
-      const hasCards = Array.from(grid.children || []).some(c => c.classList?.contains('episode-card'));
-      if (hasCards) return; // Already has cards
       
-      // Check if grid contains spinner or is empty
-      const gridHTML = grid.innerHTML || '';
-      if (!gridHTML.includes('spinner-container') && gridHTML.trim() !== '') return;
+      // Check if grid has episode cards
+      const hasEpisodeCards = Array.from(grid.children || []).some(c => 
+        c.classList?.contains('episode-card') || c.classList?.contains('ep-card-thumb')
+      );
+      if (hasEpisodeCards) return;
       
-      // Inject the card
-      try {
-        const ep = movieData.nextAiringEpisode.episode || 1;
-        const airDate = movieData.nextAiringEpisode.airingAt;
-        const dateObj = airDate ? new Date(airDate) : null;
-        const label = dateObj && !Number.isNaN(dateObj.getTime()) 
-          ? `Airs ${dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` 
-          : 'Airing soon';
-        const tmdbId = Number(movieData?.tmdbId || movieData?.tmdb_id || 0);
-        const season = movieData.seasonNumber || movieData.season || 1;
-        const embedUrl = tmdbId ? `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${ep}` : '';
-        
-        grid.innerHTML = `<div class="episode-card" data-anime-embed-url="${embedUrl}">
-          <img class="ep-card-thumb" src="${mediaUrl(movieData?.thumbnailUrl) || THUMB_PH}" 
-            alt="Episode" loading="lazy" referrerpolicy="no-referrer" 
-            onerror="this.src='${THUMB_PH}'">
-          <div style="flex:1;min-width:0;">
-            <div class="ep-card-num">Season ${season} · Episode ${ep}</div>
-            <div class="ep-card-title">${(movieData?.title || 'Anime').substring(0, 50)}</div>
-            <div class="ep-card-meta"><span><i class="ri-time-line"></i> ${label}</span></div>
-          </div>
-          <div class="ep-play-btn"><i class="ri-play-fill" style="color:#fff;"></i></div>
-        </div>`;
-      } catch (err) {}
-    }, 2800);
+      // Check if it contains spinner or is empty/has placeholder
+      const html = grid.innerHTML || '';
+      if (html.includes('episode-card') || (html.trim() !== '' && !html.includes('spinner'))) return;
+      
+      // Force inject upcoming episode card
+      const ep = (m.nextAiringEpisode?.episode || m.totalEpisodes || 1);
+      const season = m.seasonNumber || 1;
+      grid.innerHTML = `<div class="episode-card" style="cursor:pointer;">
+        <div style="padding:20px;text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;">
+          <div style="font-size:18px;font-weight:600;margin-bottom:10px;">Season ${season} · Episode ${ep}</div>
+          <div style="color:var(--text-muted);font-size:14px;">${(m.title || 'Anime').substring(0, 40)}</div>
+          <div style="margin-top:15px;padding:8px 16px;background:rgba(52,211,153,0.2);border-radius:6px;color:#34d399;font-size:12px;">Upcoming Episode</div>
+        </div>
+      </div>`;
+    }, 2500);
   }
 
   // Harden: inject a simple CSS fallback so the episodesGrid is never visually empty for anime
