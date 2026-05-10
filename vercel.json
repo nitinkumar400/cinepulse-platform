@@ -4,19 +4,16 @@
   "installCommand": "npm install",
   "framework": null,
   "functions": {
-    "backend/server.js": {
+    "api/server.js": {
       "memory": 1024,
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "backend/uploads/**"
     }
   },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/backend/server.js"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/public/$1"
+      "destination": "/api/server.js"
     }
   ],
   "env": {
