@@ -138,10 +138,10 @@ app.use(async (req, res, next) => {
 
 app.use(requestContext);
 app.use(cors({
-  origin: corsOriginHandler,
+  origin: runtime === 'production' ? '*' : corsOriginHandler,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: true,
+  credentials: runtime !== 'production',
 }));
 
 app.use(helmet({
@@ -219,7 +219,11 @@ app.use(express.static(path.join(__dirname, '../public'), {
   etag: true,
   setHeaders: (res, filePath) => {
     if (/\.(js|css|png|jpg|jpeg|webp|svg|woff2?)$/i.test(filePath)) {
-      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+      if (runtime === 'development') {
+        res.setHeader('Cache-Control', 'no-cache');
+      } else {
+        res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+      }
     }
   },
 }));
@@ -347,7 +351,8 @@ process.on('uncaughtException', (error) => {
   });
 });
 
-if (!process.env.VERCEL) {
+// Only start the local HTTP server when NOT in production / Vercel
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
   startServer().catch((error) => {
     logger.error('Failed to start server infrastructure', {
       error: error.message,
@@ -356,7 +361,7 @@ if (!process.env.VERCEL) {
     process.exit(1);
   });
 } else {
-  // On Vercel, simply connect to DB and ensure admin
+  // On Vercel / production serverless, connect to DB and ensure admin account
   connectDB().then(() => ensureAdminAccount()).catch(err => {
     logger.error('Vercel DB initialization failed', { error: err.message });
   });

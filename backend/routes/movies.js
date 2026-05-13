@@ -3,6 +3,7 @@
 // ══════════════════════════════════════════
 const express  = require('express');
 const router   = express.Router();
+const mongoose = require('mongoose');
 const Movie    = require('../models/Movie');
 const { protect, adminOnly, optionalProtect } = require('../middleware/authMiddleware');
 const {
@@ -520,6 +521,10 @@ router.get('/sources/broken', protect, adminOnly, asyncHandler(async (req, res) 
 // ══════════════════════════════════════════
 router.get('/:id', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid movie ID format' });
+    }
+
     // Only increment view if user is logged in (optional auth)
     let movie;
     const authHeader = req.headers.authorization;

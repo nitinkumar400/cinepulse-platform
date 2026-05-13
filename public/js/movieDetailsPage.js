@@ -1,5 +1,72 @@
 (function () {
 
+// ═══════════════════════════════════════════════════════════════════════════
+// GLOBAL STATE & CONSTANTS — Single source of truth for this IIFE
+// All variables declared here to prevent every ReferenceError permanently.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── App-level constants ──
+const SHARE_UNLOCK_KEY_PREFIX  = 'cinepulse_share_';
+const CONTINUE_WATCHING_KEY    = 'cinepulse_continue_watching';
+
+// ── Playback state ──
+let currentMovie            = null;
+let currentMovieId          = null;
+let userLoggedIn            = false;
+let playbackSources         = [];
+let activeSourceIndex       = -1;
+let activePlayerSwitchToken = 0;
+let nativePlayerInitialized = false;
+let progressTrackingReady   = false;
+let activeEmbedPlayer       = null;
+let providerSubtitleBlobUrls = [];
+let progressTimer           = null;
+
+// ── Episode/UI state ──
+let seasonsData    = {};
+let selectedRating = 0;
+
+// ─────────────────────────────────────────────────────────────────────────
+// SESSION FAILED-PROVIDER MANAGEMENT
+// Tracks servers that failed this session so we can skip them on retry.
+// Uses sessionStorage so the list auto-clears when the tab is closed.
+// ─────────────────────────────────────────────────────────────────────────
+const _SESSION_FAILED_KEY = 'cinepulse_session_failed_providers';
+
+function getFailedProviders() {
+  try {
+    return JSON.parse(sessionStorage.getItem(_SESSION_FAILED_KEY) || '[]');
+  } catch { return []; }
+}
+
+function setFailedProviders(list) {
+  try {
+    sessionStorage.setItem(_SESSION_FAILED_KEY, JSON.stringify(Array.isArray(list) ? list : []));
+  } catch {}
+}
+
+function markProviderFailed(source) {
+  if (!source?.server) return;
+  const key = String(source.server).trim().toLowerCase();
+  const current = getFailedProviders();
+  if (!current.includes(key)) {
+    setFailedProviders([...current, key]);
+  }
+  source.status = 'failed';
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// reorderSourcesBySessionHealth — sorts sources so non-failed ones come first.
+// Preserved as a no-crash shim; the Hydra system handles primary ordering.
+// ─────────────────────────────────────────────────────────────────────────
+function reorderSourcesBySessionHealth(sources) {
+  if (!Array.isArray(sources) || !sources.length) return sources || [];
+  const failed = new Set(getFailedProviders());
+  const good   = sources.filter(s => !failed.has(String(s.server || '').toLowerCase()));
+  const bad    = sources.filter(s =>  failed.has(String(s.server || '').toLowerCase()));
+  return [...good, ...bad];
+}
+
 // Search and auto-load subtitles for a movie
 async function loadOpenSubtitles(movieTitle, movieId) {
   const token = localStorage.getItem('token');
@@ -79,6 +146,8 @@ async function loadOpenSubtitles(movieTitle, movieId) {
       } catch(e) {
         grid.innerHTML = '<p style="color:var(--text-muted);padding:20px;">Failed to load episodes</p>';
       }
+  } catch(err) {
+    console.error('Subtitle/episode load error:', err);
   }
 }
 
@@ -294,22 +363,38 @@ userLoggedIn = !!token;
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     const res = await apiFetch(`/movies/${movieId}`, { headers });
-    if (!res.ok) throw new Error('Not found');
-
-    const movie  = await readJsonResponse(res);
-    currentMovie = normalizeMovieState(await hydrateAnimeTmdbId(movie), movie);
-    currentMovieId = movie._id;
-
-    const tmdbData = await fetchTmdbMetadata(currentMovie);
-    if (tmdbData) {
-      currentMovie = normalizeMovieState(mergeTmdbDetails(currentMovie, tmdbData), movie);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch movie data: HTTP ${res.status}`);
     }
+
+    const movieRaw  = await readJsonResponse(res);
+    // API may return { data: movie } or the movie object directly
+    const movieData  = movieRaw?.data || movieRaw;
+    currentMovie = normalizeMovieState(await hydrateAnimeTmdbId(movieData), movieData);
+
+    if (!currentMovie) {
+      throw new Error('Movie data could not be loaded');
+    }
+
+    // Soft gate: warn but do NOT crash — Hydra handles anime (anilist_id) without tmdb_id
+    if (!currentMovie.tmdbId && !currentMovie.tmdb_id) {
+      const hasAnilist = currentMovie.anilistId || currentMovie.anilist_id || currentMovie.providerId;
+      if (!hasAnilist) {
+        console.warn('[Hydra] No tmdb_id or anilist_id — player may show no servers for this title.');
+      }
+    }
+
+    currentMovieId = movieData._id || movieData.id;
 
     renderMovie(currentMovie);
 
   } catch(e) {
-    console.error('Movie load error:', e);
+    console.error('Movie load error: Exact reason for failure:', e.message || e);
     showState('error');
+    const errorStateEl = document.getElementById('errorState');
+    if (errorStateEl) {
+      errorStateEl.innerHTML = '<div style="text-align:center;padding:40px;"><h3>Movie Not Found or Unavailable</h3></div>';
+    }
   }
 
   // Bind static buttons
@@ -592,43 +677,48 @@ function renderServerSelector() {
 
   switcher.style.display = playbackSources.length > 1 ? 'flex' : 'none';
   const failedProviders = new Set(getFailedProviders());
-  const hs1Unlocked = isHighSpeedServerUnlocked(currentMovieId);
 
-  // Render visual server buttons with status indicators
+  // ── Hydra numbered server buttons: "Server 1", "Server 2", etc. ──
   btnContainer.innerHTML = playbackSources.map((source, index) => {
-    const isLockedHs1 = index === 0 && !hs1Unlocked;
     const isActive = index === activeSourceIndex;
     const status = source.status || 'unknown';
     const isSessionFailed = failedProviders.has(String(source.server || '').trim().toLowerCase());
+    const isFailed = status === 'failed' || isSessionFailed;
     const statusColor = isSessionFailed
       ? '#ef4444'
-      : (status === 'working' ? '#22c55e' : status === 'failed' ? '#ef4444' : '#fbbf24');
+      : (status === 'working' ? '#22c55e' : isFailed ? '#ef4444' : '#fbbf24');
+    const serverNum = index + 1;
+    // Friendly tooltip shows the actual provider name
+    const providerName = source.serverName || source.label || `Server ${serverNum}`;
 
     return `
       <button
-        class="srv-btn ${isActive ? 'srv-active' : ''} ${status === 'failed' ? 'srv-failed' : ''} ${isSessionFailed ? 'srv-session-failed' : ''}"
+        class="srv-btn ${isActive ? 'srv-active' : ''} ${isFailed ? 'srv-failed' : ''}"
         data-index="${index}"
-        title="${escapeHtml(source.label)}${status === 'failed' ? ' (Failed)' : ''}${isSessionFailed ? ' (Session skipped)' : ''}"
+        id="srvBtn${serverNum}"
+        title="${escapeHtml(providerName)}${isFailed ? ' (Unavailable)' : ''}"
         style="
-          padding: 6px 12px;
-          border: 1px solid ${isActive ? 'var(--accent, #e50914)' : 'rgba(255,255,255,0.2)'};
-          background: ${isActive ? 'var(--accent, #e50914)' : 'transparent'};
-          color: ${isActive ? '#fff' : 'rgba(255,255,255,0.8)'};
-          border-radius: 6px;
-          cursor: ${status === 'failed' ? 'not-allowed' : 'pointer'};
-          font-size: 12px;
-          font-weight: 500;
-          transition: all 0.2s;
+          padding: 7px 18px;
+          border: 1.5px solid ${isActive ? 'var(--accent, #e50914)' : 'rgba(255,255,255,0.18)'};
+          background: ${isActive ? 'linear-gradient(135deg, var(--accent, #e50914), #c40812)' : 'rgba(255,255,255,0.04)'};
+          color: ${isActive ? '#fff' : 'rgba(255,255,255,0.75)'};
+          border-radius: 8px;
+          cursor: ${isFailed ? 'not-allowed' : 'pointer'};
+          font-size: 12.5px;
+          font-weight: ${isActive ? '600' : '500'};
+          letter-spacing: 0.3px;
+          transition: all 0.2s ease;
           display: inline-flex;
           align-items: center;
-          gap: 6px;
-          opacity: ${status === 'failed' || isSessionFailed ? '0.55' : '1'};
+          gap: 7px;
+          opacity: ${isFailed ? '0.45' : '1'};
+          box-shadow: ${isActive ? '0 2px 12px rgba(229,9,20,0.35)' : 'none'};
         "
-        ${status === 'failed' || isLockedHs1 ? 'disabled' : ''}
+        ${isFailed ? 'disabled' : ''}
       >
-        <span style="width:6px;height:6px;border-radius:50%;background:${statusColor};"></span>
-        ${escapeHtml(source.serverName || source.label)}${isLockedHs1 ? ' 🔒' : ''}
-        ${isSessionFailed ? '<span style="font-size:10px;letter-spacing:0.4px;">SKIPPED</span>' : ''}
+        <span style="width:7px;height:7px;border-radius:50%;background:${statusColor};box-shadow:0 0 5px ${statusColor}88;flex-shrink:0;"></span>
+        Server ${serverNum}
+        ${isSessionFailed ? '<span style="font-size:10px;letter-spacing:0.5px;">SKIP</span>' : ''}
       </button>
     `;
   }).join('');
@@ -651,7 +741,7 @@ function renderServerSelector() {
       align-items: center;
       gap: 6px;
     `;
-    resetBtn.innerHTML = '<i class="ri-refresh-line"></i> Reset Failed Servers';
+    resetBtn.innerHTML = '<i class="ri-refresh-line"></i> Reset Servers';
     switcher.appendChild(resetBtn);
   }
   resetBtn.style.display = failedProviders.size > 0 ? 'inline-flex' : 'none';
@@ -660,7 +750,7 @@ function renderServerSelector() {
     playbackSources = reorderSourcesBySessionHealth(playbackSources);
     activeSourceIndex = 0;
     renderServerSelector();
-    showPlayerMessage('Failed server memory cleared for this session.', 2400);
+    showPlayerMessage('Server list reset for this session.', 2400);
   };
 }
 
@@ -1807,12 +1897,24 @@ async function switchPlaybackSource(index, options = {}) {
     clearTimeout(switchPlaybackSource.embedTimer);
     initProviderPlayer(source);
     showPlayerLoader(false);
-    setPlayerStatus(`Now playing â€¢ ${source.statusLabel || source.label}`);
+    setPlayerStatus(`Now playing • ${source.statusLabel || source.label}`);
   };
 
+  // ── Hydra Security: per-provider sandbox policy ──
+  // sandboxPolicy 'none'     → provider explicitly rejects any sandbox (e.g. VidLink)
+  // sandboxPolicy 'balanced' → our standard: blocks top-navigation & downloads
+  const sandboxPolicy = source.sandboxPolicy || 'balanced';
+  if (sandboxPolicy === 'none') {
+    // Fully trusted provider: remove sandbox to allow it to function
+    frame.removeAttribute('sandbox');
+  } else {
+    // Balanced: allows popups (needed for player UIs), blocks forced page redirects
+    frame.setAttribute('sandbox',
+      'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation'
+    );
+  }
   frame.referrerPolicy = 'no-referrer';
-  frame.removeAttribute('sandbox');
-  frame.allow = 'autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer; clipboard-write;';
+  frame.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture; gyroscope; accelerometer';
   frame.allowFullscreen = true;
   frame.setAttribute('allowfullscreen', 'true');
   frame.setAttribute('webkitallowfullscreen', 'true');
@@ -1826,21 +1928,46 @@ async function switchPlaybackSource(index, options = {}) {
     if (switchToken !== activePlayerSwitchToken) return;
     markProviderFailed(source);
     if (index < playbackSources.length - 1) {
-      showPlayerMessage('Switching source...');
-      setPlayerStatus('This source is slow. Trying the next source...', 'switching');
+      showPlayerMessage('Server slow — trying next...');
+      setPlayerStatus('Switching to faster server...', 'switching');
       switchPlaybackSource(index + 1, { auto: true }).catch(() => {});
     } else {
-      renderSourceOffline(source, 'Content currently unavailable. Please try another server.');
+      renderSourceOffline(source, 'All servers are currently slow. Please try again or select a server manually.');
     }
-  }, 7000);
+  }, 5000); // 5s: faster failover so users see a working server sooner
 }
 
 async function setupPlayback(movie) {
   try {
+    // ── Global Master Hydra: build sources from EmbedServers first ──
+    let hydraSources = [];
+    if (typeof EmbedServers !== 'undefined' && typeof EmbedServers.buildHydraSources === 'function') {
+      try {
+        hydraSources = EmbedServers.buildHydraSources(
+          movie,
+          movie.season || 1,
+          movie.episode || 1
+        );
+      } catch (hydrErr) {
+        console.warn('[Hydra] buildHydraSources failed:', hydrErr.message);
+      }
+    }
+
+    // Also try masked/uploaded sources as primary (direct video uploads)
     playbackSources = await loadMaskedPlaybackSources(movie._id);
+
+    // Merge: uploaded sources first, then hydra embed servers, then VideoEngine fallback
+    if (hydraSources.length) {
+      const existingUrls = new Set(playbackSources.map(s => s.url || s.embedUrl || ''));
+      const freshHydra = hydraSources.filter(s => !existingUrls.has(s.url || s.embedUrl || ''));
+      playbackSources = [...playbackSources, ...freshHydra];
+    }
+
+    // Final fallback: VideoEngine if still empty
     if (!playbackSources.length) {
       playbackSources = (window.VideoEngine?.buildMovieSources?.(movie) || []);
     }
+
     playbackSources = reorderSourcesBySessionHealth(playbackSources);
     activeSourceIndex = playbackSources.length ? 0 : -1;
     renderServerSelector();

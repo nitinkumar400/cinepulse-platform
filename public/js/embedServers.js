@@ -1,48 +1,105 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CINE STREAM — Multi-Server Auto-Embed System
- * Automatic video embedding with 6+ servers + smart failover
+ * CINE STREAM — Global Master Hydra Multi-Server System
+ * Supports Western Movies, TV Series, Anime & Asian Dramas
+ * Smart routing: Standard TMDB servers vs Anime Specialist (AniList) servers
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 const EmbedServers = (() => {
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // SERVER CONFIGURATION — 6+ Auto-Embed Providers
+  // STANDARD SERVERS — For Movies & TV (requires tmdb_id)
   // ═══════════════════════════════════════════════════════════════════════════
-  const SERVERS = {
+  const STANDARD_SERVERS = {
+    // Priority 1 — VidSrc: reliable, allows cross-origin embedding
     vidsrc: {
       name: 'VidSrc',
-      priority: 4,
+      key: 'vidsrc',
+      priority: 1,
+      sandboxPolicy: 'balanced',
       movieUrl: (tmdbId) => `https://vidsrc.to/embed/movie/${tmdbId}`,
       tvUrl: (tmdbId, season, episode) => `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}`,
       timeout: 8000,
     },
+    // Priority 2 — 2Embed: confirmed working with sandbox on localhost
     embed2: {
       name: '2Embed',
-      priority: 1,
+      key: 'embed2',
+      priority: 2,
+      sandboxPolicy: 'balanced',
       movieUrl: (tmdbId) => `https://www.2embed.cc/embed/${tmdbId}`,
       tvUrl: (tmdbId, season, episode) => `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`,
-      timeout: 7000,
+      timeout: 8000,
     },
+    // Priority 3 — MultiEmbed: does not reject sandbox, good coverage
+    multiembed: {
+      name: 'MultiEmbed',
+      key: 'multiembed',
+      priority: 3,
+      sandboxPolicy: 'balanced',
+      movieUrl: (tmdbId) => `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`,
+      tvUrl: (tmdbId, season, episode) => `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${season}&e=${episode}`,
+      timeout: 8000,
+    },
+    // Priority 4 — AutoEmbed: works on production (X-Frame-Options blocks localhost)
     autoembed: {
       name: 'AutoEmbed',
-      priority: 3,
-      movieUrl: (tmdbId) => `https://autoembed.to/movie/tmdb/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://autoembed.to/tv/tmdb/${tmdbId}-${season}-${episode}`,
-      timeout: 7000,
+      key: 'autoembed',
+      priority: 4,
+      sandboxPolicy: 'balanced',
+      movieUrl: (tmdbId) => `https://autoembed.co/movie/tmdb/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://autoembed.co/tv/tmdb/${tmdbId}-${season}-${episode}`,
+      timeout: 8000,
     },
+    // Priority 5 — VidLink: explicitly rejects any sandbox attribute — sandboxPolicy:'none'
     vidlink: {
       name: 'VidLink',
+      key: 'vidlink',
       priority: 5,
+      sandboxPolicy: 'none',  // This provider shows "Please Disable Sandbox" if any sandbox present
       movieUrl: (tmdbId) => `https://vidlink.pro/movie/${tmdbId}`,
       tvUrl: (tmdbId, season, episode) => `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}`,
-      timeout: 7000,
+      timeout: 9000,
     },
+    // Priority 6 — SuperEmbed: works on production, may block localhost
     superembed: {
       name: 'SuperEmbed',
+      key: 'superembed',
+      priority: 6,
+      sandboxPolicy: 'balanced',
+      movieUrl: (tmdbId) => `https://embed.su/embed/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://embed.su/embed/tv/${tmdbId}/${season}/${episode}`,
+      timeout: 9000,
+    },
+    // Priority 7 — SmashyStream: works on production, may block localhost
+    smashy: {
+      name: 'SmashyStream',
+      key: 'smashy',
+      priority: 7,
+      sandboxPolicy: 'balanced',
+      movieUrl: (tmdbId) => `https://player.smashy.stream/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://player.smashy.stream/tv/${tmdbId}?s=${season}&e=${episode}`,
+      timeout: 8000,
+    },
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ANIME SPECIALIST SERVERS — For Anime (requires anilist_id)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ANIME_SERVERS = {
+    animeautoembed: {
+      name: 'Anime AutoEmbed',
+      key: 'animeautoembed',
+      priority: 1,
+      animeUrl: (anilistId, episodeNumber) => `https://autoembed.cc/anime/anilist/${anilistId}/${episodeNumber}`,
+      timeout: 9000,
+    },
+    smashyanime: {
+      name: 'Smashy Anime',
+      key: 'smashyanime',
       priority: 2,
-      movieUrl: (tmdbId) => `https://superembed.stream/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://superembed.stream/tv/${tmdbId}/${season}/${episode}`,
+      animeUrl: (anilistId, episodeNumber) => `https://player.smashy.stream/anime?anilist=${anilistId}&ep=${episodeNumber}`,
       timeout: 8000,
     },
   };
@@ -50,205 +107,341 @@ const EmbedServers = (() => {
   // ═══════════════════════════════════════════════════════════════════════════
   // STATE
   // ═══════════════════════════════════════════════════════════════════════════
-  let currentServerKey = null;
-  let currentTmdbId = null;
-  let currentType = 'movie'; // 'movie' or 'tv'
-  let currentSeason = 1;
-  let currentEpisode = 1;
-  let serverStatus = {}; // Track working/failed servers
-  let autoRotateInterval = null;
+  let serverStatus = {};
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // GET EMBED URL FOR SERVER
+  // DETECT MEDIA CATEGORY
+  // Returns: 'anime' | 'tv' | 'movie'
   // ═══════════════════════════════════════════════════════════════════════════
-  const getEmbedUrl = (serverKey, tmdbId, type = 'movie', season = 1, episode = 1) => {
-    const server = SERVERS[serverKey];
-    if (!server || !tmdbId) return null;
-
-    return type === 'movie'
-      ? server.movieUrl(tmdbId)
-      : server.tvUrl(tmdbId, season, episode);
-  };
+  function detectCategory(movieData) {
+    const category = String(movieData?.category || movieData?.provider || '').toLowerCase();
+    if (category === 'anime' || category === 'anilist') return 'anime';
+    if (['series', 'tv', 'cartoon', 'k-drama', 'asian-drama', 'asian_drama'].includes(category)) return 'tv';
+    if (Number(movieData?.totalEpisodes || 0) > 1) return 'tv';
+    return 'movie';
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // BUILD ALL SERVER SOURCES FOR A MOVIE/TV SHOW
+  // GENERATE EMBED URL (CORE ROUTING FUNCTION)
+  // Evaluates movieData.category and routes to the correct server type.
+  // Returns null (silently filtered) if a required ID is missing.
   // ═══════════════════════════════════════════════════════════════════════════
-  const buildAllSources = (tmdbId, type = 'movie', season = 1, episode = 1) => {
-    if (!tmdbId) return [];
+  function generateEmbedUrl(server, movieData, season = 1, episode = 1) {
+    const mediaCategory = detectCategory(movieData);
 
+    if (mediaCategory === 'anime') {
+      // Route to anime specialist servers
+      const animeServer = ANIME_SERVERS[server.key] || ANIME_SERVERS[server];
+      if (!animeServer) return null;
+
+      const anilistId = movieData?.anilistId || movieData?.anilist_id || movieData?.providerId || null;
+      const epNum = Number(episode || 1);
+
+      if (!anilistId) return null; // Silently filter: missing anilist_id
+      return animeServer.animeUrl(anilistId, epNum);
+
+    } else {
+      // Route to standard servers (movie or TV)
+      const stdServer = STANDARD_SERVERS[server.key] || STANDARD_SERVERS[server];
+      if (!stdServer) return null;
+
+      const tmdbId = movieData?.tmdbId || movieData?.tmdb_id || null;
+      if (!tmdbId) return null; // Silently filter: missing tmdb_id
+
+      if (mediaCategory === 'tv') {
+        return stdServer.tvUrl(tmdbId, Number(season || 1), Number(episode || 1));
+      } else {
+        return stdServer.movieUrl(tmdbId);
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUILD HYDRA SOURCES — Master source builder for a given movie/show
+  // Automatically selects the correct pool (anime vs standard) and filters
+  // out any server that cannot produce a valid URL for this specific title.
+  // ═══════════════════════════════════════════════════════════════════════════
+  function buildHydraSources(movieData, season = 1, episode = 1) {
+    const mediaCategory = detectCategory(movieData);
     const sources = [];
 
-    Object.entries(SERVERS).forEach(([key, server]) => {
-      const url = getEmbedUrl(key, tmdbId, type, season, episode);
-      if (url) {
+    if (mediaCategory === 'anime') {
+      // Use anime specialist servers
+      const anilistId = movieData?.anilistId || movieData?.anilist_id || movieData?.providerId || null;
+
+      Object.values(ANIME_SERVERS).forEach((server, idx) => {
+        if (!anilistId) return; // Silently skip entire pool
+        const url = server.animeUrl(anilistId, Number(episode || 1));
+        if (!url) return;
+
         sources.push({
-          id: `embed-${key}`,
-          server: key,
+          id: `hydra-anime-${server.key}`,
+          server: server.key,
           serverName: server.name,
+          label: `Server ${sources.length + 1}`,
           priority: server.priority,
-          url: url,
+          url,
           embedUrl: url,
-          playUrl: '', // External embeds don't have direct play URL
-          label: server.name,
+          playUrl: '',
+          quality: 'Auto',
+          isExternal: true,
+          isEmbed: true,
+          isAnime: true,
+          timeout: server.timeout,
+          sandboxPolicy: server.sandboxPolicy || 'balanced',
+          status: serverStatus[server.key] || 'unknown',
+          statusLabel: `Server ${sources.length + 1} • ${server.name}`,
+          sourceType: server.key,
+        });
+      });
+
+      // Anime fallback: if no anilist_id but has tmdb_id, use standard TV servers
+      if (!anilistId) {
+        const tmdbId = movieData?.tmdbId || movieData?.tmdb_id || null;
+        if (tmdbId) {
+          Object.values(STANDARD_SERVERS).forEach((server) => {
+            const url = server.tvUrl(tmdbId, Number(season || 1), Number(episode || 1));
+            if (!url) return;
+
+            sources.push({
+              id: `hydra-std-${server.key}`,
+              server: server.key,
+              serverName: server.name,
+              label: `Server ${sources.length + 1}`,
+              priority: server.priority + 10,
+              url,
+              embedUrl: url,
+              playUrl: '',
+              quality: 'Auto',
+              isExternal: true,
+              isEmbed: true,
+              timeout: server.timeout,
+              sandboxPolicy: server.sandboxPolicy || 'balanced',
+              status: serverStatus[server.key] || 'unknown',
+              statusLabel: `Server ${sources.length + 1} • ${server.name}`,
+              sourceType: server.key,
+            });
+          });
+        }
+      }
+
+    } else {
+      // Standard content — movies & TV (Western, Asian Drama, etc.)
+      const tmdbId = movieData?.tmdbId || movieData?.tmdb_id || null;
+
+      Object.values(STANDARD_SERVERS).forEach((server) => {
+        if (!tmdbId) return; // Silently skip: no tmdb_id
+        let url;
+        if (mediaCategory === 'tv') {
+          url = server.tvUrl(tmdbId, Number(season || 1), Number(episode || 1));
+        } else {
+          url = server.movieUrl(tmdbId);
+        }
+        if (!url) return;
+
+        sources.push({
+          id: `hydra-std-${server.key}`,
+          server: server.key,
+          serverName: server.name,
+          label: `Server ${sources.length + 1}`,
+          priority: server.priority,
+          url,
+          embedUrl: url,
+          playUrl: '',
           quality: 'Auto',
           isExternal: true,
           isEmbed: true,
           timeout: server.timeout,
-          status: serverStatus[key] || 'unknown', // 'working', 'failed', 'unknown'
+          sandboxPolicy: server.sandboxPolicy || 'balanced',
+          status: serverStatus[server.key] || 'unknown',
+          statusLabel: `Server ${sources.length + 1} • ${server.name}`,
+          sourceType: server.key,
         });
-      }
-    });
+      });
+    }
 
     // Sort by priority (lower = higher priority)
     return sources.sort((a, b) => a.priority - b.priority);
-  };
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // GET BEST AVAILABLE SERVER (with failover)
+  // LEGACY COMPAT: buildAllSources (used by VideoEngine fallback)
   // ═══════════════════════════════════════════════════════════════════════════
-  const getBestServer = (sources, excludeFailed = true) => {
+  function buildAllSources(tmdbId, type = 'movie', season = 1, episode = 1) {
+    const movieData = {
+      tmdbId,
+      tmdb_id: tmdbId,
+      category: type === 'tv' ? 'series' : 'movie',
+    };
+    return buildHydraSources(movieData, season, episode);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GET EMBED URL FOR A SPECIFIC SERVER (legacy compat)
+  // ═══════════════════════════════════════════════════════════════════════════
+  function getEmbedUrl(serverKey, tmdbId, type = 'movie', season = 1, episode = 1) {
+    const server = STANDARD_SERVERS[serverKey];
+    if (!server || !tmdbId) return null;
+    return type === 'movie'
+      ? server.movieUrl(tmdbId)
+      : server.tvUrl(tmdbId, season, episode);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SERVER STATUS MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════════════════
+  function markServerStatus(serverKey, status) {
+    serverStatus[serverKey] = status;
+  }
+
+  function resetServerStatuses() {
+    serverStatus = {};
+    const allServers = { ...STANDARD_SERVERS, ...ANIME_SERVERS };
+    Object.keys(allServers).forEach(key => {
+      serverStatus[key] = 'unknown';
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GET BEST SERVER WITH FAILOVER
+  // ═══════════════════════════════════════════════════════════════════════════
+  function getBestServer(sources, excludeFailed = true) {
     if (!sources || !sources.length) return null;
-
-    // Filter out failed servers if requested
     const available = excludeFailed
       ? sources.filter(s => s.status !== 'failed')
       : sources;
+    return available.length ? available[0] : sources[0];
+  }
 
-    if (!available.length) {
-      // All failed - return first one as last resort
-      return sources[0];
-    }
-
-    // Return highest priority available server
-    return available[0];
-  };
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // MARK SERVER STATUS
-  // ═══════════════════════════════════════════════════════════════════════════
-  const markServerStatus = (serverKey, status) => {
-    serverStatus[serverKey] = status;
-  };
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // RESET ALL SERVER STATUSES
-  // ═══════════════════════════════════════════════════════════════════════════
-  const resetServerStatuses = () => {
-    serverStatus = {};
-    Object.keys(SERVERS).forEach(key => {
-      serverStatus[key] = 'unknown';
-    });
-  };
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // AUTO-ROTATE TO NEXT SERVER ON FAILURE
-  // ═══════════════════════════════════════════════════════════════════════════
-  const getNextServer = (sources, currentKey) => {
+  function getNextServer(sources, currentKey) {
     if (!sources || !sources.length) return null;
-
     const currentIndex = sources.findIndex(s => s.server === currentKey);
     if (currentIndex === -1) return sources[0];
-
-    // Try next server in priority order
     for (let i = currentIndex + 1; i < sources.length; i++) {
-      if (sources[i].status !== 'failed') {
-        return sources[i];
-      }
+      if (sources[i].status !== 'failed') return sources[i];
     }
-
-    // All subsequent failed - try from beginning
     for (let i = 0; i < currentIndex; i++) {
-      if (sources[i].status !== 'failed') {
-        return sources[i];
-      }
+      if (sources[i].status !== 'failed') return sources[i];
     }
-
-    // Everything failed - return current as last resort
     return sources[currentIndex];
-  };
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CREATE IFRAME ATTRIBUTES FOR EMBED
+  // IFRAME SANDBOX ATTRIBUTES — Balanced security
+  // ALLOWS: scripts, same-origin, forms, popups (embed player UIs need this),
+  //         popups-to-escape-sandbox, presentation (fullscreen)
+  // BLOCKS: allow-top-navigation (forced page redirect — the real threat)
+  //         allow-downloads (drive-by download prevention)
   // ═══════════════════════════════════════════════════════════════════════════
-  const getIframeAttributes = () => ({
-    allow: 'autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write',
-    referrerPolicy: 'no-referrer',
-    loading: 'eager',
-  });
+  function getIframeAttributes() {
+    return {
+      sandbox: 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation',
+      allow: 'autoplay; fullscreen; encrypted-media; picture-in-picture; gyroscope; accelerometer',
+      referrerPolicy: 'no-referrer',
+      loading: 'eager',
+    };
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // RENDER SERVER SELECTOR UI
+  // Generates a horizontal row of "Server 1", "Server 2"... buttons
+  // beneath the video player. Active server is highlighted.
   // ═══════════════════════════════════════════════════════════════════════════
-  const renderServerSelector = (sources, activeKey, onSwitch) => {
-    if (!sources || sources.length < 2) return '';
+  function renderServerSelector(sources, activeKey, onSwitch) {
+    if (!sources || sources.length < 1) return '';
 
-    const buttons = sources.map(source => {
+    const buttons = sources.map((source, idx) => {
       const isActive = source.server === activeKey;
-      const statusClass = source.status === 'failed' ? 'server-failed'
-                        : source.status === 'working' ? 'server-working'
-                        : '';
+      const isFailed = source.status === 'failed';
+      const isWorking = source.status === 'working';
+      const statusColor = isFailed ? '#ef4444' : isWorking ? '#22c55e' : '#fbbf24';
+      const labelNum = idx + 1;
 
       return `
         <button
-          class="server-btn ${isActive ? 'active' : ''} ${statusClass}"
+          class="hydra-srv-btn ${isActive ? 'hydra-srv-active' : ''} ${isFailed ? 'hydra-srv-failed' : ''}"
           data-server="${source.server}"
-          title="${source.serverName} ${source.status === 'failed' ? '(Failed)' : ''}"
+          data-index="${idx}"
+          id="hydraSrvBtn${labelNum}"
+          title="${source.serverName}${isFailed ? ' (Failed)' : ''}"
           style="
-            padding: 8px 16px;
-            border: 1px solid ${isActive ? 'var(--accent, #e50914)' : 'rgba(255,255,255,0.2)'};
-            background: ${isActive ? 'var(--accent, #e50914)' : 'transparent'};
-            color: ${isActive ? '#fff' : 'rgba(255,255,255,0.8)'};
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            transition: all 0.2s;
-            display: flex;
+            padding: 7px 18px;
+            border: 1.5px solid ${isActive ? 'var(--accent, #e50914)' : 'rgba(255,255,255,0.18)'};
+            background: ${isActive ? 'linear-gradient(135deg, var(--accent, #e50914), #c40812)' : 'rgba(255,255,255,0.04)'};
+            color: ${isActive ? '#fff' : 'rgba(255,255,255,0.75)'};
+            border-radius: 8px;
+            cursor: ${isFailed ? 'not-allowed' : 'pointer'};
+            font-size: 12.5px;
+            font-weight: ${isActive ? '600' : '500'};
+            letter-spacing: 0.3px;
+            transition: all 0.2s ease;
+            display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 7px;
+            opacity: ${isFailed ? '0.45' : '1'};
+            box-shadow: ${isActive ? '0 2px 12px rgba(229,9,20,0.35)' : 'none'};
           "
+          ${isFailed ? 'disabled' : ''}
         >
-          <span class="server-indicator" style="
-            width: 6px;
-            height: 6px;
+          <span style="
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
-            background: ${source.status === 'working' ? '#22c55e' : source.status === 'failed' ? '#ef4444' : '#fbbf24'};
+            background: ${statusColor};
+            flex-shrink: 0;
+            box-shadow: 0 0 5px ${statusColor}88;
           "></span>
-          ${source.serverName}
+          Server ${labelNum}
+          ${isFailed ? '<span style="font-size:10px;letter-spacing:0.5px;opacity:0.8;">SKIP</span>' : ''}
         </button>
       `;
     }).join('');
 
     return `
-      <div class="embed-server-selector" style="
+      <div class="hydra-server-row" style="
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
-        padding: 12px;
-        background: rgba(0,0,0,0.4);
-        border-radius: 8px;
-        margin-bottom: 12px;
+        align-items: center;
+        padding: 10px 14px;
+        background: rgba(0,0,0,0.45);
+        border-radius: 10px;
+        margin-top: 10px;
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(255,255,255,0.07);
       ">
-        <span style="color: rgba(255,255,255,0.6); font-size: 13px; margin-right: 8px; align-self: center;">Servers:</span>
+        <span style="
+          color: rgba(255,255,255,0.45);
+          font-size: 11.5px;
+          font-weight: 600;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          margin-right: 4px;
+          align-self: center;
+        ">Servers</span>
         ${buttons}
       </div>
       <style>
-        .server-btn:hover:not(.active) {
-          border-color: rgba(255,255,255,0.4) !important;
-          background: rgba(255,255,255,0.05) !important;
+        .hydra-srv-btn:hover:not(.hydra-srv-active):not([disabled]) {
+          border-color: rgba(255,255,255,0.35) !important;
+          background: rgba(255,255,255,0.09) !important;
+          color: #fff !important;
+          transform: translateY(-1px);
         }
-        .server-btn.server-failed {
-          opacity: 0.5;
+        .hydra-srv-btn:active:not([disabled]) {
+          transform: translateY(0);
+        }
+        .hydra-srv-failed {
           text-decoration: line-through;
         }
       </style>
     `;
-  };
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // TV SHOW CONTROLS (Season/Episode Selectors)
   // ═══════════════════════════════════════════════════════════════════════════
-  const renderTvControls = (seasons = [], currentS = 1, currentE = 1, onChange) => {
+  function renderTvControls(seasons = [], currentS = 1, currentE = 1) {
     const seasonOptions = seasons.map(s =>
       `<option value="${s.number}" ${s.number === currentS ? 'selected' : ''}>Season ${s.number}</option>`
     ).join('');
@@ -311,30 +504,43 @@ const EmbedServers = (() => {
         ">Go</button>
       </div>
     `;
-  };
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // GET ALL SERVER NAMES (for display)
+  // GET SERVER LIST (for display)
   // ═══════════════════════════════════════════════════════════════════════════
-  const getServerList = () => {
-    return Object.entries(SERVERS).map(([key, server]) => ({
+  function getServerList() {
+    const all = { ...STANDARD_SERVERS, ...ANIME_SERVERS };
+    return Object.entries(all).map(([key, server]) => ({
       key,
       name: server.name,
       priority: server.priority,
+      type: ANIME_SERVERS[key] ? 'anime' : 'standard',
     }));
-  };
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // EXPOSED API
   // ═══════════════════════════════════════════════════════════════════════════
   return {
-    SERVERS,
-    getEmbedUrl,
-    buildAllSources,
+    // Server configs (read-only access)
+    STANDARD_SERVERS,
+    ANIME_SERVERS,
+    // Legacy compat
+    SERVERS: { ...STANDARD_SERVERS },
+    // Core routing
+    generateEmbedUrl,
+    detectCategory,
+    // Source builders
+    buildHydraSources,
+    buildAllSources,      // legacy compat for VideoEngine
+    getEmbedUrl,          // legacy compat
+    // Server management
     getBestServer,
     getNextServer,
     markServerStatus,
     resetServerStatuses,
+    // UI
     getIframeAttributes,
     renderServerSelector,
     renderTvControls,

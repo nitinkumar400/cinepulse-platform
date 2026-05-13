@@ -3,14 +3,19 @@
   "buildCommand": "npm run check",
   "installCommand": "npm install",
   "framework": null,
+  "outputDirectory": "public",
   "functions": {
     "api/server.js": {
       "memory": 1024,
       "maxDuration": 60,
-      "includeFiles": "backend/uploads/**"
+      "includeFiles": "backend/**"
     }
   },
   "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/server.js"
+    },
     {
       "source": "/health",
       "destination": "/api/server.js"
@@ -18,10 +23,27 @@
     {
       "source": "/sitemap.xml",
       "destination": "/api/server.js"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/sync",
+      "schedule": "0 */12 * * *"
     },
     {
-      "source": "/api/(.*)",
-      "destination": "/api/server.js"
+      "path": "/api/sync/anime",
+      "schedule": "0 */4 * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
     }
   ],
   "env": {
