@@ -344,13 +344,16 @@
 // When thumbnailUrl is already a full Cloudinary URL (https://res.cloudinary.com/...)
 // Bulletproof image resolver:
 // - null/undefined → placeholder
-// - anilist.co URL → pass through
+// - anilist.co / image.tmdb.org / cloudinary.com / data: → pass through
 // - anything else → strip to filename, rebuild via TMDB CDN
 // ══════════════════════════════════════════
 function getImageUrl(path, size) {
   if (!path) return '';
   if (path.includes('anilist.co')) return path;
-  const filename = String(path).split('/').pop();
+  if (path.includes('image.tmdb.org')) return path;
+  if (path.includes('cloudinary.com')) return path;
+  if (path.startsWith('data:')) return path;
+  const filename = String(path).split('/').pop().split('?')[0];
   if (!filename) return '';
   return `https://image.tmdb.org/t/p/${size || 'w500'}/${filename}`;
 }

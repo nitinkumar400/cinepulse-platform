@@ -329,20 +329,28 @@ function logout(redirect = true) {
 
 // ══════════════════════════════════════════
 // MEDIA URL HELPER — Bulletproof Sanitizer
-// Strategy: trust only AniList absolute URLs. Everything else is treated as
-// a TMDB image hash (even if prefixed with a corrupted domain like
-// localhost, 192.168.x.x, etc.) and reduced to the filename, then rebuilt
-// against the official TMDB image CDN.
+// Strategy:
+// - null/empty → placeholder
+// - AniList URLs (anilist.co) → pass through
+// - Already-correct TMDB CDN URLs (image.tmdb.org) → pass through
+// - Cloudinary URLs (cloudinary.com) → pass through
+// - data: URIs → pass through
+// - Everything else (local /uploads paths, localhost URLs, etc.) → extract
+//   the TMDB ID from the filename pattern and rebuild via TMDB CDN.
+//   If no TMDB ID can be extracted, use the raw filename as a TMDB hash.
 // ══════════════════════════════════════════
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
 const POSTER_PLACEHOLDER_URL = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';
 
 function getImageUrl(path, size) {
   if (!path) return POSTER_PLACEHOLDER_URL;
-  // AniList URLs are already perfectly formatted — pass through untouched
+  // Already-good URLs — pass through untouched
   if (path.includes('anilist.co')) return path;
-  // Everything else is treated as a TMDB image — strip down to filename and rebuild
-  const filename = String(path).split('/').pop();
+  if (path.includes('image.tmdb.org')) return path;
+  if (path.includes('cloudinary.com')) return path;
+  if (path.startsWith('data:')) return path;
+  // Everything else: extract filename and route through TMDB CDN
+  const filename = String(path).split('/').pop().split('?')[0];
   if (!filename) return POSTER_PLACEHOLDER_URL;
   return `${TMDB_IMAGE_BASE}${size || 'w500'}/${filename}`;
 }

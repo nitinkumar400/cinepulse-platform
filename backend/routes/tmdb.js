@@ -31,26 +31,10 @@ function formatMediaFilename(baseName, url) {
 }
 
 async function saveTmdbImage(url, folderName, baseName) {
+  // On serverless (Vercel), filesystem is ephemeral — local downloads won't persist.
+  // Return the original TMDB CDN URL directly instead of downloading.
   if (!url) return '';
-
-  try {
-    const buffer = await fetch(url).then((response) => {
-      if (!response.ok) {
-        throw new Error(`Failed to download image: ${response.status}`);
-      }
-      return response.arrayBuffer();
-    });
-
-    const folderPath = await ensureUploadFolder(folderName);
-    const fileName = formatMediaFilename(baseName, url);
-    const filePath = path.join(folderPath, fileName);
-
-    await fs.writeFile(filePath, Buffer.from(buffer));
-    return `/uploads/${folderName}/${fileName}`;
-  } catch (error) {
-    console.warn(`TMDb image download failed for ${url}:`, error.message);
-    return '';
-  }
+  return url;
 }
 
 async function upsertTmdbMovie(tmdbId, type, uploadedBy) {

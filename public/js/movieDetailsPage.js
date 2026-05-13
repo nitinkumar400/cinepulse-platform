@@ -269,7 +269,10 @@ const THUMB_PH  = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjY
 function mediaUrl(path, size) {
   if (!path) return '';
   if (path.includes('anilist.co')) return path;
-  const filename = String(path).split('/').pop();
+  if (path.includes('image.tmdb.org')) return path;
+  if (path.includes('cloudinary.com')) return path;
+  if (path.startsWith('data:')) return path;
+  const filename = String(path).split('/').pop().split('?')[0];
   if (!filename) return '';
   return `https://image.tmdb.org/t/p/${size || 'w500'}/${filename}`;
 }
