@@ -265,9 +265,10 @@ const startTime = parseInt(urlParams.get('t') || '0');
 const POSTER_PH = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQwIiBoZWlnaHQ9IjM2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';
 const THUMB_PH  = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjY4IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMxYTFhMjQiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1zaXplPSIyMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iIGZpbGw9IiM0NDQiPuKWkDwvdGV4dD48L3N2Zz4=';
 
-function mediaUrl(url) {
+function mediaUrl(url, size) {
   if (!url) return '';
-  if (url.startsWith('http')) return url;
+  if (url.startsWith('http') || url.startsWith('data:')) return url;
+  if (url.startsWith('/')) return `https://image.tmdb.org/t/p/${size || 'w500'}${url}`;
   const base = (typeof MEDIA_BASE !== 'undefined') ? MEDIA_BASE : '';
   return base + url;
 }
@@ -949,7 +950,7 @@ function renderMovie(m) {
   injectMovieJsonLd(m);
 
   const bgUrl = m.bannerUrl || m.thumbnailUrl || '';
-  document.getElementById('detailsBg').style.backgroundImage = bgUrl ? `url('${mediaUrl(bgUrl)}')` : '';
+  document.getElementById('detailsBg').style.backgroundImage = bgUrl ? `url('${mediaUrl(bgUrl, 'original')}')` : '';
 
   const posterEl = document.getElementById('moviePoster');
   posterEl.src     = mediaUrl(m.thumbnailUrl) || POSTER_PH;
@@ -2012,23 +2013,9 @@ function scrollToPlayer() {
 }
 
 function setupNavbar() {
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
-  const sec  = document.getElementById('userSection');
-  if (!sec) return;
-
-  if (user) {
-    sec.innerHTML = `
-      <span style="font-size:13px;color:var(--text-secondary);">Hi, ${escapeHtml(user.username || 'User')}</span>
-      ${user.role === 'admin' ? `<a href="admin.html"><button class="btn-nav" style="margin-left:10px;"><i class="ri-upload-cloud-line"></i> Upload</button></a>` : ''}
-      <button id="logoutNavBtn" class="btn-nav" style="background:var(--bg-card);color:var(--text-secondary);margin-left:10px;">Logout</button>`;
-    document.getElementById('logoutNavBtn')?.addEventListener('click', () => {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = 'login.html';
-    });
-  } else {
-    sec.innerHTML = `<a href="login.html"><button class="btn-nav">Sign In</button></a>`;
-  }
+  // Stateless Public Site: no auth buttons on public pages
+  const sec = document.getElementById('userSection');
+  if (sec) sec.innerHTML = '';
 }
 
 // Open embed in popup window (bypasses all iframe/X-Frame-Options restrictions)

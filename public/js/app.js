@@ -329,15 +329,28 @@ function logout(redirect = true) {
 
 // ══════════════════════════════════════════
 // MEDIA URL HELPER
-// FIX: Was missing entirely — used by every page
-// Handles Cloudinary URLs (http) and local paths
+// Handles: Cloudinary/AniList (http), TMDB relative paths (/xxx.jpg), local paths
 // ══════════════════════════════════════════
-function getImageUrl(url) {
-  if (!url) return '';
-  if (url.startsWith('http')) return url;
+const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
+const POSTER_PLACEHOLDER_URL = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';
+
+function getImageUrl(url, size) {
+  if (!url) return POSTER_PLACEHOLDER_URL;
+  if (url.startsWith('http') || url.startsWith('data:')) return url;
+  // TMDB relative paths start with /
+  if (url.startsWith('/')) {
+    const resolvedSize = size || 'w500';
+    return `${TMDB_IMAGE_BASE}${resolvedSize}${url}`;
+  }
+  // Local paths — prepend media base
   const base = (typeof MEDIA_BASE !== 'undefined') ? MEDIA_BASE : '';
   return base + url;
 }
+
+function getBackdropUrl(url) {
+  return getImageUrl(url, 'original');
+}
+
 const mediaUrl = getImageUrl;
 
 // ══════════════════════════════════════════
@@ -512,7 +525,7 @@ async function apiFetch(endpoint, options = {}) {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     showToast('Session expired — please login again', 'warning');
-    setTimeout(() => { window.location.href = '/pages/login.html'; }, 300);
+    setTimeout(() => { window.location.href = '/pages/admin.html'; }, 300);
     throw new Error(data.message || 'Unauthorized');
   }
 

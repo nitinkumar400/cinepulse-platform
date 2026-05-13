@@ -326,9 +326,9 @@ const PRESETS = {
 // ── ON LOAD ──
 window.addEventListener('DOMContentLoaded', () => {
   const user = JSON.parse(localStorage.getItem('user') || 'null');
-  if (!token || !user || user.role !== 'admin') {
-    alert('Admins only!');
-    window.location.href = 'login.html';
+  const role = user?.role || user?.data?.role || '';
+  if (!token || role !== 'admin') {
+    window.location.href = 'admin.html';
     return;
   }
   document.getElementById('logoutBtn')?.addEventListener('click', logout);
@@ -710,7 +710,7 @@ async function startBulkImport() {
 function logout() {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
-  window.location.href = 'login.html';
+  window.location.href = 'admin.html';
 }
 </script>
 </body>

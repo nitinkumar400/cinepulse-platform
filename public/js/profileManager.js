@@ -404,7 +404,7 @@
       || (user?.watched || []).find((entry) => entry.movie?.thumbnailUrl);
 
     const backdropUrl = recentAnime?.movie?.thumbnailUrl
-      ? `url("${getImageUrl(recentAnime.movie.thumbnailUrl)}")`
+      ? `url("${getImageUrl(recentAnime.movie.thumbnailUrl, 'original')}")`
       : 'none';
 
     hero.style.setProperty('--profile-backdrop', backdropUrl);

@@ -573,13 +573,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (!episodeId) { showState('error'); return; }
 
   const token = localStorage.getItem('token');
-  if (!token) { window.location.href = '/pages/login.html'; return; }
+  // Public page — no auth required to view episodes
 
   try {
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
     const [epRes, ] = await Promise.all([
-      fetch(`${API_BASE}/episodes/${episodeId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      }),
+      fetch(`${API_BASE}/episodes/${episodeId}`, { headers }),
     ]);
 
     if (!epRes.ok) throw new Error('Episode not found');

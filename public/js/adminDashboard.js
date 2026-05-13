@@ -427,7 +427,7 @@ async function initAdminDashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const payload = await res.json();
-      const me = unwrapResponse(payload)?.user || unwrapResponse(payload);
+      const me = unwrapResponse(payload)?.user || payload?.user || unwrapResponse(payload);
       if (!res.ok || !payload.success || !me || me.role !== 'admin') {
         throw new Error('ADMIN_SESSION_INVALID');
       }

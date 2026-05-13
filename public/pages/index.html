@@ -853,7 +853,7 @@ function injectHomepageJsonLd(items = []) {
 }
 
 function renderHero(movie) {
-  const backdropUrl = getImageUrl(movie?.bannerUrl || movie?.thumbnailUrl || '');
+  const backdropUrl = getImageUrl(movie?.bannerUrl || movie?.thumbnailUrl || '', 'original');
   document.getElementById('heroBackdrop').style.backgroundImage = backdropUrl ? `url('${backdropUrl}')` : 'none';
 
   if (movie) {
