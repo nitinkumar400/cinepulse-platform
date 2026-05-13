@@ -321,7 +321,7 @@ function buildAnimeEpisodeEmbedUrl(tmdbId, seasonNumber, episodeNumber) {
   const season = Number(seasonNumber || 1);
   const episode = Number(episodeNumber || 1);
   if (!id || !episode) return '';
-  return `https://vidsrc.to/embed/tv/${id}/${season}/${episode}`;
+  return `https://vidsrc.me/embed/tv?tmdb=${id}&season=${season}&episode=${episode}`;
 }
 
 function getAnimeSeasonNumber(movie = {}) {
@@ -890,12 +890,12 @@ async function switchPlaybackSource(index, options = {}) {
 // stored in the MongoDB document (fields: tmdbId OR tmdb_id).
 //
 // Supported embed providers (in priority order):
-//   1. VidSrc.to   — most reliable, no ads
-//   2. VidSrc.me   — fallback mirror
-//   3. 2Embed.cc   — broad catalogue
-//   4. AutoEmbed   — fast CDN
+//   1. VidSrc.me  — stable domain (vidsrc.to is dead)
+//   2. VidSrc.me  — same domain, kept as mirror slot
+//   3. 2Embed.cc  — broad catalogue
+//   4. AutoEmbed  — fast CDN (no sandbox)
 //   5. VidLink.pro — secondary fallback
-//   6. MultiEmbed  — last resort
+//   6. MultiEmbed — last resort
 //
 // Category → embed type mapping:
 //   movie / documentary / short  → /embed/movie/{tmdbId}
@@ -922,44 +922,50 @@ function buildAutoEmbedSources(movie) {
   // Each entry: { key, name, movieUrl(id), tvUrl(id, s, e) }
   const EMBED_PROVIDERS = [
     {
-      key:      'vidsrc_to',
-      name:     'VidSrc',
-      priority: 1,
-      movie:    (id)       => `https://vidsrc.to/embed/movie/${id}`,
-      tv:       (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
-    },
-    {
-      key:      'vidsrc_me',
-      name:     'VidSrc 2',
-      priority: 2,
+      key:           'vidsrc',
+      name:          'VidSrc',
+      priority:      1,
+      sandboxPolicy: 'balanced',
       movie:    (id)       => `https://vidsrc.me/embed/movie?tmdb=${id}`,
       tv:       (id, s, e) => `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
     },
     {
-      key:      'embed2',
-      name:     '2Embed',
-      priority: 3,
+      key:           'vidsrc_me',
+      name:          'VidSrc 2',
+      priority:      2,
+      sandboxPolicy: 'balanced',
+      movie:    (id)       => `https://v2.vidsrc.me/embed/${id}/`,
+      tv:       (id, s, e) => `https://v2.vidsrc.me/embed/${id}/${s}-${e}/`,
+    },
+    {
+      key:           'embed2',
+      name:          '2Embed',
+      priority:      3,
+      sandboxPolicy: 'balanced',
       movie:    (id)       => `https://www.2embed.cc/embed/${id}`,
       tv:       (id, s, e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
     },
     {
-      key:      'autoembed',
-      name:     'AutoEmbed',
-      priority: 4,
-      movie:    (id)       => `https://autoembed.cc/embed/movie/${id}`,
-      tv:       (id, s, e) => `https://autoembed.cc/embed/tv/${id}-${s}-${e}`,
+      key:           'autoembed',
+      name:          'AutoEmbed',
+      priority:      4,
+      sandboxPolicy: 'none',  // AutoEmbed rejects sandbox — must render without it
+      movie:    (id)       => `https://autoembed.co/movie/tmdb/${id}`,
+      tv:       (id, s, e) => `https://autoembed.co/tv/tmdb/${id}-${s}-${e}`,
     },
     {
-      key:      'vidlink',
-      name:     'VidLink',
-      priority: 5,
-      movie:    (id)       => `https://vidlink.pro/embed/movie/${id}`,
-      tv:       (id, s, e) => `https://vidlink.pro/embed/tv/${id}/${s}/${e}`,
+      key:           'vidlink',
+      name:          'VidLink',
+      priority:      5,
+      sandboxPolicy: 'none',  // VidLink also rejects sandbox
+      movie:    (id)       => `https://vidlink.pro/movie/${id}`,
+      tv:       (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}`,
     },
     {
-      key:      'multiembed',
-      name:     'MultiEmbed',
-      priority: 6,
+      key:           'multiembed',
+      name:          'MultiEmbed',
+      priority:      6,
+      sandboxPolicy: 'balanced',
       movie:    (id)       => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
       tv:       (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
     },
@@ -972,22 +978,23 @@ function buildAutoEmbedSources(movie) {
 
     return {
       // Fields expected by switchPlaybackSource / renderServerSelector
-      id:         `auto-${provider.key}-${tmdbId}`,
-      server:     provider.key,
-      serverName: provider.name,
-      sourceType: provider.key,
-      url:        embedUrl,
-      embedUrl:   embedUrl,
-      playUrl:    '',
-      quality:    'Auto HD',
-      label:      provider.name,
-      statusLabel:`${provider.name} • Auto HD`,
-      isExternal: true,
-      isEmbed:    true,
-      isAutoEmbed: true,   // flag so we can identify these in logs
-      priority:   provider.priority,
+      id:           `auto-${provider.key}-${tmdbId}`,
+      server:       provider.key,
+      serverName:   provider.name,
+      sourceType:   provider.key,
+      url:          embedUrl,
+      embedUrl:     embedUrl,
+      playUrl:      '',
+      quality:      'Auto HD',
+      label:        provider.name,
+      statusLabel:  `${provider.name} • Auto HD`,
+      isExternal:   true,
+      isEmbed:      true,
+      isAutoEmbed:  true,   // flag so we can identify these in logs
+      priority:     provider.priority,
+      sandboxPolicy: provider.sandboxPolicy || 'balanced',  // per-provider sandbox handling
       // status starts unknown; switchPlaybackSource marks failed ones
-      status:     'unknown',
+      status:       'unknown',
     };
   });
 }

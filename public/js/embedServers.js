@@ -12,14 +12,14 @@ const EmbedServers = (() => {
   // STANDARD SERVERS — For Movies & TV (requires tmdb_id)
   // ═══════════════════════════════════════════════════════════════════════════
   const STANDARD_SERVERS = {
-    // Priority 1 — VidSrc: reliable, allows cross-origin embedding
+    // Priority 1 — VidSrc: reliable, allows cross-origin embedding (vidsrc.me is the stable domain)
     vidsrc: {
       name: 'VidSrc',
       key: 'vidsrc',
       priority: 1,
       sandboxPolicy: 'balanced',
-      movieUrl: (tmdbId) => `https://vidsrc.to/embed/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}`,
+      movieUrl: (tmdbId) => `https://vidsrc.me/embed/movie?tmdb=${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
       timeout: 8000,
     },
     // Priority 2 — 2Embed: confirmed working with sandbox on localhost
@@ -42,12 +42,12 @@ const EmbedServers = (() => {
       tvUrl: (tmdbId, season, episode) => `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${season}&e=${episode}`,
       timeout: 8000,
     },
-    // Priority 4 — AutoEmbed: works on production (X-Frame-Options blocks localhost)
+    // Priority 4 — AutoEmbed: rejects sandbox attribute — sandboxPolicy:'none'
     autoembed: {
       name: 'AutoEmbed',
       key: 'autoembed',
       priority: 4,
-      sandboxPolicy: 'balanced',
+      sandboxPolicy: 'none',  // AutoEmbed shows "Sandbox not allowed" if any sandbox present
       movieUrl: (tmdbId) => `https://autoembed.co/movie/tmdb/${tmdbId}`,
       tvUrl: (tmdbId, season, episode) => `https://autoembed.co/tv/tmdb/${tmdbId}-${season}-${episode}`,
       timeout: 8000,
@@ -62,14 +62,14 @@ const EmbedServers = (() => {
       tvUrl: (tmdbId, season, episode) => `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}`,
       timeout: 9000,
     },
-    // Priority 6 — SuperEmbed: works on production, may block localhost
+    // Priority 6 — VidSrc Wiki: stable alternative, good production coverage
     superembed: {
-      name: 'SuperEmbed',
+      name: 'VidSrc Pro',
       key: 'superembed',
       priority: 6,
       sandboxPolicy: 'balanced',
-      movieUrl: (tmdbId) => `https://embed.su/embed/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://embed.su/embed/tv/${tmdbId}/${season}/${episode}`,
+      movieUrl: (tmdbId) => `https://vidsrc.wiki/embed/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidsrc.wiki/embed/tv/${tmdbId}/${season}/${episode}`,
       timeout: 9000,
     },
     // Priority 7 — SmashyStream: works on production, may block localhost

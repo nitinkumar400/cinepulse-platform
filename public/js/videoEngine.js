@@ -117,7 +117,7 @@ const VideoEngine = (() => {
 
     // Fallback: Build manually
     const servers = [
-      { key: 'vidsrc', name: 'VidSrc', movie: (id) => `https://vidsrc.me/embed/movie?tmdb=${id}`, tv: (id, s, e) => `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}` },
+      { key: 'vidsrc', name: 'VidSrc', movie: (id) => `https://vidsrc.me/embed/movie?tmdb=${id}`, tv: (id, s, e) => `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}` }, // vidsrc.me is stable; vidsrc.to is dead
       { key: 'embed2', name: '2Embed', movie: (id) => `https://www.2embed.cc/embed/${id}`, tv: (id, s, e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}` },
       { key: 'autoembed', name: 'AutoEmbed', movie: (id) => `https://autoembed.cc/embed/movie/${id}`, tv: (id, s, e) => `https://autoembed.cc/embed/tv/${id}-${s}-${e}` },
       { key: 'vidlink', name: 'VidLink', movie: (id) => `https://vidlink.pro/embed/movie/${id}`, tv: (id, s, e) => `https://vidlink.pro/embed/tv/${id}/${s}/${e}` },
