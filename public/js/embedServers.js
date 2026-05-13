@@ -32,51 +32,41 @@ const EmbedServers = (() => {
       tvUrl: (tmdbId, season, episode) => `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`,
       timeout: 8000,
     },
-    // Priority 3 — MultiEmbed: does not reject sandbox, good coverage
-    multiembed: {
-      name: 'MultiEmbed',
-      key: 'multiembed',
-      priority: 3,
-      sandboxPolicy: 'balanced',
-      movieUrl: (tmdbId) => `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`,
-      tvUrl: (tmdbId, season, episode) => `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${season}&e=${episode}`,
-      timeout: 8000,
-    },
-    // Priority 4 — AutoEmbed: rejects sandbox attribute — sandboxPolicy:'none'
+    // Priority 3 — AutoEmbed: rejects sandbox attribute — sandboxPolicy:'none'
     autoembed: {
       name: 'AutoEmbed',
       key: 'autoembed',
-      priority: 4,
+      priority: 3,
       sandboxPolicy: 'none',  // AutoEmbed shows "Sandbox not allowed" if any sandbox present
       movieUrl: (tmdbId) => `https://autoembed.co/movie/tmdb/${tmdbId}`,
       tvUrl: (tmdbId, season, episode) => `https://autoembed.co/tv/tmdb/${tmdbId}-${season}-${episode}`,
       timeout: 8000,
     },
-    // Priority 5 — VidLink: explicitly rejects any sandbox attribute — sandboxPolicy:'none'
+    // Priority 4 — VidLink: explicitly rejects any sandbox attribute — sandboxPolicy:'none'
     vidlink: {
       name: 'VidLink',
       key: 'vidlink',
-      priority: 5,
+      priority: 4,
       sandboxPolicy: 'none',  // This provider shows "Please Disable Sandbox" if any sandbox present
       movieUrl: (tmdbId) => `https://vidlink.pro/movie/${tmdbId}`,
       tvUrl: (tmdbId, season, episode) => `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}`,
       timeout: 9000,
     },
-    // Priority 6 — VidSrc Wiki: stable alternative, good production coverage
+    // Priority 5 — VidSrc Wiki: stable alternative, good production coverage
     superembed: {
       name: 'VidSrc Pro',
       key: 'superembed',
-      priority: 6,
+      priority: 5,
       sandboxPolicy: 'balanced',
       movieUrl: (tmdbId) => `https://vidsrc.wiki/embed/movie/${tmdbId}`,
       tvUrl: (tmdbId, season, episode) => `https://vidsrc.wiki/embed/tv/${tmdbId}/${season}/${episode}`,
       timeout: 9000,
     },
-    // Priority 7 — SmashyStream: works on production, may block localhost
+    // Priority 6 — SmashyStream: works on production, may block localhost
     smashy: {
       name: 'SmashyStream',
       key: 'smashy',
-      priority: 7,
+      priority: 6,
       sandboxPolicy: 'balanced',
       movieUrl: (tmdbId) => `https://player.smashy.stream/movie/${tmdbId}`,
       tvUrl: (tmdbId, season, episode) => `https://player.smashy.stream/tv/${tmdbId}?s=${season}&e=${episode}`,

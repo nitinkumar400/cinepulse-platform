@@ -2090,6 +2090,11 @@ async function switchPlaybackSource(index, options = {}) {
     shortcutsBtn.style.opacity = source.server === 'upload' ? '1' : '0.55';
   }
 
+  // ── Stop any previous VideoEngine watchdog cycle ──
+  if (typeof VideoEngine !== 'undefined' && VideoEngine.clearWatchdog) {
+    VideoEngine.clearWatchdog();
+  }
+
   if (source.server === 'upload') {
     revokeProviderSubtitleUrls();
     stopEmbedPlayback();
@@ -2107,7 +2112,7 @@ async function switchPlaybackSource(index, options = {}) {
       if (switchToken !== activePlayerSwitchToken) return;
       clearTimeout(switchPlaybackSource.embedTimer);
       showPlayerLoader(false);
-      setPlayerStatus(`Now playing â€¢ ${source.statusLabel || source.label}`);
+      setPlayerStatus(`Now playing • ${source.statusLabel || source.label}`);
       if (startTime > 0 && video.currentTime < startTime) {
         video.currentTime = startTime;
       }
@@ -2147,14 +2152,12 @@ async function switchPlaybackSource(index, options = {}) {
   };
 
   // ── Hydra Security: per-provider sandbox policy ──
-  // sandboxPolicy 'none'     → provider explicitly rejects any sandbox (e.g. VidLink)
-  // sandboxPolicy 'balanced' → our standard: blocks top-navigation & downloads
   const sandboxPolicy = source.sandboxPolicy || 'balanced';
-  if (sandboxPolicy === 'none') {
-    // Fully trusted provider: remove sandbox to allow it to function
+  if (typeof VideoEngine !== 'undefined' && VideoEngine.applyIframeSandbox) {
+    VideoEngine.applyIframeSandbox(frame, sandboxPolicy);
+  } else if (sandboxPolicy === 'none') {
     frame.removeAttribute('sandbox');
   } else {
-    // Balanced: allows popups (needed for player UIs), blocks forced page redirects
     frame.setAttribute('sandbox',
       'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation'
     );
@@ -2169,18 +2172,70 @@ async function switchPlaybackSource(index, options = {}) {
   frame.src = source.embedUrl;
   loadProviderSubtitleTracks(source).catch(() => {});
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AUTONOMOUS FAILOVER MONITORING LOOP — VideoEngine Integration
+  // Mount the watchdog + cross-domain handshake listener via VideoEngine.
+  // The 6.5s timer auto-triggers failover if no readiness signal arrives.
+  // ═══════════════════════════════════════════════════════════════════════════
   clearTimeout(switchPlaybackSource.embedTimer);
-  switchPlaybackSource.embedTimer = setTimeout(() => {
-    if (switchToken !== activePlayerSwitchToken) return;
-    markProviderFailed(source);
-    if (index < playbackSources.length - 1) {
-      showPlayerMessage('Server slow — trying next...');
-      setPlayerStatus('Switching to faster server...', 'switching');
-      switchPlaybackSource(index + 1, { auto: true }).catch(() => {});
-    } else {
-      renderSourceOffline(source, 'All servers are currently slow. Please try again or select a server manually.');
-    }
-  }, 5000); // 5s: faster failover so users see a working server sooner
+
+  if (typeof VideoEngine !== 'undefined' && VideoEngine.mountStream) {
+    // Build remaining sources from current index onward for the watchdog
+    const remainingSources = playbackSources.slice(index).filter(s => s.isEmbed || s.isExternal);
+
+    VideoEngine.mountStream({
+      movie: currentMovie,
+      season: currentMovie?.animeSeasonNumber || 1,
+      episode: 1,
+      iframeElement: frame,
+      containerElement: getEmbedShell(),
+      sources: remainingSources,
+      onFailover: (newRelativeIndex, nextSource) => {
+        // Map relative index back to absolute playbackSources index
+        const absoluteIndex = playbackSources.findIndex(s => s.id === nextSource.id || s.server === nextSource.server);
+        if (absoluteIndex !== -1 && absoluteIndex !== activeSourceIndex) {
+          activeSourceIndex = absoluteIndex;
+          renderServerSelector();
+          showPlayerLoader(true, 'Optimizing stream...');
+          setPlayerStatus(`Routing to ${nextSource.serverName || nextSource.label}...`, 'switching');
+        }
+      },
+      onCircuitBreak: () => {
+        // All mirrors exhausted — render beautiful error screen
+        showPlayerLoader(false);
+        const embedShell = getEmbedShell();
+        if (embedShell && typeof VideoEngine.renderCircuitBreakerScreen === 'function') {
+          VideoEngine.renderCircuitBreakerScreen(embedShell);
+        } else {
+          setPlayerStatus('Stream currently undergoing automated maintenance. Please try again shortly.', 'error');
+          showPlayerMessage('All servers exhausted. Please try again later.', 5000);
+        }
+      },
+      onStreamVerified: (verifiedSource, signal) => {
+        showPlayerLoader(false);
+        const label = verifiedSource?.statusLabel || verifiedSource?.label || 'Server';
+        setPlayerStatus(`Now playing • ${label}`);
+        // Mark as working in our local sources
+        if (verifiedSource && playbackSources[activeSourceIndex]) {
+          playbackSources[activeSourceIndex].status = 'working';
+          renderServerSelector();
+        }
+      },
+    });
+  } else {
+    // Fallback: legacy 5s timer if VideoEngine watchdog unavailable
+    switchPlaybackSource.embedTimer = setTimeout(() => {
+      if (switchToken !== activePlayerSwitchToken) return;
+      markProviderFailed(source);
+      if (index < playbackSources.length - 1) {
+        showPlayerMessage('Server slow — trying next...');
+        setPlayerStatus('Switching to faster server...', 'switching');
+        switchPlaybackSource(index + 1, { auto: true }).catch(() => {});
+      } else {
+        renderSourceOffline(source, 'All servers are currently slow. Please try again or select a server manually.');
+      }
+    }, 5000);
+  }
 }
 
 async function setupPlayback(movie) {

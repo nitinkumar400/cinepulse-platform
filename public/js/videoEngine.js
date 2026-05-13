@@ -1,8 +1,31 @@
 /**
- * VideoEngine — Enhanced with Multi-Server Auto-Embed
- * Supports 6+ automatic embed servers with smart failover
+ * ═══════════════════════════════════════════════════════════════════════════
+ * VideoEngine v3.0 — Autonomous Failover Monitoring Loop
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Implements a 6.5-second watchdog timer with cross-domain handshake
+ * interception to detect broken/stalled streams from third-party embeds.
+ *
+ * Architecture:
+ *   1. Priority-Ordered Waterfall Array (from EmbedServers.STANDARD_SERVERS)
+ *   2. 6.5s Watchdog Timer per iframe mount
+ *   3. Cross-Domain postMessage Handshake Interceptor
+ *   4. Silent Failover with toast notification
+ *   5. Circuit Breaker end-state after all mirrors exhausted
+ *
+ * Safety: Does NOT alter Express routes, serverless functions, or Mongoose
+ * configs. All URL parameters (?id, &season, &episode) are preserved.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 const VideoEngine = (() => {
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CONSTANTS
+  // ─────────────────────────────────────────────────────────────────────────
+  const WATCHDOG_TIMEOUT_MS = 6500; // 6.5 seconds
+  const TOAST_DURATION_MS = 3500;
+
+  // Legacy priority map (kept for backward compat with upload/native sources)
   const SERVER_PRIORITY = {
     upload: 0,
     embed2: 1,
@@ -13,9 +36,540 @@ const VideoEngine = (() => {
     dailymotion: 6,
     youtube: 7,
     vimeo: 8,
-    multiembed: 15,
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // FAILOVER STATE
+  // ─────────────────────────────────────────────────────────────────────────
+  let _activeServerIndex = 0;
+  let _watchdogTimer = null;
+  let _handshakeReceived = false;
+  let _currentSources = [];
+  let _currentMovie = null;
+  let _currentSeason = 1;
+  let _currentEpisode = 1;
+  let _iframeElement = null;
+  let _circuitBroken = false;
+  let _onFailoverCallback = null;
+  let _onCircuitBreakCallback = null;
+  let _onStreamVerifiedCallback = null;
+  let _messageListenerBound = false;
+
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // A. PRIORITY-ORDERED WATERFALL ARRAY
+  // Pulls from EmbedServers.STANDARD_SERVERS, sorted by priority (asc).
+  // ─────────────────────────────────────────────────────────────────────────
+  function buildPriorityWaterfall(movie, season, episode) {
+    if (typeof EmbedServers === 'undefined' || !EmbedServers.STANDARD_SERVERS) {
+      console.warn('[VideoEngine] EmbedServers not loaded — cannot build waterfall.');
+      return [];
+    }
+
+    const servers = EmbedServers.STANDARD_SERVERS;
+    const tmdbId = Number(movie.tmdbId || movie.tmdb_id || 0);
+    if (!tmdbId) return [];
+
+    const category = String(movie.category || '').toLowerCase();
+    const isTv = ['series', 'anime', 'cartoon', 'tv'].includes(category)
+      || Number(movie.totalEpisodes || 0) > 1;
+
+    const s = Number(season || movie.animeSeasonNumber || 1);
+    const e = Number(episode || 1);
+
+    // Convert object to sorted array by priority
+    const sorted = Object.values(servers)
+      .slice()
+      .sort((a, b) => (a.priority || 99) - (b.priority || 99));
+
+    return sorted.map((srv, idx) => {
+      const url = isTv
+        ? srv.tvUrl(tmdbId, s, e)
+        : srv.movieUrl(tmdbId);
+
+      return {
+        id: `failover-${srv.key}-${tmdbId}`,
+        server: srv.key,
+        serverName: srv.name,
+        label: srv.name,
+        priority: srv.priority,
+        url: url,
+        embedUrl: url,
+        playUrl: '',
+        quality: 'Auto',
+        isExternal: true,
+        isEmbed: true,
+        timeout: srv.timeout || 8000,
+        sandboxPolicy: srv.sandboxPolicy || 'balanced',
+        status: 'unknown',
+        statusLabel: `Server ${idx + 1} • ${srv.name}`,
+        sourceType: srv.key,
+      };
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // C. CROSS-DOMAIN HANDSHAKE INTERCEPTOR
+  // Listens for postMessage events from embedded players indicating
+  // stream readiness (e.g., {event:"ready"}, {status:"playing"}).
+  // ─────────────────────────────────────────────────────────────────────────
+  function bindMessageListener() {
+    if (_messageListenerBound) return;
+    _messageListenerBound = true;
+
+    window.addEventListener('message', (event) => {
+      // Defensive: ignore messages from self
+      if (event.source === window) return;
+
+      let payload = null;
+      try {
+        payload = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+      } catch {
+        // Non-JSON message — check raw string for known signals
+        const raw = String(event.data || '').toLowerCase();
+        if (raw.includes('ready') || raw.includes('playing') || raw.includes('loaded')) {
+          handleHandshakeSuccess('raw-string-signal');
+          return;
+        }
+        return;
+      }
+
+      if (!payload || typeof payload !== 'object') return;
+
+      // Known readiness signatures from premium vendors
+      const isReady =
+        payload.event === 'ready' ||
+        payload.event === 'playerReady' ||
+        payload.event === 'player_ready' ||
+        payload.event === 'loaded' ||
+        payload.event === 'play' ||
+        payload.event === 'playing' ||
+        payload.status === 'playing' ||
+        payload.status === 'ready' ||
+        payload.type === 'ready' ||
+        payload.type === 'playerReady' ||
+        payload.method === 'ready' ||
+        payload.data?.event === 'ready' ||
+        payload.data?.status === 'playing' ||
+        // VidLink specific
+        payload.key === 'vidlink-ready' ||
+        // VidSrc specific
+        payload.info?.playerState === 1 ||
+        payload.playerState === 1;
+
+      if (isReady) {
+        handleHandshakeSuccess(payload.event || payload.status || 'postMessage');
+      }
+    });
+  }
+
+  function handleHandshakeSuccess(signal) {
+    if (_handshakeReceived) return; // Already handled
+    _handshakeReceived = true;
+    clearWatchdog();
+
+    // Mark current source as working
+    if (_currentSources[_activeServerIndex]) {
+      _currentSources[_activeServerIndex].status = 'working';
+    }
+
+    if (typeof _onStreamVerifiedCallback === 'function') {
+      _onStreamVerifiedCallback(_currentSources[_activeServerIndex], signal);
+    }
+  }
+
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // B. THE 6.5-SECOND WATCHDOG TIMER
+  // Starts on every iframe mount. If it expires without a handshake,
+  // triggers switchToBackupServer().
+  // ─────────────────────────────────────────────────────────────────────────
+  function startWatchdog() {
+    clearWatchdog();
+    _handshakeReceived = false;
+
+    _watchdogTimer = setTimeout(() => {
+      if (_handshakeReceived) return; // Race condition guard
+      // Timer expired — assume stream is stalled/broken
+      switchToBackupServer();
+    }, WATCHDOG_TIMEOUT_MS);
+  }
+
+  function clearWatchdog() {
+    if (_watchdogTimer !== null) {
+      clearTimeout(_watchdogTimer);
+      _watchdogTimer = null;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // D. SEAMLESS SILENT FAILOVER EXECUTION
+  // ─────────────────────────────────────────────────────────────────────────
+  function switchToBackupServer() {
+    // Mark current as failed
+    if (_currentSources[_activeServerIndex]) {
+      _currentSources[_activeServerIndex].status = 'failed';
+    }
+
+    // Increment to next priority mirror
+    const nextIndex = _activeServerIndex + 1;
+
+    // E. CIRCUIT BREAKER — all mirrors exhausted
+    if (nextIndex >= _currentSources.length) {
+      clearWatchdog();
+      _circuitBroken = true;
+
+      if (typeof _onCircuitBreakCallback === 'function') {
+        _onCircuitBreakCallback();
+      }
+      return;
+    }
+
+    // Move to next server
+    _activeServerIndex = nextIndex;
+    const nextSource = _currentSources[_activeServerIndex];
+
+    // DOM Iframe Rebuilder: destroy and recreate iframe for clean state
+    rebuildIframe(nextSource.embedUrl || nextSource.url, nextSource.sandboxPolicy || 'balanced');
+
+    // Show non-intrusive toast
+    showFailoverToast('Optimizing stream quality, routing to secure backup lane...');
+
+    // Notify callback (movieDetailsPage hooks into this)
+    if (typeof _onFailoverCallback === 'function') {
+      _onFailoverCallback(_activeServerIndex, nextSource);
+    }
+
+    // Step 7: Kick off the 6.5-second autonomous watchdog monitoring countdown
+    startWatchdog();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // IFRAME SANDBOX POLICY APPLICATION
+  // ─────────────────────────────────────────────────────────────────────────
+  function applyIframeSandbox(iframe, policy) {
+    if (!iframe) return;
+
+    if (policy === 'none') {
+      // Provider rejects sandbox entirely — strip it
+      iframe.removeAttribute('sandbox');
+    } else {
+      // Balanced: allow scripts + same-origin + forms
+      iframe.setAttribute('sandbox',
+        'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation'
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DOM IFRAME REBUILDER
+  // Completely destroys and recreates the iframe element on every stream
+  // invocation or failover event. This eliminates stale iframe state,
+  // memory leaks, and cross-origin caching bugs that occur when merely
+  // updating .src on a persistent iframe.
+  // ─────────────────────────────────────────────────────────────────────────
+  let _containerElement = null;
+
+  function rebuildIframe(targetServerUrl, sandboxPolicy) {
+    // Step 1: Locate the parent player wrapper
+    const wrapper = _containerElement
+      || ((_iframeElement && _iframeElement.parentElement) ? _iframeElement.parentElement : null);
+
+    if (!wrapper) {
+      console.warn('[VideoEngine] No container element available for iframe rebuild.');
+      return null;
+    }
+
+    // Step 2: Completely clear inner HTML — destroy previous iframe DOM node
+    wrapper.innerHTML = '';
+
+    // Step 3: Create a brand new iframe element
+    const iframe = document.createElement('iframe');
+
+    // Step 4: Apply verified, context-aware attributes
+    iframe.id = 'video-player';
+    iframe.src = targetServerUrl;
+    iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+    iframe.allowFullscreen = true;
+    iframe.setAttribute('allowfullscreen', 'true');
+    iframe.setAttribute('webkitallowfullscreen', 'true');
+    iframe.setAttribute('mozallowfullscreen', 'true');
+    iframe.referrerPolicy = 'no-referrer';
+    iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:none;';
+
+    // Step 5: Dynamically resolve sandbox policy
+    if (sandboxPolicy === 'none') {
+      // DO NOT append sandbox attribute
+    } else {
+      iframe.setAttribute('sandbox',
+        'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation'
+      );
+    }
+
+    // Step 6: Append fresh iframe into parent wrapper
+    wrapper.appendChild(iframe);
+
+    // Update internal reference
+    _iframeElement = iframe;
+
+    return iframe;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // TOAST NOTIFICATION (non-intrusive)
+  // ─────────────────────────────────────────────────────────────────────────
+  function showFailoverToast(message) {
+    // Remove existing toast if present
+    const existing = document.getElementById('videoEngineToast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'videoEngineToast';
+    toast.textContent = message;
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: linear-gradient(135deg, rgba(20, 20, 35, 0.95), rgba(30, 30, 50, 0.95));
+      color: #e0e0e0;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 99999;
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(229, 9, 20, 0.3);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      pointer-events: none;
+      max-width: 90vw;
+      text-align: center;
+    `;
+
+    document.body.appendChild(toast);
+
+    // Animate in
+    requestAnimationFrame(() => {
+      toast.style.opacity = '1';
+      toast.style.transform = 'translateX(-50%) translateY(0)';
+    });
+
+    // Auto-dismiss
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(-50%) translateY(20px)';
+      setTimeout(() => toast.remove(), 350);
+    }, TOAST_DURATION_MS);
+  }
+
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // E. CIRCUIT BREAKER ERROR SCREEN
+  // Renders a user-friendly error inside the player card when all
+  // mirrors are exhausted without a verified handshake.
+  // ─────────────────────────────────────────────────────────────────────────
+  function renderCircuitBreakerScreen(container) {
+    if (!container) return;
+
+    container.innerHTML = `
+      <div style="
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        min-height: 280px;
+        background: linear-gradient(180deg, #0d0d1a 0%, #1a1a2e 100%);
+        border-radius: 12px;
+        padding: 40px 24px;
+        text-align: center;
+        color: #e0e0e0;
+      ">
+        <div style="
+          width: 64px;
+          height: 64px;
+          border-radius: 50%;
+          background: rgba(229, 9, 20, 0.15);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 20px;
+        ">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#e50914" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h3 style="
+          margin: 0 0 10px;
+          font-size: 18px;
+          font-weight: 600;
+          color: #fff;
+        ">Stream Temporarily Unavailable</h3>
+        <p style="
+          margin: 0 0 20px;
+          font-size: 14px;
+          color: rgba(255, 255, 255, 0.6);
+          max-width: 380px;
+          line-height: 1.5;
+        ">Stream currently undergoing automated maintenance. Please try again shortly or check other titles.</p>
+        <button onclick="window.VideoEngine.retryAllServers()" style="
+          padding: 10px 24px;
+          background: linear-gradient(135deg, #e50914, #c40812);
+          color: #fff;
+          border: none;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: transform 0.2s, box-shadow 0.2s;
+          box-shadow: 0 4px 16px rgba(229, 9, 20, 0.3);
+        " onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'">
+          Retry All Servers
+        </button>
+      </div>
+    `;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MAIN INITIALIZATION — mountStream()
+  // Called by movieDetailsPage.js when a video is mounted or episode switched.
+  // ─────────────────────────────────────────────────────────────────────────
+  function mountStream(options = {}) {
+    const {
+      movie,
+      season = 1,
+      episode = 1,
+      iframeElement,
+      containerElement,
+      onFailover,
+      onCircuitBreak,
+      onStreamVerified,
+      sources,
+    } = options;
+
+    if (!movie && !sources) {
+      console.warn('[VideoEngine] mountStream called without movie or sources.');
+      return null;
+    }
+
+    // Bind the cross-domain listener (once globally)
+    bindMessageListener();
+
+    // Store state
+    _currentMovie = movie || null;
+    _currentSeason = Number(season || 1);
+    _currentEpisode = Number(episode || 1);
+    _iframeElement = iframeElement || null;
+    _containerElement = containerElement || (iframeElement ? iframeElement.parentElement : null);
+    _circuitBroken = false;
+    _handshakeReceived = false;
+    _onFailoverCallback = onFailover || null;
+    _onCircuitBreakCallback = onCircuitBreak || null;
+    _onStreamVerifiedCallback = onStreamVerified || null;
+
+    // Build priority waterfall from STANDARD_SERVERS
+    if (sources && sources.length) {
+      _currentSources = sources;
+    } else {
+      _currentSources = buildPriorityWaterfall(movie, season, episode);
+    }
+
+    if (!_currentSources.length) {
+      console.warn('[VideoEngine] No embed sources available for this title.');
+      return null;
+    }
+
+    // Reset index to first server
+    _activeServerIndex = 0;
+
+    // DOM Iframe Rebuilder: destroy old iframe and create fresh one
+    const firstSource = _currentSources[0];
+    rebuildIframe(firstSource.embedUrl || firstSource.url, firstSource.sandboxPolicy || 'balanced');
+
+    // Start the 6.5s watchdog
+    startWatchdog();
+
+    return {
+      sources: _currentSources,
+      activeIndex: _activeServerIndex,
+      activeSource: firstSource,
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RETRY — Reset all server statuses and restart from top
+  // Flushes system cache, resets priority index to 0, triggers fresh
+  // DOM Iframe Rebuilder cycle from scratch.
+  // ─────────────────────────────────────────────────────────────────────────
+  function retryAllServers() {
+    // Flush circuit breaker state
+    _circuitBroken = false;
+    clearWatchdog();
+
+    // Reset all source statuses to unknown
+    _currentSources.forEach(s => { s.status = 'unknown'; });
+
+    // Reset active server priority index to 0
+    _activeServerIndex = 0;
+    _handshakeReceived = false;
+
+    // Flush session failed providers cache
+    try { sessionStorage.removeItem('cinepulse_session_failed_providers'); } catch {}
+
+    // DOM Iframe Rebuilder: destroy and recreate from scratch
+    if (_currentSources[0]) {
+      const first = _currentSources[0];
+      rebuildIframe(first.embedUrl || first.url, first.sandboxPolicy || 'balanced');
+    }
+
+    // Start fresh watchdog cycle
+    startWatchdog();
+
+    // Notify failover callback of reset
+    if (typeof _onFailoverCallback === 'function') {
+      _onFailoverCallback(0, _currentSources[0]);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MANUAL SERVER SWITCH (user clicks a server button)
+  // ─────────────────────────────────────────────────────────────────────────
+  function switchToServer(index) {
+    if (index < 0 || index >= _currentSources.length) return;
+    clearWatchdog();
+    _handshakeReceived = false;
+    _activeServerIndex = index;
+
+    const source = _currentSources[index];
+
+    // DOM Iframe Rebuilder: fresh iframe for manual switch
+    rebuildIframe(source.embedUrl || source.url, source.sandboxPolicy || 'balanced');
+
+    startWatchdog();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // STOP — Cleanup when navigating away or destroying player
+  // ─────────────────────────────────────────────────────────────────────────
+  function stop() {
+    clearWatchdog();
+    _handshakeReceived = false;
+    _circuitBroken = false;
+    _currentSources = [];
+    _activeServerIndex = 0;
+    _iframeElement = null;
+    _containerElement = null;
+    _currentMovie = null;
+  }
+
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // LEGACY COMPAT — Preserve existing VideoEngine API surface
+  // ─────────────────────────────────────────────────────────────────────────
   function normalizeServer(server = '', url = '') {
     const value = String(server || '').trim().toLowerCase();
     if (value === 'storage' || value === 'local') return 'upload';
@@ -33,33 +587,11 @@ const VideoEngine = (() => {
     const rawUrl = String(source.url || source.path || '').trim();
     const id = String(source.id || source.providerId || '').trim();
 
-    if (normalizedServer === 'upload') {
-      return rawUrl;
-    }
-
-    if (normalizedServer === 'youtube' && id) {
-      if (typeof window.buildYouTubeEmbed === 'function') {
-        return window.buildYouTubeEmbed(`https://youtu.be/${id}`) || '';
-      }
-      return `https://www.youtube.com/embed/${id}`;
-    }
-
-    if (normalizedServer === 'dailymotion' && id) {
-      return `https://www.dailymotion.com/embed/video/${id}`;
-    }
-
-    if (normalizedServer === 'vimeo' && id) {
-      return `https://player.vimeo.com/video/${id}`;
-    }
-
+    if (normalizedServer === 'upload') return rawUrl;
+    if (normalizedServer === 'youtube' && id) return `https://www.youtube.com/embed/${id}`;
+    if (normalizedServer === 'dailymotion' && id) return `https://www.dailymotion.com/embed/video/${id}`;
+    if (normalizedServer === 'vimeo' && id) return `https://player.vimeo.com/video/${id}`;
     if (!rawUrl) return '';
-
-    if (normalizedServer === 'youtube' || normalizedServer === 'dailymotion' || normalizedServer === 'vimeo') {
-      if (typeof window.getCleanEmbedUrl === 'function') {
-        return window.getCleanEmbedUrl(rawUrl);
-      }
-    }
-
     return rawUrl;
   }
 
@@ -89,72 +621,24 @@ const VideoEngine = (() => {
     };
   }
 
-  function buildTmdbEmbedUrl(movie) {
-    if (!movie?.tmdbId) return '';
-    const category = String(movie.category || '').toLowerCase();
-    const isTv = ['series', 'anime'].includes(category) || Number(movie.totalEpisodes) > 0;
-    const tmdbType = isTv ? 'tv' : 'movie';
-    return `https://2embed.cc/iframe/${tmdbType}?tmdb=${encodeURIComponent(movie.tmdbId)}`;
-  }
-
-  // buildTmdbSource removed as requested
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // AUTO-EMBED SERVERS — Build URLs from TMDb ID
-  // ═══════════════════════════════════════════════════════════════════════════
   function getEmbedServers(movie) {
     if (!movie?.tmdbId) return [];
-
     const tmdbId = movie.tmdbId;
     const category = String(movie.category || '').toLowerCase();
     const isTv = ['series', 'anime', 'tv', 'cartoon'].includes(category) || Number(movie.totalEpisodes) > 0;
     const type = isTv ? 'tv' : 'movie';
 
-    // Use EmbedServers module if available, otherwise build manually
     if (typeof EmbedServers !== 'undefined') {
       return EmbedServers.buildAllSources(tmdbId, type, movie.season || 1, movie.episode || 1);
     }
-
-    // Fallback: Build manually
-    const servers = [
-      { key: 'vidsrc', name: 'VidSrc', movie: (id) => `https://vidsrc.me/embed/movie?tmdb=${id}`, tv: (id, s, e) => `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}` }, // vidsrc.me is stable; vidsrc.to is dead
-      { key: 'embed2', name: '2Embed', movie: (id) => `https://www.2embed.cc/embed/${id}`, tv: (id, s, e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}` },
-      { key: 'autoembed', name: 'AutoEmbed', movie: (id) => `https://autoembed.cc/embed/movie/${id}`, tv: (id, s, e) => `https://autoembed.cc/embed/tv/${id}-${s}-${e}` },
-      { key: 'vidlink', name: 'VidLink', movie: (id) => `https://vidlink.pro/embed/movie/${id}`, tv: (id, s, e) => `https://vidlink.pro/embed/tv/${id}/${s}/${e}` },
-      { key: 'multiembed', name: 'MultiEmbed', movie: (id) => `https://multiembed.mov/?video_id=${id}&tmdb=1`, tv: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}` },
-    ];
-
-    return servers.map((srv, idx) => {
-      const url = isTv ? srv.tv(tmdbId, movie.season || 1, movie.episode || 1) : srv.movie(tmdbId);
-      return {
-        id: `embed-${srv.key}`,
-        server: srv.key,
-        serverName: srv.name,
-        priority: 10 + idx,
-        url: url,
-        embedUrl: url,
-        playUrl: '',
-        label: srv.name,
-        quality: 'Auto',
-        isExternal: true,
-        isEmbed: true,
-        sourceType: srv.key,
-      };
-    });
+    return [];
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUILD ALL MOVIE SOURCES (Upload + External + Auto-Embed)
-  // ═══════════════════════════════════════════════════════════════════════════
   function buildMovieSources(movie, options = {}) {
     const sources = Array.isArray(movie.sources) ? movie.sources.map(createSourceConfig) : [];
 
-    // Add uploaded/direct sources
     if (movie.videoUrl) {
-      const uploadExists = sources.some((source) =>
-        source.server === 'upload' && source.url === movie.videoUrl
-      );
-
+      const uploadExists = sources.some(s => s.server === 'upload' && s.url === movie.videoUrl);
       if (!uploadExists) {
         const fallbackServer = normalizeServer(movie.sourceType, movie.videoUrl);
         sources.unshift(createSourceConfig({
@@ -167,14 +651,8 @@ const VideoEngine = (() => {
       }
     }
 
-    // Legacy TMDb embed removed
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // AUTO-EMBED: Add multi-server sources from TMDb ID
-    // ═══════════════════════════════════════════════════════════════════════════
     const embedSources = getEmbedServers(movie);
     if (embedSources.length && !options.skipAutoEmbed) {
-      // Filter out duplicates (same URL)
       const existingUrls = new Set(sources.map(s => s.url));
       const newEmbedSources = embedSources.filter(s => !existingUrls.has(s.url));
       sources.push(...newEmbedSources);
@@ -183,64 +661,75 @@ const VideoEngine = (() => {
     return sources.sort((a, b) => {
       const priorityDiff = (SERVER_PRIORITY[a.server] ?? 99) - (SERVER_PRIORITY[b.server] ?? 99);
       if (priorityDiff !== 0) return priorityDiff;
-      return a.label.localeCompare(b.label);
+      return (a.label || '').localeCompare(b.label || '');
     });
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SMART SERVER SELECTOR — Get best available server with failover
-  // ═══════════════════════════════════════════════════════════════════════════
   function getBestSource(movie, excludeFailed = true) {
     const sources = buildMovieSources(movie);
     if (!sources.length) return null;
-
-    // Prefer upload sources first, then auto-embed by priority
     const uploadSources = sources.filter(s => s.server === 'upload');
     const embedSources = sources.filter(s => s.isEmbed && s.status !== 'failed');
     const otherSources = sources.filter(s => !s.isEmbed && s.server !== 'upload');
-
-    // Priority: Upload > Working Embed > Other External
     const candidates = [...uploadSources, ...embedSources, ...otherSources];
-
     if (excludeFailed) {
       const working = candidates.find(s => s.status !== 'failed');
-      return working || candidates[0]; // Fallback to first if all marked failed
+      return working || candidates[0];
     }
-
     return candidates[0];
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // GET NEXT SERVER FOR FAILOVER
-  // ═══════════════════════════════════════════════════════════════════════════
   function getNextSource(movie, currentSourceId) {
     const sources = buildMovieSources(movie);
     const currentIndex = sources.findIndex(s => s.id === currentSourceId);
-
     if (currentIndex === -1) return sources[0] || null;
-
-    // Find next non-failed source
     for (let i = currentIndex + 1; i < sources.length; i++) {
       if (sources[i].status !== 'failed') return sources[i];
     }
-
-    // Loop back to beginning
     for (let i = 0; i < currentIndex; i++) {
       if (sources[i].status !== 'failed') return sources[i];
     }
-
-    return sources[currentIndex]; // Return current if all failed
+    return sources[currentIndex];
   }
 
   function getPreferredSource(movie) {
     const sources = buildMovieSources(movie);
-    return {
-      sources,
-      preferred: sources[0] || null,
-    };
+    return { sources, preferred: sources[0] || null };
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // GETTERS (for external inspection)
+  // ─────────────────────────────────────────────────────────────────────────
+  function getActiveServerIndex() { return _activeServerIndex; }
+  function getCurrentSources() { return _currentSources; }
+  function isCircuitBroken() { return _circuitBroken; }
+  function isHandshakeReceived() { return _handshakeReceived; }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PUBLIC API
+  // ─────────────────────────────────────────────────────────────────────────
   window.VideoEngine = {
+    // New Failover Monitoring Loop API
+    mountStream,
+    switchToBackupServer,
+    switchToServer,
+    retryAllServers,
+    stop,
+    startWatchdog,
+    clearWatchdog,
+    renderCircuitBreakerScreen,
+    applyIframeSandbox,
+    rebuildIframe,
+    showFailoverToast,
+    buildPriorityWaterfall,
+
+    // State getters
+    getActiveServerIndex,
+    getCurrentSources,
+    isCircuitBroken,
+    isHandshakeReceived,
+
+    // Legacy API (backward compat)
     normalizeServer,
     toEmbedUrl,
     buildMovieSources,
@@ -249,6 +738,7 @@ const VideoEngine = (() => {
     getNextSource,
     getEmbedServers,
     SERVERS: Object.keys(SERVER_PRIORITY),
+    WATCHDOG_TIMEOUT_MS,
   };
 
   return window.VideoEngine;
@@ -256,8 +746,7 @@ const VideoEngine = (() => {
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * Multi-Embed Player Controller
- * Handles iframe embedding with server switching and failover
+ * Multi-Embed Player Controller (Legacy — preserved for backward compat)
  * ═══════════════════════════════════════════════════════════════════════════
  */
 const MultiEmbedPlayer = (() => {
@@ -269,7 +758,6 @@ const MultiEmbedPlayer = (() => {
   let onErrorCallback = null;
   let onLoadCallback = null;
 
-  // Initialize player
   const init = (containerId, sources, options = {}) => {
     const container = document.getElementById(containerId);
     if (!container) return null;
@@ -279,62 +767,32 @@ const MultiEmbedPlayer = (() => {
     currentSourceIndex = 0;
     onErrorCallback = options.onError;
     onLoadCallback = options.onLoad;
-
-    // Clear container
     container.innerHTML = '';
 
-    // Render server selector if multiple sources
     if (currentSources.length > 1) {
       renderServerButtons(container);
     }
 
-    // Create iframe container
     const frameContainer = document.createElement('div');
     frameContainer.id = 'embedFrameContainer';
-    frameContainer.style.cssText = `
-      position: relative;
-      width: 100%;
-      aspect-ratio: 16/9;
-      background: #000;
-      border-radius: 12px;
-      overflow: hidden;
-    `;
+    frameContainer.style.cssText = 'position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;';
     container.appendChild(frameContainer);
 
-    // Load first source
     loadSource(0);
-
     return { switchServer, reload, destroy };
   };
 
-  // Render server selection buttons
   const renderServerButtons = (container) => {
     const selectorDiv = document.createElement('div');
     selectorDiv.className = 'embed-server-selector';
-    selectorDiv.style.cssText = `
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      padding: 12px 0;
-      margin-bottom: 12px;
-    `;
+    selectorDiv.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;padding:12px 0;margin-bottom:12px;';
 
     currentSources.forEach((source, idx) => {
       const btn = document.createElement('button');
       btn.className = `server-btn ${idx === 0 ? 'active' : ''}`;
       btn.dataset.index = idx;
       btn.textContent = source.label || `Server ${idx + 1}`;
-      btn.style.cssText = `
-        padding: 8px 16px;
-        border: 1px solid ${idx === 0 ? '#e50914' : 'rgba(255,255,255,0.2)'};
-        background: ${idx === 0 ? '#e50914' : 'transparent'};
-        color: ${idx === 0 ? '#fff' : 'rgba(255,255,255,0.8)'};
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 500;
-        transition: all 0.2s;
-      `;
+      btn.style.cssText = `padding:8px 16px;border:1px solid ${idx === 0 ? '#e50914' : 'rgba(255,255,255,0.2)'};background:${idx === 0 ? '#e50914' : 'transparent'};color:${idx === 0 ? '#fff' : 'rgba(255,255,255,0.8)'};border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;transition:all 0.2s;`;
       btn.onclick = () => switchServer(idx);
       selectorDiv.appendChild(btn);
     });
@@ -342,7 +800,6 @@ const MultiEmbedPlayer = (() => {
     container.appendChild(selectorDiv);
   };
 
-  // Update active button state
   const updateActiveButton = (index) => {
     const buttons = currentContainer?.querySelectorAll('.server-btn');
     buttons?.forEach((btn, idx) => {
@@ -353,61 +810,30 @@ const MultiEmbedPlayer = (() => {
     });
   };
 
-  // Load a specific source
   const loadSource = (index) => {
     if (!currentSources[index]) return false;
-
     const source = currentSources[index];
     const container = currentContainer?.querySelector('#embedFrameContainer');
     if (!container) return false;
 
     currentSourceIndex = index;
     updateActiveButton(index);
-
-    // Clear existing
     container.innerHTML = '';
     clearTimeout(loadTimeout);
 
-    // Show loading
     const loadingDiv = document.createElement('div');
     loadingDiv.id = 'embedLoading';
-    loadingDiv.style.cssText = `
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,0.9);
-      color: #fff;
-      font-size: 14px;
-      z-index: 10;
-    `;
-    loadingDiv.innerHTML = `
-      <div style="text-align: center;">
-        <div style="width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.2); border-top-color: #e50914; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 12px;"></div>
-        <div>Loading from ${source.label}...</div>
-      </div>
-      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
-    `;
+    loadingDiv.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.9);color:#fff;font-size:14px;z-index:10;';
+    loadingDiv.innerHTML = `<div style="text-align:center;"><div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#e50914;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div><div>Loading from ${source.label}...</div></div><style>@keyframes spin{to{transform:rotate(360deg);}}</style>`;
     container.appendChild(loadingDiv);
 
-    // Create iframe
     currentFrame = document.createElement('iframe');
-    currentFrame.style.cssText = `
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      border: none;
-      opacity: 0;
-      transition: opacity 0.3s;
-    `;
+    currentFrame.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:none;opacity:0;transition:opacity 0.3s;';
     currentFrame.src = source.embedUrl || source.url;
     currentFrame.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
     currentFrame.referrerPolicy = 'no-referrer';
     currentFrame.setAttribute('allowfullscreen', 'true');
 
-    // Handle load
     currentFrame.onload = () => {
       clearTimeout(loadTimeout);
       loadingDiv.style.display = 'none';
@@ -415,23 +841,13 @@ const MultiEmbedPlayer = (() => {
       if (onLoadCallback) onLoadCallback(source);
     };
 
-    // Handle error/timeout
     loadTimeout = setTimeout(() => {
       if (loadingDiv.style.display !== 'none') {
-        // Load failed/timed out
         source.status = 'failed';
         if (index < currentSources.length - 1) {
-          // Auto-switch to next server
           loadSource(index + 1);
         } else {
-          // All failed
-          loadingDiv.innerHTML = `
-            <div style="text-align: center; color: #ef4444;">
-              <div style="font-size: 32px; margin-bottom: 8px;">⚠</div>
-              <div>Failed to load from all servers</div>
-              <button onclick="MultiEmbedPlayer.reload()" style="margin-top: 12px; padding: 8px 16px; background: #e50914; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Retry</button>
-            </div>
-          `;
+          loadingDiv.innerHTML = `<div style="text-align:center;color:#ef4444;"><div style="font-size:32px;margin-bottom:8px;">⚠</div><div>Failed to load from all servers</div><button onclick="MultiEmbedPlayer.reload()" style="margin-top:12px;padding:8px 16px;background:#e50914;color:#fff;border:none;border-radius:4px;cursor:pointer;">Retry</button></div>`;
           if (onErrorCallback) onErrorCallback(source);
         }
       }
@@ -441,29 +857,21 @@ const MultiEmbedPlayer = (() => {
     return true;
   };
 
-  // Switch to specific server
   const switchServer = (index) => {
     if (index === currentSourceIndex) return;
     loadSource(index);
   };
 
-  // Reload current source
-  const reload = () => {
-    loadSource(currentSourceIndex);
-  };
+  const reload = () => { loadSource(currentSourceIndex); };
 
-  // Destroy player
   const destroy = () => {
     clearTimeout(loadTimeout);
-    if (currentContainer) {
-      currentContainer.innerHTML = '';
-    }
+    if (currentContainer) currentContainer.innerHTML = '';
     currentFrame = null;
     currentSources = [];
     currentSourceIndex = 0;
   };
 
-  // Public API
   return {
     init,
     switchServer,
@@ -474,5 +882,4 @@ const MultiEmbedPlayer = (() => {
   };
 })();
 
-// Make globally available
 window.MultiEmbedPlayer = MultiEmbedPlayer;
