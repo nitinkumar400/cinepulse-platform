@@ -424,7 +424,6 @@ function createMovieCard(movie, opts = {}) {
   };
   const badgeCls = badgeMap[movie.category] || 'badge-movie';
   const rating   = movie.averageRating > 0 ? movie.averageRating : '—';
-  const liveViewers = Math.floor(Math.random() * (2500 - 500 + 1)) + 500;
   const spokenLanguages = Array.isArray(movie.spoken_languages) ? movie.spoken_languages : [];
   const normalizedLanguageSet = new Set(spokenLanguages.map((lang) => String(lang || '').trim().toLowerCase()));
   const languageTags = [
@@ -492,11 +491,6 @@ function createMovieCard(movie, opts = {}) {
           ${movie.views > 0
             ? `<span>·</span><span>${formatNumber(movie.views)} views</span>`
             : ''}
-          <span>·</span>
-          <span class="live-viewers" data-live-viewers="true">
-            <span class="live-dot" aria-hidden="true"></span>
-            <span class="live-viewer-count">${liveViewers}</span> live
-          </span>
         </div>
         ${languageTags.length
           ? `<div class="card-language-tags">${languageTags.map((lang) => `<span class="card-language-tag">${escapeHtml(lang)}</span>`).join('')}</div>`
@@ -919,15 +913,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (isLoggedIn()) NotificationSystem.init();
   document.addEventListener('click', handleCardClick);
 });
-
-function refreshLiveViewerCounters() {
-  document.querySelectorAll('[data-live-viewers="true"] .live-viewer-count').forEach((node) => {
-    node.textContent = String(Math.floor(Math.random() * (2500 - 500 + 1)) + 500);
-  });
-  refreshAnimeCountdowns();
-}
-
-setInterval(refreshLiveViewerCounters, 4500);
 
 function getCountdownLabel(targetIsoDate = '') {
   const target = new Date(targetIsoDate);

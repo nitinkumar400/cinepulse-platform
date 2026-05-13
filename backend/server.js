@@ -19,7 +19,7 @@ const {
 const responseFormatter = require('./middleware/responseFormatter');
 const { requestContext } = require('./middleware/requestContext');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
-const { globalApiLimiter, authLimiter, movieLimiter, aiLimiter } = require('./middleware/rateLimiter');
+const { globalApiLimiter, authLimiter, movieLimiter, aiLimiter, syncLimiter } = require('./middleware/rateLimiter');
 
 const authRoutes = require('./routes/auth');
 const movieRoutes = require('./routes/movies');
@@ -98,16 +98,28 @@ function wrapLayerHandlers(stack = []) {
 function corsOriginHandler(origin, callback) {
   // Allow requests with no origin (mobile apps, curl, server-to-server)
   if (!origin) return callback(null, true);
-  
-  // Allow all origins if wildcard is configured
-  if (corsOrigins.includes('*')) return callback(null, true);
-  
-  // Allow if origins list is empty (development) or includes this origin
-  if (corsOrigins.length === 0 || corsOrigins.includes(origin)) {
+
+  // Build the allowed-origins set at request time so env changes take effect
+  // without a redeploy. Includes:
+  //   • FRONTEND_URL / CORS_ORIGINS from .env
+  //   • The Vercel deployment domain (VERCEL_URL is injected automatically)
+  //   • localhost variants for local development
+  const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '';
+  const allowed = new Set([
+    ...corsOrigins.filter(Boolean),
+    ...(vercelUrl ? [vercelUrl] : []),
+    'http://localhost:5001',
+    'http://127.0.0.1:5001',
+  ]);
+
+  // Allow all origins if wildcard is explicitly configured
+  if (allowed.has('*')) return callback(null, true);
+
+  if (allowed.size === 0 || allowed.has(origin)) {
     return callback(null, true);
   }
-  
-  console.warn(`[CORS] Blocked origin: ${origin}. Allowed: ${corsOrigins.join(', ')}`);
+
+  console.warn(`[CORS] Blocked origin: ${origin}. Allowed: ${[...allowed].join(', ')}`);
   return callback(new Error(`CORS origin blocked: ${origin}`));
 }
 
@@ -138,10 +150,13 @@ app.use(async (req, res, next) => {
 
 app.use(requestContext);
 app.use(cors({
-  origin: runtime === 'production' ? '*' : corsOriginHandler,
+  // In production, allow only the configured FRONTEND_URL (and the Vercel
+  // deployment domain). Falls back to the full corsOriginHandler in dev.
+  // Never use '*' — it allows any site to read auth API responses.
+  origin: runtime === 'production' ? corsOriginHandler : corsOriginHandler,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: runtime !== 'production',
+  credentials: true,
 }));
 
 app.use(helmet({
@@ -191,16 +206,15 @@ app.get('/health', (req, res) => {
   const mongo = getMongoHealth();
   const healthy = mongo.readyState === 1;
 
+  // Return only the minimum needed for uptime monitoring.
+  // Internal metrics (memory, mongo host) are stripped to prevent
+  // reconnaissance — see SYSTEM_AUDIT.md WARN A-6.
   return res.status(healthy ? 200 : 503).json({
     success: healthy,
+    status:  healthy ? 'ok' : 'degraded',
     service: 'cine-stream-backend',
-    environment: getEnv('NODE_ENV', 'development'),
-    uptime: process.uptime(),
+    uptime:  Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
-    memory: process.memoryUsage(),
-    dependencies: {
-      mongo,
-    },
   });
 });
 
@@ -234,10 +248,22 @@ app.get('/manifest.json', (req, res) => {
 });
 
 app.get('/sitemap.xml', async (req, res) => {
+  // Category → clean URL slug map (mirrors injectMovieJsonLd in movieDetailsPage.js)
+  // WARN C-4 fix: use /watch/<slug>/<id> so sitemap <loc> matches <link rel="canonical">
+  const CATEGORY_SLUG = {
+    movie:        'movie',
+    series:       'series',
+    anime:        'anime',
+    cartoon:      'cartoon',
+    documentary:  'documentary',
+    short:        'movie',
+    tv:           'tv',
+  };
+
   try {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const cursor = Movie.find({})
-      .select('_id updatedAt')
+      .select('_id updatedAt category')   // added category for slug resolution
       .sort({ updatedAt: -1 })
       .lean()
       .cursor();
@@ -246,7 +272,8 @@ app.get('/sitemap.xml', async (req, res) => {
     res.write('<?xml version="1.0" encoding="UTF-8"?>');
     res.write('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
     for await (const movie of cursor) {
-      const loc = `${baseUrl}/pages/movie-details.html?id=${movie._id}`;
+      const slug    = CATEGORY_SLUG[movie.category] || 'movie';
+      const loc     = `${baseUrl}/watch/${slug}/${movie._id}`;
       const lastmod = movie.updatedAt ? new Date(movie.updatedAt).toISOString() : new Date().toISOString();
       res.write(`<url><loc>${loc}</loc><lastmod>${lastmod}</lastmod><changefreq>daily</changefreq><priority>0.8</priority></url>`);
     }
@@ -272,7 +299,9 @@ app.use('/api/recommend', protect, recommendRoutes);
 app.use('/api/users', protect, userRoutes);
 app.use('/api/ai', aiLimiter, protect, aiRouter);
 app.use('/api/mcp', mcpRoutes);
-app.use('/api/sync', syncRoutes);
+// WARN A-3 fix: dedicated tight limiter for sync — prevents TMDB quota exhaustion
+// from a compromised admin token or accidental hammering.
+app.use('/api/sync', syncLimiter, syncRoutes);
 
 if (app._router && Array.isArray(app._router.stack)) {
   wrapLayerHandlers(app._router.stack);

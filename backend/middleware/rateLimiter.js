@@ -56,9 +56,20 @@ const aiLimiter = rateLimit({
   handler: buildRateLimitHandler('Too many AI requests. Please try again later.'),
 });
 
+// WARN A-3 fix: tight limiter for /api/sync — each call triggers expensive
+// TMDB + AniList API requests and MongoDB bulk writes. 5 calls per hour
+// per IP is more than enough for legitimate admin use.
+const syncLimiter = rateLimit({
+  ...baseConfig,
+  windowMs: 60 * 60 * 1000, // 1-hour window
+  max: 5,
+  handler: buildRateLimitHandler('Sync rate limit exceeded. Maximum 5 sync calls per hour. Please wait before trying again.'),
+});
+
 module.exports = {
   globalApiLimiter,
   authLimiter,
   movieLimiter,
   aiLimiter,
+  syncLimiter,
 };

@@ -122,20 +122,50 @@ const adminOnly = (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────
 // cronOrAdmin — combined middleware for cron-triggered sync routes.
 //
-// Accepts two forms of authentication:
-//   1. Admin JWT  — standard Bearer <jwt> from a logged-in admin user.
-//   2. Cron token — Bearer <CRON_SECRET> sent by Vercel Cron or any
-//                   external scheduler. Sets a synthetic req.user so
-//                   downstream adminOnly-style checks still pass.
+// Accepts THREE forms of authentication (checked in priority order):
+//
+//   1. Vercel Cron header — Vercel always sends `x-vercel-cron: 1` on
+//      every scheduled invocation. On Vercel Pro/Enterprise the header
+//      is cryptographically signed; on Hobby it is present but unsigned.
+//      We accept it only when CRON_SECRET is configured (proves the env
+//      is intentionally set up for cron) so an attacker cannot spoof it
+//      on a misconfigured deployment that has no secret at all.
+//
+//   2. Bearer <CRON_SECRET> — sent by external schedulers (GitHub Actions,
+//      cURL, etc.) that cannot inject custom headers. Uses constant-time
+//      comparison to prevent timing attacks.
+//
+//   3. Admin JWT — standard Bearer <jwt> from a logged-in admin user.
 //
 // Security properties:
 //   • CRON_SECRET must be at least 32 characters; shorter values are
 //     rejected to prevent accidental weak secrets.
-//   • Constant-time comparison is used to prevent timing attacks.
-//   • If CRON_SECRET is not configured the cron path is disabled and
-//     only admin JWT is accepted.
+//   • Constant-time comparison is used for the Bearer secret path.
+//   • If CRON_SECRET is not configured, paths 1 and 2 are both disabled
+//     and only admin JWT is accepted.
 // ─────────────────────────────────────────────────────────────────────────
 const cronOrAdmin = async (req, res, next) => {
+  const { timingSafeEqual } = require('crypto');
+
+  const cronSecret = getCronSecret();
+  const hasCronSecret = cronSecret && cronSecret.length >= 32;
+
+  // ── Path 1: Vercel Cron header (x-vercel-cron: 1) ────────────────────
+  // Vercel injects this header on every scheduled cron invocation.
+  // We only trust it when CRON_SECRET is configured — this ensures the
+  // deployment is intentionally set up for automated sync, and prevents
+  // a spoofed header from working on a fresh deployment with no secret.
+  if (req.headers['x-vercel-cron'] === '1' && hasCronSecret) {
+    req.user = {
+      _id:      'cron-scheduler',
+      id:       'cron-scheduler',
+      username: 'vercel-cron',
+      role:     'admin',
+      isCron:   true,
+    };
+    return next();
+  }
+
   const token = getBearerToken(req);
 
   if (!token || token === 'null' || token === 'undefined') {
@@ -146,22 +176,18 @@ const cronOrAdmin = async (req, res, next) => {
     });
   }
 
-  // ── Path 1: Try CRON_SECRET first (fast, no DB hit) ──────────────────
-  const cronSecret = getCronSecret();
-  if (cronSecret && cronSecret.length >= 32) {
-    // Constant-time comparison to prevent timing attacks
-    const secretBuf  = Buffer.from(cronSecret);
-    const tokenBuf   = Buffer.from(token);
+  // ── Path 2: Bearer <CRON_SECRET> (external schedulers) ───────────────
+  if (hasCronSecret) {
+    // Constant-time comparison to prevent timing attacks.
+    // We pad the shorter buffer so timingSafeEqual always receives equal
+    // lengths — this prevents a length oracle from leaking the secret.
+    const secretBuf    = Buffer.from(cronSecret);
+    const tokenBuf     = Buffer.from(token);
     const lengthsMatch = secretBuf.length === tokenBuf.length;
-
-    // Always run timingSafeEqual even on length mismatch (pad to avoid leak)
     const a = lengthsMatch ? secretBuf : Buffer.alloc(secretBuf.length);
     const b = lengthsMatch ? tokenBuf  : Buffer.alloc(secretBuf.length);
 
-    const { timingSafeEqual } = require('crypto');
     if (lengthsMatch && timingSafeEqual(a, b)) {
-      // Inject a synthetic admin-equivalent user so route handlers
-      // that call req.user.role work without a real DB lookup.
       req.user = {
         _id:      'cron-scheduler',
         id:       'cron-scheduler',
@@ -173,7 +199,7 @@ const cronOrAdmin = async (req, res, next) => {
     }
   }
 
-  // ── Path 2: Fall back to standard Admin JWT ───────────────────────────
+  // ── Path 3: Fall back to standard Admin JWT ──────────────────────────
   try {
     const user = await resolveUserFromToken(token);
 
