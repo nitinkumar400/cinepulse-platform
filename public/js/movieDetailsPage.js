@@ -495,7 +495,7 @@ function setPlayerStatus(message, variant = '') {
   statusEl.className = `player-status${variant ? ` is-${variant}` : ''}`;
 }
 
-function showPlayerLoader(show, text = 'Loading streamâ€¦') {
+function showPlayerLoader(show, text = 'Loading stream...') {
   const loader = document.getElementById('playerLoader');
   const textEl = loader?.querySelector('.player-loader-text');
   if (textEl) textEl.textContent = text;
@@ -656,8 +656,8 @@ function wireNativeFallback() {
   video.dataset.multiSourceBound = 'true';
   video.addEventListener('error', () => {
     if (activeSourceIndex < playbackSources.length - 1) {
-      showPlayerMessage('Switching serverâ€¦');
-      setPlayerStatus('Current source failed. Trying another serverâ€¦', 'switching');
+      showPlayerMessage('Switching server...');
+      setPlayerStatus('Current source failed. Trying another server...', 'switching');
       switchPlaybackSource(activeSourceIndex + 1, { auto: true });
     } else {
       showPlayerLoader(false);
@@ -808,7 +808,7 @@ async function switchPlaybackSource(index, options = {}) {
   const source = playbackSources[index];
   const switchToken = ++activePlayerSwitchToken;
   const shortcutsBtn = document.getElementById('shortcutsBtn');
-  showPlayerLoader(true, options.auto ? 'Switching serverâ€¦' : 'Loading streamâ€¦');
+  showPlayerLoader(true, options.auto ? 'Switching server...' : 'Loading stream...');
   setPlayerStatus(`Playing from ${source.label}`, options.auto ? 'switching' : '');
   if (shortcutsBtn) {
     shortcutsBtn.style.opacity = source.server === 'upload' ? '1' : '0.55';
@@ -1031,7 +1031,7 @@ function renderMovie(m) {
   const min = (m.duration || 0) % 60;
   document.getElementById('movieDuration').textContent = h > 0 ? `${h}h ${min}m` : `${min}m`;
 
-  document.getElementById('movieRating').textContent = `â­ ${m.averageRating || 'N/A'} (${m.numRatings || 0} ratings)`;
+  document.getElementById('movieRating').innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="var(--gold, #fbbf24)" style="vertical-align:text-bottom;margin-right:4px;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${m.averageRating || 'N/A'} (${m.numRatings || 0} ratings)`;
 
   if (m.status && m.status !== 'Completed') {
     const badge = document.getElementById('movieStatusBadge');
@@ -1047,12 +1047,12 @@ function renderMovie(m) {
     `<span class="genre-tag">${escapeHtml(g)}</span>`
   ).join('');
 
-  document.getElementById('detailDirector').textContent = m.director  || 'â€”';
-  document.getElementById('detailStudio').textContent   = m.studio    || 'â€”';
-  document.getElementById('detailLanguage').textContent = m.language  || 'â€”';
+  document.getElementById('detailDirector').textContent = m.director  || '—';
+  document.getElementById('detailStudio').textContent   = m.studio    || '—';
+  document.getElementById('detailLanguage').textContent = m.language  || '—';
   document.getElementById('detailViews').textContent    = (m.views || 0).toLocaleString();
-  document.getElementById('detailYear').textContent     = m.releaseYear || 'â€”';
-  document.getElementById('detailRating').textContent   = m.rating    || 'â€”';
+  document.getElementById('detailYear').textContent     = m.releaseYear || '—';
+  document.getElementById('detailRating').textContent   = m.rating    || '—';
 
   if (m.category === 'anime' || m.category === 'series' || m.category === 'cartoon') {
     if (m.status) {
@@ -1371,15 +1371,15 @@ function _upsertMeta(attrName, attrValue, content) {
   el.setAttribute('content', String(content));
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ─────────────────────────────────────────────────────────────────────────
 // RATING STARS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ─────────────────────────────────────────────────────────────────────────
 function renderRatingStars() {
   const container = document.getElementById('ratingStars');
   container.innerHTML = '';
   for (let i = 1; i <= 10; i++) {
     const btn = document.createElement('button');
-    btn.textContent    = 'â˜…';
+    btn.innerHTML    = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
     btn.title          = `Rate ${i}/10`;
     btn.dataset.rating = i;
     btn.addEventListener('mouseenter', () => highlightStars(i));
@@ -1407,17 +1407,17 @@ async function submitRating(rating) {
     const data = await readJsonResponse(res);
     if (res.ok) {
       highlightStars(rating);
-      document.getElementById('movieRating').textContent = `â­ ${data.averageRating} (${data.numRatings} ratings)`;
-      toast(`Rated ${rating}/10 â­`, 'success');
+      document.getElementById('movieRating').innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="var(--gold, #fbbf24)" style="vertical-align:text-bottom;margin-right:4px;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${data.averageRating} (${data.numRatings} ratings)`;
+      toast(`Rated ${rating}/10`, 'success');
     } else {
       toast(data.message || 'Already rated', 'error');
     }
   } catch(e) { toast('Failed to rate', 'error'); }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ─────────────────────────────────────────────────────────────────────────
 // PROGRESS TRACKING
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ─────────────────────────────────────────────────────────────────────────
 function setupProgressTracking() {
   const video = document.getElementById('videoPlayer');
   if (!video || !userLoggedIn) return;
@@ -1460,9 +1460,9 @@ async function apiSaveProgress(ct, td) {
   } catch(e) {}
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ─────────────────────────────────────────────────────────────────────────
 // TRAILER & WATCHLIST
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ─────────────────────────────────────────────────────────────────────────
 function openTrailer() {
   const url = currentMovie?.trailerUrl;
   if (!url) return;
@@ -1503,7 +1503,7 @@ async function toggleWatchlist() {
   try {
     const res  = await apiFetch(`/auth/watchlist/${currentMovieId}`, {
       method:  'PUT',
-      headers: { 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     });
     const data = await readJsonResponse(res);
     const btn  = document.getElementById('watchlistBtn');
@@ -1520,9 +1520,9 @@ async function toggleWatchlist() {
   } catch(e) { toast('Failed', 'error'); }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ─────────────────────────────────────────────────────────────────────────
 // EPISODES
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ─────────────────────────────────────────────────────────────────────────
 async function loadEpisodes(seriesId) {
   const section = document.getElementById('episodesSection');
   const grid    = document.getElementById('episodesGrid');
@@ -1625,7 +1625,7 @@ async function loadEpisodes(seriesId) {
       if (hasCards) return;
       grid.innerHTML = `
         <div class="empty-state" style="grid-column:1/-1;">
-          <div class="empty-state-icon">ðŸŽ¬</div>
+          <div class="empty-state-icon">🎬</div>
           <h3>No episodes yet</h3>
           <p style="color:var(--text-muted);">Upload episodes from the admin panel</p>
         </div>`;
@@ -1675,9 +1675,9 @@ function renderEpisodeCards(episodes) {
     </div>`).join('');
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ─────────────────────────────────────────────────────────────────────────
 // RECOMMENDATIONS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ─────────────────────────────────────────────────────────────────────────
 async function loadRecommendations(id, title) {
   const section = document.getElementById('recommendationsSection');
   const grid    = document.getElementById('recGrid');
@@ -1716,8 +1716,8 @@ async function loadRecommendations(id, title) {
           <div class="rec-card-info">
             <div class="rec-card-title">${escapeHtml(m.title)}</div>
             <div class="rec-card-meta">
-              <span>${m.releaseYear || ''}</span> <span>Â·</span> <span>${dur}</span>
-              <span class="rec-card-rating">${m.averageRating > 0 ? `â­ ${m.averageRating}` : ''}</span>
+              <span>${m.releaseYear || ''}</span> <span>&middot;</span> <span>${dur}</span>
+              <span class="rec-card-rating">${m.averageRating > 0 ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="var(--gold, #fbbf24)" style="vertical-align:middle;margin-right:2px;margin-bottom:2px;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${m.averageRating}` : ''}</span>
             </div>
           </div>
         </div>`;
