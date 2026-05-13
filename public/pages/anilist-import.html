@@ -287,7 +287,7 @@
 <script src="../js/config.js"></script>
 <script src="../js/app.js"></script>
 <script>
-const token = localStorage.getItem('token');
+// Token is read dynamically inside each call via apiFetch — no global constant
 let importedIds  = new Set();
 let searchPage   = 1;
 let trendingPage = 1;
@@ -327,7 +327,8 @@ const PRESETS = {
 window.addEventListener('DOMContentLoaded', () => {
   const user = JSON.parse(localStorage.getItem('user') || 'null');
   const role = user?.role || user?.data?.role || '';
-  if (!token || role !== 'admin') {
+  const currentToken = localStorage.getItem('token');
+  if (!currentToken || role !== 'admin') {
     window.location.href = 'admin.html';
     return;
   }
@@ -370,9 +371,7 @@ function buildYearSelect() {
 // ── LOAD IMPORTED COUNT ──
 async function loadImportedCount() {
   try {
-    const res  = await fetch(`${API_BASE}/movies?limit=1`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res  = await apiFetch('/movies?limit=1');
     const data = await parseAniListResponse(res, 'Failed to load import count');
     document.getElementById('importedCount').textContent =
       data.pagination?.total || 0;
@@ -401,9 +400,7 @@ async function searchAniList(append = false) {
   if (!append) grid.innerHTML = '<div class="spinner-container" style="grid-column:1/-1;"><div class="spinner"></div></div>';
 
   try {
-    const res  = await fetch(`${API_BASE}/anilist/search?q=${encodeURIComponent(q)}&page=${searchPage}&perPage=20`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res  = await apiFetch(`/anilist/search?q=${encodeURIComponent(q)}&page=${searchPage}&perPage=20`);
     const data = await parseAniListResponse(res, 'AniList search failed');
 
     document.getElementById('resultsCount').textContent = data.pagination?.total || data.anime?.length || 0;
@@ -432,9 +429,7 @@ async function loadTrending(append = false) {
   if (!append) grid.innerHTML = '<div class="spinner-container" style="grid-column:1/-1;"><div class="spinner"></div></div>';
 
   try {
-    const res  = await fetch(`${API_BASE}/anilist/trending?page=${trendingPage}&perPage=20`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res  = await apiFetch(`/anilist/trending?page=${trendingPage}&perPage=20`);
     const data = await parseAniListResponse(res, 'Failed to load trending anime');
     if (!append) grid.innerHTML = '';
     renderAnimeCards(data.anime || [], grid);
@@ -457,9 +452,7 @@ async function loadTop(append = false) {
   if (!append) grid.innerHTML = '<div class="spinner-container" style="grid-column:1/-1;"><div class="spinner"></div></div>';
 
   try {
-    const res  = await fetch(`${API_BASE}/anilist/top?page=${topPage}&perPage=20`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res  = await apiFetch(`/anilist/top?page=${topPage}&perPage=20`);
     const data = await parseAniListResponse(res, 'Failed to load top rated anime');
     if (!append) grid.innerHTML = '';
     renderAnimeCards(data.anime || [], grid);
@@ -484,9 +477,7 @@ async function loadSeason(append = false) {
   if (!append) grid.innerHTML = '<div class="spinner-container" style="grid-column:1/-1;"><div class="spinner"></div></div>';
 
   try {
-    const res  = await fetch(`${API_BASE}/anilist/season?season=${season}&year=${year}&page=${seasonPage}&perPage=20`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res  = await apiFetch(`/anilist/season?season=${season}&year=${year}&page=${seasonPage}&perPage=20`);
     const data = await parseAniListResponse(res, 'Failed to load seasonal anime');
     if (!append) grid.innerHTML = '';
     renderAnimeCards(data.anime || [], grid);
@@ -584,9 +575,8 @@ async function importAnime(anilistId, title, btn) {
   btn.disabled  = true;
 
   try {
-    const res  = await fetch(`${API_BASE}/anilist/import`, {
+    const res  = await apiFetch('/anilist/import', {
       method:  'POST',
-      headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
       body:    JSON.stringify({ anilistId }),
     });
     const data = await parseAniListResponse(res, 'Import failed');
@@ -623,9 +613,7 @@ async function importAnime(anilistId, title, btn) {
 async function checkImportedStatus(anilistIds) {
   // Simple: fetch our DB and check
   try {
-    const res  = await fetch(`${API_BASE}/movies?limit=200`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const res  = await apiFetch('/movies?limit=200');
     const data = await parseAniListResponse(res, 'Failed to check imported titles');
     const dbIds = new Set((data.movies || []).map(m => m.anilistId).filter(Boolean));
 
@@ -665,9 +653,8 @@ async function startBulkImport() {
   log.innerHTML = `<div class="log-info">🚀 Starting bulk import of ${ids.length} anime...</div>`;
 
   try {
-    const res  = await fetch(`${API_BASE}/anilist/bulk-import`, {
+    const res  = await apiFetch('/anilist/bulk-import', {
       method:  'POST',
-      headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
       body:    JSON.stringify({ anilistIds: ids }),
     });
     const data = await parseAniListResponse(res, 'Bulk import failed');

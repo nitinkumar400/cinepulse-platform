@@ -345,10 +345,17 @@
 // this produced: http://localhost:5000https://res.cloudinary.com/... — BROKEN
 // Fix: check if URL already starts with http, skip MEDIA_BASE if so
 // Fix: Handle TMDB relative paths (/xxx.jpg) via image.tmdb.org CDN
+// Fix: Sanitize poisoned localhost URLs saved during local dev
 // ══════════════════════════════════════════
 function getImageUrl(url, size) {
   if (!url) return '';
-  if (url.startsWith('http') || url.startsWith('data:')) return url;
+  if (url.startsWith('data:')) return url;
+  // Sanitize poisoned localhost/127.0.0.1 URLs
+  if (/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url)) {
+    const filename = url.split('/').pop().split('?')[0];
+    return filename ? `https://image.tmdb.org/t/p/${size || 'w500'}/${filename}` : '';
+  }
+  if (url.startsWith('http')) return url;
   if (url.startsWith('/')) return `https://image.tmdb.org/t/p/${size || 'w500'}${url}`;
   return (typeof MEDIA_BASE !== 'undefined' ? MEDIA_BASE : '') + url;
 }

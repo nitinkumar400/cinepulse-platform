@@ -329,19 +329,34 @@ function logout(redirect = true) {
 
 // ══════════════════════════════════════════
 // MEDIA URL HELPER
-// Handles: Cloudinary/AniList (http), TMDB relative paths (/xxx.jpg), local paths
+// Handles: Cloudinary/AniList (http), TMDB relative paths (/xxx.jpg),
+//          poisoned localhost URLs (http://localhost:PORT/filename.jpg),
+//          and local paths
 // ══════════════════════════════════════════
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
 const POSTER_PLACEHOLDER_URL = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';
 
+function sanitizeTmdbPath(url, size) {
+  // Detect poisoned localhost/127.0.0.1 URLs saved during local dev
+  // e.g. http://localhost:5001/kqjL17yufvn9.jpg → https://image.tmdb.org/t/p/w500/kqjL17yufvn9.jpg
+  if (/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url)) {
+    const filename = url.split('/').pop().split('?')[0];
+    if (filename) return `${TMDB_IMAGE_BASE}${size || 'w500'}/${filename}`;
+    return POSTER_PLACEHOLDER_URL;
+  }
+  return null; // not a poisoned URL
+}
+
 function getImageUrl(url, size) {
   if (!url) return POSTER_PLACEHOLDER_URL;
-  if (url.startsWith('http') || url.startsWith('data:')) return url;
+  if (url.startsWith('data:')) return url;
+  // Sanitize poisoned localhost URLs before anything else
+  const sanitized = sanitizeTmdbPath(url, size);
+  if (sanitized) return sanitized;
+  // AniList / Cloudinary / any other absolute URL
+  if (url.startsWith('http')) return url;
   // TMDB relative paths start with /
-  if (url.startsWith('/')) {
-    const resolvedSize = size || 'w500';
-    return `${TMDB_IMAGE_BASE}${resolvedSize}${url}`;
-  }
+  if (url.startsWith('/')) return `${TMDB_IMAGE_BASE}${size || 'w500'}${url}`;
   // Local paths — prepend media base
   const base = (typeof MEDIA_BASE !== 'undefined') ? MEDIA_BASE : '';
   return base + url;
@@ -522,6 +537,7 @@ async function apiFetch(endpoint, options = {}) {
 
   if (res.status === 401) {
     const data = await readJsonResponse(res);
+    console.error('[AUTH] 401 Unauthorized — logout triggered by endpoint:', `${API_BASE}${endpoint}`);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     showToast('Session expired — please login again', 'warning');
@@ -603,6 +619,7 @@ async function performApiFetchWithRetry(endpoint, options = {}) {
 
       if (response.status === 401 || response.status === 403) {
         const data = await readJsonResponse(response.clone());
+        console.error('[AUTH]', response.status, '— logout triggered by endpoint:', buildApiUrl(endpoint));
         clearAuthSession();
         const fallbackMessage = response.status === 403
           ? 'Admin access required. Please sign in with an admin account.'

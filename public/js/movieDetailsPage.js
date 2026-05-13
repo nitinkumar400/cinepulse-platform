@@ -267,7 +267,13 @@ const THUMB_PH  = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjY
 
 function mediaUrl(url, size) {
   if (!url) return '';
-  if (url.startsWith('http') || url.startsWith('data:')) return url;
+  if (url.startsWith('data:')) return url;
+  // Sanitize poisoned localhost/127.0.0.1 URLs saved during local dev
+  if (/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url)) {
+    const filename = url.split('/').pop().split('?')[0];
+    return filename ? `https://image.tmdb.org/t/p/${size || 'w500'}/${filename}` : '';
+  }
+  if (url.startsWith('http')) return url;
   if (url.startsWith('/')) return `https://image.tmdb.org/t/p/${size || 'w500'}${url}`;
   const base = (typeof MEDIA_BASE !== 'undefined') ? MEDIA_BASE : '';
   return base + url;
