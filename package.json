@@ -9,11 +9,19 @@
     "start": "node backend/server.js",
     "start:windows": "node backend/server.js",
     "build": "npm run check",
+
     "seed": "node scripts/mass_seed.js",
     "seed:movies": "node scripts/mass_seed.js --phase=1",
     "seed:tv": "node scripts/mass_seed.js --phase=2",
     "seed:anime": "node scripts/mass_seed.js --phase=3,4",
-    "seed:dry": "node scripts/mass_seed.js --dry-run"
+    "seed:dry": "node scripts/mass_seed.js --dry-run",
+
+    "seed:hollywood": "node scripts/mass_seed.js --mode=matrix --profile=hollywood",
+    "seed:anime-global": "node scripts/mass_seed.js --mode=matrix --profile=anime",
+    "seed:asian-drama": "node scripts/mass_seed.js --mode=matrix --profile=asian-drama",
+    "seed:indian": "node scripts/mass_seed.js --mode=matrix --profile=indian",
+    "seed:networks": "node scripts/mass_seed.js --mode=matrix --profile=networks",
+    "seed:mega": "node scripts/mass_seed.js --mode=matrix --profile=hollywood & node scripts/mass_seed.js --mode=matrix --profile=anime & node scripts/mass_seed.js --mode=matrix --profile=asian-drama & node scripts/mass_seed.js --mode=matrix --profile=indian & node scripts/mass_seed.js --mode=matrix --profile=networks"
   },
   "dependencies": {
     "axios": "^1.13.6",

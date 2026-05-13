@@ -580,7 +580,7 @@ async function loadProviderSubtitleTracks(source) {
   try {
     if (!source?.url || source.server === 'upload') return;
 
-    const response = await apiFetch(`/subtitles?url=${encodeURIComponent(source.url)}&sourceType=${encodeURIComponent(source.sourceType || source.server)}&langs=en,hi,ja`);
+    const response = await apiFetch(`/subtitles?url=${encodeURIComponent(source.url)}&sourceType=${encodeURIComponent(source.sourceType || source.server)}&langs=en,hi,ja`, { silent: true });
     const payload = await readJsonResponse(response);
     const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
     if (!tracks.length) return;
@@ -2022,7 +2022,7 @@ async function loadProviderSubtitleTracks(source) {
   try {
     if (!source?.url || source.server === 'upload' || source.isMasked) return;
 
-    const response = await apiFetch(`/subtitles?url=${encodeURIComponent(source.url)}&sourceType=${encodeURIComponent(source.sourceType || source.server)}&langs=en,hi,ja`);
+    const response = await apiFetch(`/subtitles?url=${encodeURIComponent(source.url)}&sourceType=${encodeURIComponent(source.sourceType || source.server)}&langs=en,hi,ja`, { silent: true });
     const payload = await readJsonResponse(response);
     const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
     if (!tracks.length) return;

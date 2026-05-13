@@ -16,6 +16,8 @@
 13. [Known Issues & Solutions](#13-known-issues--solutions)
 14. [Production Deployment (Current State)](#14-production-deployment-current-state)
 15. [Loading More Content](#15-loading-more-content)
+16. [Mass Seed v2.0 — 100K Matrix Edition](#16-mass-seed-v20--100k-matrix-edition)
+17. [Production Verification (107K Records Live)](#17-production-verification-107k-records-live)
 
 ---
 
@@ -933,6 +935,125 @@ const data = await tmdbGet('/discover/tv', {
 
 ---
 
+## 16. Mass Seed v2.0 — 100K Matrix Edition
+
+The seed script (`scripts/mass_seed.js`) has been upgraded to v2.0 with a **Multi-Dimensional Matrix Loop** engine that bypasses TMDB's 500-page / 10,000-result hard cap.
+
+### How It Works
+
+**Strategy:** For each profile slice, loop through years 2026 → 2000. Per year, fetch pages 1–40 (800 results max). 27 years × 800 = 21,600 unique results per slice. Multiple slices per profile combine to 100,000+ total records.
+
+### Two Operational Modes
+
+| Mode | Flag | Description |
+|------|------|-------------|
+| Phase (legacy) | `--mode=phase` (default) | Original 4-phase pipeline: movies, TV, anime, AniList enrich (~50K) |
+| Matrix (new) | `--mode=matrix --profile=<name>` | Multi-dimensional year×page sweep (~100K+) |
+
+### Matrix Profiles
+
+| Profile | Slices | Content |
+|---------|--------|---------|
+| `hollywood` | 2 | EN movies + TV (US/GB/CA) |
+| `anime` | 4 | JA anime TV + movies, ZH/CN Donghua |
+| `asian-drama` | 3 | ZH/CN C-Dramas, Thai Lakorns |
+| `indian` | 10 | HI Bollywood, TE/TA/ML/KN South Indian (movies + TV) |
+| `networks` | 4 | Netflix (company 21252) + Amazon Prime (company 20580) movies & TV |
+
+### CLI Commands
+
+```bash
+# ── Legacy Phase Mode (backward compatible) ──
+npm run seed              # All 4 phases (~50K records)
+npm run seed:movies       # Phase 1 only
+npm run seed:tv           # Phase 2 only
+npm run seed:anime        # Phase 3+4 only
+npm run seed:dry          # Dry run (no DB writes)
+
+# ── Matrix Mode (100K target) ──
+npm run seed:hollywood    # EN movies + TV from US/GB/CA
+npm run seed:anime-global # Japanese Anime + Chinese Donghua
+npm run seed:asian-drama  # C-Dramas + Thai Lakorns
+npm run seed:indian       # Bollywood + South Indian (all languages)
+npm run seed:networks     # Netflix + Amazon Prime originals
+npm run seed:mega         # ALL profiles sequentially (full 100K run)
+```
+
+### Safety Guarantees
+
+- **200ms delay** between every TMDB request (well under 40/s limit)
+- **bulkWrite** in batches of 500, cleared in-place after each flush (no OOM)
+- **pruneNullIds()** prevents null collision on sparse unique indexes
+- **ordered: false** — partial success is acceptable, never crashes
+- **Ctrl+C safe** — all committed batches are preserved (upsert is idempotent)
+- **AniList enrichment** uses 2500ms delay (under 30 req/min hard limit)
+
+### Key Technical Notes
+
+- `with_networks` is TV-only on TMDB. Movie profiles for Netflix/Prime use `with_companies` instead.
+- `with_original_language` accepts a single ISO 639-1 code (not pipe-separated). South Indian TV is split into 4 slices (te, ta, ml, kn).
+- The script writes `language` and `spoken_languages` from `item.original_language` for proper frontend badge rendering.
+
+---
+
+## 17. Production Verification (107K Records Live)
+
+### Current Live State (May 2026)
+
+| Metric | Value |
+|--------|-------|
+| Live URL | https://cinepulse-platform.vercel.app |
+| Total Documents | **107,810** |
+| API Response Time | < 2s (paginated, 20 items default) |
+| Pagination Limit | Max 50 items/request (server-enforced) |
+| Compression | Brotli (`content-encoding: br`) |
+| Rate Limiting | 180 req/15min on `/api/movies` |
+| Serverless Memory | 1024MB, 60s maxDuration |
+
+### Database Indexes (Optimized for 100K)
+
+```javascript
+// Unique sparse (prevent null collisions)
+{ tmdbId: 1 }     — unique, sparse
+{ tmdb_id: 1 }    — unique, sparse
+
+// Compound indexes (eliminate in-memory sorts)
+{ averageRating: -1, views: -1, createdAt: -1 }  // trending sort
+{ category: 1, averageRating: -1, views: -1 }    // filtered trending
+
+// Single-field
+{ category: 1 }
+{ views: -1 }
+{ createdAt: -1 }
+{ title: 1 }
+{ releaseYear: -1 }
+{ anilistId: 1 }   — sparse
+{ anilist_id: 1 }  — sparse
+
+// Text search
+{ title: 'text', description: 'text' }
+```
+
+### Embed Servers (7 Operational)
+
+| # | Server | Domain | Sandbox | Status |
+|---|--------|--------|---------|--------|
+| 1 | VidSrc | `vidsrc.me` | balanced | ✅ Working |
+| 2 | 2Embed | `2embed.cc` | balanced | ✅ Working |
+| 3 | MultiEmbed | `multiembed.mov` | balanced | ✅ Working |
+| 4 | AutoEmbed | `autoembed.co` | **none** | ✅ Working |
+| 5 | VidLink | `vidlink.pro` | **none** | ✅ Working |
+| 6 | VidSrc Pro | `vidsrc.wiki` | balanced | ✅ Working |
+| 7 | SmashyStream | `player.smashy.stream` | balanced | ✅ Working |
+
+### Verification Documents
+
+- `docs/DATA_ALIGNMENT_REPORT.md` — Schema/index/query audit for 100K scale
+- `docs/VERCEL_PRODUCTION_VERIFICATION.md` — Live deployment verification
+- `docs/devtools-live-audit.js` — Chrome DevTools console script for real-time testing
+
+---
+
 ## Quick Start Commands
 
 ```bash
@@ -945,20 +1066,20 @@ npm run dev
 # Test health
 curl http://localhost:5001/health
 
-# Mass seed — load 50,000 records from TMDB + AniList
-npm run seed
+# ── Mass Seed (Legacy — 50K) ──
+npm run seed              # All phases
+npm run seed:movies       # Movies only (~35 min)
+npm run seed:tv           # TV only (~35 min)
+npm run seed:anime        # Anime + AniList (~8 hrs)
+npm run seed:dry          # Dry run
 
-# Seed only movies (fast, ~35 min)
-npm run seed:movies
-
-# Seed only TV shows (fast, ~35 min)
-npm run seed:tv
-
-# Seed only anime + AniList enrichment (~8 hrs)
-npm run seed:anime
-
-# Dry run (no DB writes, just counts)
-npm run seed:dry
+# ── Mass Seed (Matrix — 100K) ──
+npm run seed:hollywood    # EN movies + TV
+npm run seed:anime-global # JA anime + Donghua
+npm run seed:asian-drama  # C-Dramas + Thai
+npm run seed:indian       # Bollywood + South Indian
+npm run seed:networks     # Netflix + Prime
+npm run seed:mega         # ALL profiles (full 100K run)
 
 # Sync TMDB via API (requires admin auth, 20 records)
 curl -X POST http://localhost:5001/api/sync \
@@ -974,6 +1095,7 @@ vercel deploy --prod
 
 ---
 
-*Last Updated: May 2026*
+*Last Updated: May 14, 2026*
 *Platform: CinePulse (formerly CineStream)*
+*Database: 107,810 documents (MongoDB Atlas)*
 *Maintained by: Nitin Mishra*

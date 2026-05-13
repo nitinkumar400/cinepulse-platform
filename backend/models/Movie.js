@@ -248,6 +248,8 @@ MovieSchema.index({ tmdbId:     1 }, { unique: true, sparse: true });
 MovieSchema.index({ tmdb_id:    1 }, { unique: true, sparse: true });
 MovieSchema.index({ category: 1, genre: 1 });
 MovieSchema.index({ isFeatured: 1, createdAt: -1 });
+MovieSchema.index({ averageRating: -1, views: -1, createdAt: -1 });
+MovieSchema.index({ category: 1, averageRating: -1, views: -1 });
 MovieSchema.index({ title: 'text', description: 'text' });
 
 module.exports = mongoose.model('Movie', MovieSchema);

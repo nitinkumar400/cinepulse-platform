@@ -294,7 +294,7 @@ app.use('/api/anilist', anilistRoutes);
 app.use('/api/tmdb', tmdbRoutes);
 app.use('/api/tmdb-public', tmdbPublicRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/subtitles', protect, subtitleRoutes);
+app.use('/api/subtitles', subtitleRoutes);
 app.use('/api/recommend', protect, recommendRoutes);
 app.use('/api/users', protect, userRoutes);
 app.use('/api/ai', aiLimiter, protect, aiRouter);
