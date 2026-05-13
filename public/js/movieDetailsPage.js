@@ -882,8 +882,133 @@ async function switchPlaybackSource(index, options = {}) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// AUTO-EMBED PLAYER — Zero-touch source generation from tmdbId
+//
+// When a movie has no uploaded videoUrl and no manually-added sources,
+// this function dynamically builds iframe embed URLs using the tmdbId
+// stored in the MongoDB document (fields: tmdbId OR tmdb_id).
+//
+// Supported embed providers (in priority order):
+//   1. VidSrc.to   — most reliable, no ads
+//   2. VidSrc.me   — fallback mirror
+//   3. 2Embed.cc   — broad catalogue
+//   4. AutoEmbed   — fast CDN
+//   5. VidLink.pro — secondary fallback
+//   6. MultiEmbed  — last resort
+//
+// Category → embed type mapping:
+//   movie / documentary / short  → /embed/movie/{tmdbId}
+//   series / anime / cartoon / tv → /embed/tv/{tmdbId}/{season}/{episode}
+//
+// Returns an array of source objects compatible with VideoEngine's
+// createSourceConfig format so switchPlaybackSource() works unchanged.
+// ══════════════════════════════════════════════════════════════════════════
+function buildAutoEmbedSources(movie) {
+  // Resolve tmdbId — accept both field name variants stored by the sync routes
+  const tmdbId = Number(movie.tmdbId || movie.tmdb_id || 0);
+  if (!tmdbId || tmdbId <= 0) return [];
+
+  const category = String(movie.category || 'movie').toLowerCase();
+  const isTv     = ['series', 'anime', 'cartoon', 'tv'].includes(category)
+                   || Number(movie.totalEpisodes || 0) > 1;
+
+  // For TV/anime use season 1 episode 1 as the default entry point.
+  // The episodes grid handles per-episode navigation separately.
+  const season  = Number(movie.animeSeasonNumber || 1);
+  const episode = 1;
+
+  // ── Embed server definitions ──────────────────────────────────────────
+  // Each entry: { key, name, movieUrl(id), tvUrl(id, s, e) }
+  const EMBED_PROVIDERS = [
+    {
+      key:      'vidsrc_to',
+      name:     'VidSrc',
+      priority: 1,
+      movie:    (id)       => `https://vidsrc.to/embed/movie/${id}`,
+      tv:       (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`,
+    },
+    {
+      key:      'vidsrc_me',
+      name:     'VidSrc 2',
+      priority: 2,
+      movie:    (id)       => `https://vidsrc.me/embed/movie?tmdb=${id}`,
+      tv:       (id, s, e) => `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}`,
+    },
+    {
+      key:      'embed2',
+      name:     '2Embed',
+      priority: 3,
+      movie:    (id)       => `https://www.2embed.cc/embed/${id}`,
+      tv:       (id, s, e) => `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`,
+    },
+    {
+      key:      'autoembed',
+      name:     'AutoEmbed',
+      priority: 4,
+      movie:    (id)       => `https://autoembed.cc/embed/movie/${id}`,
+      tv:       (id, s, e) => `https://autoembed.cc/embed/tv/${id}-${s}-${e}`,
+    },
+    {
+      key:      'vidlink',
+      name:     'VidLink',
+      priority: 5,
+      movie:    (id)       => `https://vidlink.pro/embed/movie/${id}`,
+      tv:       (id, s, e) => `https://vidlink.pro/embed/tv/${id}/${s}/${e}`,
+    },
+    {
+      key:      'multiembed',
+      name:     'MultiEmbed',
+      priority: 6,
+      movie:    (id)       => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
+      tv:       (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
+    },
+  ];
+
+  return EMBED_PROVIDERS.map((provider, index) => {
+    const embedUrl = isTv
+      ? provider.tv(tmdbId, season, episode)
+      : provider.movie(tmdbId);
+
+    return {
+      // Fields expected by switchPlaybackSource / renderServerSelector
+      id:         `auto-${provider.key}-${tmdbId}`,
+      server:     provider.key,
+      serverName: provider.name,
+      sourceType: provider.key,
+      url:        embedUrl,
+      embedUrl:   embedUrl,
+      playUrl:    '',
+      quality:    'Auto HD',
+      label:      provider.name,
+      statusLabel:`${provider.name} • Auto HD`,
+      isExternal: true,
+      isEmbed:    true,
+      isAutoEmbed: true,   // flag so we can identify these in logs
+      priority:   provider.priority,
+      // status starts unknown; switchPlaybackSource marks failed ones
+      status:     'unknown',
+    };
+  });
+}
+
 function setupPlayback(movie) {
+  // ── Step 1: Try VideoEngine's full source pipeline (DB sources + auto-embed) ──
   playbackSources = (window.VideoEngine?.buildMovieSources?.(movie) || []);
+
+  // ── Step 2: If VideoEngine returned nothing, build auto-embed sources
+  //           directly from tmdbId. This is the zero-touch fallback that
+  //           makes every synced movie playable without any manual source entry.
+  if (!playbackSources.length) {
+    playbackSources = buildAutoEmbedSources(movie);
+    if (playbackSources.length) {
+      console.info(
+        `[AutoEmbed] No DB sources for "${movie.title}" — ` +
+        `generated ${playbackSources.length} embed servers from tmdbId=${movie.tmdbId || movie.tmdb_id}`
+      );
+    }
+  }
+
   const hs1Unlocked = isHighSpeedServerUnlocked(movie?._id);
   activeSourceIndex = playbackSources.length
     ? ((playbackSources.length > 1 && !hs1Unlocked) ? 1 : 0)
@@ -1105,29 +1230,209 @@ function injectAnimeFallbackCSS() {
 }
 
 function injectMovieJsonLd(movie) {
+  // ─────────────────────────────────────────────────────────────────────
+  // PROGRAMMATIC SEO — Schema.org JSON-LD injection
+  //
+  // Called from renderMovie() every time movie data loads or changes.
+  // Removes any previously injected script first so re-renders are safe.
+  //
+  // Schema type mapping:
+  //   anime | series | cartoon | tv  → TVSeries
+  //   movie | documentary | short    → Movie
+  //
+  // Fields mapped from MongoDB API response:
+  //   title, description, releaseYear, genre, language, thumbnailUrl,
+  //   bannerUrl, director, cast, rating (contentRating), averageRating,
+  //   numRatings, totalEpisodes, trailerUrl, tmdbId, anilistId, _id
+  // ─────────────────────────────────────────────────────────────────────
+
+  // 1. Remove any existing JSON-LD tag (idempotent — safe to call multiple times)
   const existing = document.getElementById('movie-jsonld');
   if (existing) existing.remove();
-  const ld = document.createElement('script');
-  ld.type = 'application/ld+json';
-  ld.id = 'movie-jsonld';
-  const schemaType = ['series', 'anime', 'cartoon', 'tv'].includes(String(movie.category || '').toLowerCase()) ? 'TVSeries' : 'Movie';
-  ld.text = JSON.stringify({
-    '@context': 'https://schema.org',
-    '@type': schemaType,
-    name: movie.title || '',
-    description: movie.description || '',
+
+  if (!movie) return;
+
+  // 2. Resolve canonical page URL
+  //    Prefer the clean /watch/<category>/<id> path so Google indexes
+  //    the pretty URL, not the raw ?id= query string.
+  const movieDbId   = String(movie._id || movie.id || '');
+  const category    = String(movie.category || 'movie').toLowerCase();
+  const origin      = window.location.origin;
+
+  // Map category → clean URL segment
+  const categorySlug = {
+    movie:        'movie',
+    series:       'series',
+    anime:        'anime',
+    cartoon:      'cartoon',
+    documentary:  'documentary',
+    short:        'movie',
+    tv:           'tv',
+  }[category] || 'movie';
+
+  const canonicalUrl = movieDbId
+    ? `${origin}/watch/${categorySlug}/${movieDbId}`
+    : window.location.href;
+
+  // 3. Determine Schema.org @type
+  const isTvLike = ['series', 'anime', 'cartoon', 'tv'].includes(category);
+  const schemaType = isTvLike ? 'TVSeries' : 'Movie';
+
+  // 4. Resolve image URL (reuse the same mediaUrl helper already in scope)
+  const imageUrl = movie.thumbnailUrl
+    ? mediaUrl(movie.thumbnailUrl, 'w500')
+    : (movie.bannerUrl ? mediaUrl(movie.bannerUrl, 'original') : undefined);
+
+  // 5. Build sameAs array — links to authoritative external sources
+  const sameAs = [];
+  const tmdbId = Number(movie.tmdbId || movie.tmdb_id || 0);
+  const anilistId = Number(movie.anilistId || movie.anilist_id || 0);
+  if (tmdbId > 0) {
+    sameAs.push(
+      isTvLike
+        ? `https://www.themoviedb.org/tv/${tmdbId}`
+        : `https://www.themoviedb.org/movie/${tmdbId}`
+    );
+  }
+  if (anilistId > 0) {
+    sameAs.push(`https://anilist.co/anime/${anilistId}`);
+  }
+  if (Number(movie.idMal || 0) > 0) {
+    sameAs.push(`https://myanimelist.net/anime/${movie.idMal}`);
+  }
+
+  // 6. Build director node (Schema.org Person)
+  const directorNode = movie.director
+    ? { '@type': 'Person', name: String(movie.director).trim() }
+    : undefined;
+
+  // 7. Build actor nodes (Schema.org Person[])
+  const actorNodes = Array.isArray(movie.cast) && movie.cast.length
+    ? movie.cast.slice(0, 10).map((name) => ({
+        '@type': 'Person',
+        name: String(name || '').trim(),
+      })).filter((p) => p.name)
+    : undefined;
+
+  // 8. Build trailer node (Schema.org VideoObject)
+  const trailerNode = movie.trailerUrl
+    ? {
+        '@type':        'VideoObject',
+        name:           `${movie.title || ''} — Official Trailer`,
+        embedUrl:       String(movie.trailerUrl).trim(),
+        thumbnailUrl:   imageUrl,
+        description:    `Official trailer for ${movie.title || ''}`,
+        uploadDate:     movie.releaseYear ? `${movie.releaseYear}-01-01` : undefined,
+      }
+    : undefined;
+
+  // 9. Build aggregateRating node
+  const ratingNode = (movie.averageRating > 0)
+    ? {
+        '@type':       'AggregateRating',
+        ratingValue:   Number(movie.averageRating).toFixed(1),
+        bestRating:    '10',
+        worstRating:   '1',
+        ratingCount:   Math.max(1, Number(movie.numRatings || 1)),
+      }
+    : undefined;
+
+  // 10. Build WatchAction potentialAction — tells Google this page streams the content
+  const watchActionNode = {
+    '@type':  'WatchAction',
+    target:   canonicalUrl,
+  };
+
+  // 11. Assemble the schema object — omit undefined keys cleanly
+  const schema = {
+    '@context':    'https://schema.org',
+    '@type':       schemaType,
+    '@id':         canonicalUrl,
+    name:          String(movie.title || '').trim(),
+    url:           canonicalUrl,
+    description:   String(movie.description || '').replace(/<[^>]+>/g, '').trim().slice(0, 500) || undefined,
     datePublished: movie.releaseYear ? `${movie.releaseYear}-01-01` : undefined,
-    genre: Array.isArray(movie.genre) ? movie.genre : [],
-    inLanguage: movie.language || 'en',
-    url: window.location.href,
-    image: movie.thumbnailUrl ? mediaUrl(movie.thumbnailUrl) : undefined,
-    aggregateRating: movie.averageRating > 0 ? {
-      '@type': 'AggregateRating',
-      ratingValue: movie.averageRating,
-      ratingCount: movie.numRatings || 1,
-    } : undefined,
-  });
-  document.head.appendChild(ld);
+    genre:         Array.isArray(movie.genre) && movie.genre.length ? movie.genre : undefined,
+    inLanguage:    String(movie.language || movie.original_language || 'en').trim() || undefined,
+    contentRating: movie.rating ? String(movie.rating).trim() : undefined,
+    image:         imageUrl,
+    ...(directorNode  ? { director:         directorNode  } : {}),
+    ...(actorNodes    ? { actor:             actorNodes    } : {}),
+    ...(trailerNode   ? { trailer:           trailerNode   } : {}),
+    ...(ratingNode    ? { aggregateRating:   ratingNode    } : {}),
+    ...(sameAs.length ? { sameAs }                          : {}),
+    potentialAction: watchActionNode,
+    // TVSeries-specific fields
+    ...(isTvLike && movie.totalEpisodes > 0
+      ? { numberOfEpisodes: Number(movie.totalEpisodes) }
+      : {}),
+    ...(isTvLike && movie.status
+      ? {
+          // Map internal status → Schema.org status
+          creativeWorkStatus: {
+            Ongoing:    'Active',
+            Completed:  'Completed',
+            Upcoming:   'Upcoming',
+            Cancelled:  'Discontinued',
+          }[movie.status] || movie.status,
+        }
+      : {}),
+    // Movie-specific: duration in ISO 8601 (PT2H30M)
+    ...(!isTvLike && movie.duration > 0
+      ? {
+          duration: (() => {
+            const totalMins = Math.round(Number(movie.duration));
+            const h = Math.floor(totalMins / 60);
+            const m = totalMins % 60;
+            return h > 0 ? `PT${h}H${m > 0 ? `${m}M` : ''}` : `PT${m}M`;
+          })(),
+        }
+      : {}),
+  };
+
+  // 12. Inject the <script> tag into <head>
+  const scriptEl = document.createElement('script');
+  scriptEl.type = 'application/ld+json';
+  scriptEl.id   = 'movie-jsonld';
+  scriptEl.text = JSON.stringify(schema, null, 0);
+  document.head.appendChild(scriptEl);
+
+  // 13. Also update Open Graph + Twitter Card meta tags in the same pass
+  //     so social shares and crawlers get consistent data.
+  _upsertMeta('property', 'og:type',        isTvLike ? 'video.tv_show' : 'video.movie');
+  _upsertMeta('property', 'og:title',       movie.title || '');
+  _upsertMeta('property', 'og:description', schema.description || '');
+  _upsertMeta('property', 'og:url',         canonicalUrl);
+  _upsertMeta('property', 'og:image',       imageUrl || '');
+  _upsertMeta('property', 'og:site_name',   'CineStream');
+  _upsertMeta('name',     'twitter:card',   'summary_large_image');
+  _upsertMeta('name',     'twitter:title',  movie.title || '');
+  _upsertMeta('name',     'twitter:description', schema.description || '');
+  _upsertMeta('name',     'twitter:image',  imageUrl || '');
+
+  // 14. Inject / update <link rel="canonical"> so Google uses the clean URL
+  let canonicalLink = document.querySelector('link[rel="canonical"]');
+  if (!canonicalLink) {
+    canonicalLink = document.createElement('link');
+    canonicalLink.rel = 'canonical';
+    document.head.appendChild(canonicalLink);
+  }
+  canonicalLink.href = canonicalUrl;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// _upsertMeta — create-or-update a <meta> tag by attribute selector
+// Used by injectMovieJsonLd to keep OG/Twitter tags in sync.
+// ─────────────────────────────────────────────────────────────────────────
+function _upsertMeta(attrName, attrValue, content) {
+  if (!content) return;
+  let el = document.querySelector(`meta[${attrName}="${attrValue}"]`);
+  if (!el) {
+    el = document.createElement('meta');
+    el.setAttribute(attrName, attrValue);
+    document.head.appendChild(el);
+  }
+  el.setAttribute('content', String(content));
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•

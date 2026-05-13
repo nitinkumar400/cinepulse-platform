@@ -21,6 +21,52 @@
       "destination": "/pages/login.html"
     },
     {
+      "source": "/search",
+      "destination": "/pages/search.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/pages/dashboard.html"
+    },
+    {
+      "source": "/profile",
+      "destination": "/pages/profile.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/pages/admin.html"
+    },
+    {
+      "comment": "Clean watch URLs — SEO-friendly canonical paths for every media type",
+      "source": "/watch/movie/:id",
+      "destination": "/pages/movie-details.html?id=:id"
+    },
+    {
+      "source": "/watch/series/:id",
+      "destination": "/pages/movie-details.html?id=:id"
+    },
+    {
+      "source": "/watch/anime/:id",
+      "destination": "/pages/movie-details.html?id=:id"
+    },
+    {
+      "source": "/watch/tv/:id",
+      "destination": "/pages/movie-details.html?id=:id"
+    },
+    {
+      "source": "/watch/documentary/:id",
+      "destination": "/pages/movie-details.html?id=:id"
+    },
+    {
+      "source": "/watch/cartoon/:id",
+      "destination": "/pages/movie-details.html?id=:id"
+    },
+    {
+      "comment": "Generic /watch/:id fallback — handles any category not listed above",
+      "source": "/watch/:id",
+      "destination": "/pages/movie-details.html?id=:id"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/server.js"
     },
@@ -36,11 +82,11 @@
   "crons": [
     {
       "path": "/api/sync",
-      "schedule": "0 0 * * *"
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/sync/anime",
-      "schedule": "0 2 * * *"
+      "schedule": "30 3 * * *"
     }
   ],
   "headers": [

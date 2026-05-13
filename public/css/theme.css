@@ -1,0 +1,414 @@
+/* ══════════════════════════════════════════════════════════════
+   CINE STREAM — Premium Dark Theme
+   Loaded AFTER styles.css to override base variables.
+   All colour decisions live here — never hardcode hex values
+   in component CSS; reference these variables instead.
+   ══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Core Backgrounds ── */
+  --bg-primary:        #0B0F19;   /* Dark Slate — page background          */
+  --bg-secondary:      #0F1420;   /* Slightly lifted — sections, sidebars  */
+  --bg-card:           #151C2C;   /* Elevated Cards — movie cards, panels  */
+  --bg-hover:          #1C2438;   /* Card hover / input focus state        */
+  --bg-overlay:        rgba(11, 15, 25, 0.82); /* Modal / drawer backdrop  */
+
+  /* ── Accent — Electric Blue ── */
+  --accent:            #3B82F6;
+  --accent-hover:      #2563EB;
+  --accent-muted:      rgba(59, 130, 246, 0.18);
+  --accent-glow:       rgba(59, 130, 246, 0.38);
+
+  /* ── Text ── */
+  --text-primary:      #F0F4FF;
+  --text-secondary:    #8B95B0;
+  --text-muted:        #4E5A72;
+
+  /* ── Borders ── */
+  --border:            rgba(255, 255, 255, 0.07);
+  --border-accent:     rgba(59, 130, 246, 0.35);
+
+  /* ── Shadows ── */
+  --shadow-card:       0 8px 32px rgba(0, 0, 0, 0.65);
+  --shadow-glow:       0 0 28px var(--accent-glow);
+  --shadow-card-hover: 0 20px 50px rgba(0, 0, 0, 0.75),
+                       0 0 0 1px rgba(59, 130, 246, 0.28);
+
+  /* ── Rating Gradient (kept from original — rose-gold) ── */
+  --rose-gold-start:   #ffd700;
+  --rose-gold-mid:     #ffb24d;
+  --rose-gold-end:     #ff8c00;
+
+  /* ── Radii ── */
+  --radius:            8px;
+  --radius-lg:         12px;
+  --radius-pill:       999px;
+
+  /* ── Transitions ── */
+  --transition:        all 0.3s ease;
+
+  /* ── Nav ── */
+  --nav-height:        70px;
+
+  /* ── Typography ── */
+  --font-display:      'Inter', sans-serif;
+  --font-body:         'Inter', sans-serif;
+
+  /* ── Badge Colours ── */
+  --badge-hd-bg:       rgba(59, 130, 246, 0.88);   /* Electric Blue        */
+  --badge-hd-text:     #ffffff;
+  --badge-sub-bg:      rgba(139, 92, 246, 0.88);   /* Violet               */
+  --badge-sub-text:    #ffffff;
+  --badge-dub-bg:      rgba(16, 185, 129, 0.88);   /* Emerald              */
+  --badge-dub-text:    #ffffff;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GLOBAL RESETS — apply theme colours to base elements
+   ══════════════════════════════════════════════════════════════ */
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--accent); }
+
+/* ══════════════════════════════════════════════════════════════
+   NAVBAR
+   ══════════════════════════════════════════════════════════════ */
+.navbar {
+  background: rgba(11, 15, 25, 0.72);
+  border-bottom: 1px solid var(--border);
+}
+.navbar.scrolled,
+.navbar.solid {
+  background: rgba(11, 15, 25, 0.92);
+  border-bottom: 1px solid var(--border-accent);
+}
+.nav-logo .logo-accent { color: var(--accent); }
+.nav-logo .logo-pulse::before {
+  background: linear-gradient(90deg,
+    rgba(59, 130, 246, 0.2),
+    rgba(59, 130, 246, 0.95),
+    rgba(59, 130, 246, 0.2));
+  box-shadow: 0 0 14px rgba(59, 130, 246, 0.65);
+}
+.nav-search input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+.btn-nav {
+  background: var(--accent);
+}
+.btn-nav:hover {
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-glow);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MOVIE CARD — theme overrides
+   ══════════════════════════════════════════════════════════════ */
+.movie-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+.movie-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--border-accent);
+}
+.card-play-btn {
+  background: var(--accent);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.55);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FILTER TABS
+   ══════════════════════════════════════════════════════════════ */
+.filter-tab {
+  background: var(--bg-card);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+.filter-tab:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.filter-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   BUTTONS
+   ══════════════════════════════════════════════════════════════ */
+.btn-primary {
+  background: var(--accent);
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-glow);
+}
+.btn-outline:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FORMS
+   ══════════════════════════════════════════════════════════════ */
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SECTION TITLE ACCENT BAR
+   ══════════════════════════════════════════════════════════════ */
+.section-title::before {
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   STAT CARDS
+   ══════════════════════════════════════════════════════════════ */
+.stat-card:hover {
+  border-color: rgba(59, 130, 246, 0.3);
+}
+.stat-icon {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TOAST
+   ══════════════════════════════════════════════════════════════ */
+.toast.info {
+  border-left-color: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   HERO BADGE
+   ══════════════════════════════════════════════════════════════ */
+.hero-badge {
+  background: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DETAILS PAGE — category tag
+   ══════════════════════════════════════════════════════════════ */
+.details-info .category-tag {
+  background: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ADMIN — upload section title
+   ══════════════════════════════════════════════════════════════ */
+.upload-section-title {
+  color: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GENRE CHIP — checked state
+   ══════════════════════════════════════════════════════════════ */
+.genre-chip input:checked + label {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.genre-chip label:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FOOTER LOGO
+   ══════════════════════════════════════════════════════════════ */
+.footer-logo {
+  color: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   AUTH PAGE — radial glow uses accent
+   ══════════════════════════════════════════════════════════════ */
+.auth-page {
+  background:
+    radial-gradient(ellipse at 80% 20%, rgba(59, 130, 246, 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse at 20% 80%, rgba(59, 130, 246, 0.08) 0%, transparent 55%),
+    var(--bg-primary);
+}
+.auth-logo h1 {
+  color: var(--accent);
+  text-shadow: var(--shadow-glow);
+}
+.auth-footer a {
+  color: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SEARCH BOX
+   ══════════════════════════════════════════════════════════════ */
+.search-box-big:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-muted);
+}
+.popular-tag:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+.btn-apply-filter {
+  background: var(--accent);
+}
+.btn-apply-filter:hover {
+  background: var(--accent-hover);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   HOME PAGE — filter buttons
+   ══════════════════════════════════════════════════════════════ */
+.home-filter-btn:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+}
+.home-filter-btn.global-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.22);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PROGRESS BAR (Continue Watching)
+   ══════════════════════════════════════════════════════════════ */
+.card-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  z-index: 3;
+}
+.card-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  transition: width 0.3s ease;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   POSTER OVERLAY BADGES
+   .cp-badge  — base shared styles
+   .cp-badge--hd  — HD quality indicator
+   .cp-badge--sub — Subbed anime
+   .cp-badge--dub — Dubbed anime
+   ══════════════════════════════════════════════════════════════ */
+.cp-badge {
+  position: absolute;
+  z-index: 4;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 4px;
+  line-height: 1.4;
+  pointer-events: none;
+  /* Subtle backdrop blur so badge is legible over any poster */
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  /* Crisp text rendering */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* HD badge — bottom-left corner */
+.cp-badge--hd {
+  bottom: 8px;
+  left: 8px;
+  background: var(--badge-hd-bg);
+  color: var(--badge-hd-text);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.45);
+}
+
+/* SUB badge — bottom-right corner */
+.cp-badge--sub {
+  bottom: 8px;
+  right: 8px;
+  background: var(--badge-sub-bg);
+  color: var(--badge-sub-text);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.45);
+}
+
+/* DUB badge — bottom-right corner (replaces SUB when dubbed) */
+.cp-badge--dub {
+  bottom: 8px;
+  right: 8px;
+  background: var(--badge-dub-bg);
+  color: var(--badge-dub-text);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.45);
+}
+
+/* When both HD + SUB/DUB are present, nudge HD slightly so they don't overlap */
+.cp-badge--hd + .cp-badge--sub,
+.cp-badge--hd + .cp-badge--dub {
+  right: 8px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LIVE DOT — use accent colour
+   ══════════════════════════════════════════════════════════════ */
+.live-dot {
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SEARCH HIGHLIGHT MARK
+   ══════════════════════════════════════════════════════════════ */
+mark {
+  background: rgba(59, 130, 246, 0.24);
+  color: #fff;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ACTIVE FILTER TAG
+   ══════════════════════════════════════════════════════════════ */
+.active-filter-tag {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: var(--accent);
+}
+.active-filter-tag button {
+  color: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SPOTLIGHT PANEL
+   ══════════════════════════════════════════════════════════════ */
+.spotlight-panel {
+  background:
+    linear-gradient(140deg, rgba(59, 130, 246, 0.06), rgba(59, 130, 246, 0.02) 48%, rgba(255, 255, 255, 0.01) 100%),
+    var(--bg-secondary);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PLAYER — glow uses accent
+   ══════════════════════════════════════════════════════════════ */
+body.movie-details-page #videoContainer.player-shell {
+  box-shadow:
+    0 10px 40px -10px rgba(59, 130, 246, 0.25),
+    0 24px 72px rgba(0, 0, 0, 0.72);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SERVER BUTTONS — active state uses accent
+   ══════════════════════════════════════════════════════════════ */
+.srv-btn.srv-active {
+  border-color: var(--accent) !important;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.35) !important;
+}

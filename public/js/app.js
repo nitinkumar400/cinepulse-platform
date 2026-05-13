@@ -380,6 +380,39 @@ function escapeHtml(str) {
 // ══════════════════════════════════════════
 const CARD_PLACEHOLDER = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';
 
+// ── Badge helpers ──────────────────────────────────────────────
+// Reads the `qualities` object from MongoDB data to decide whether
+// to show an HD badge.  A movie is considered HD if it has any
+// non-empty quality URL at 720p or 1080p, OR if its videoUrl is
+// non-empty (external embeds are assumed HD by default).
+function _hasHdQuality(movie) {
+  const q = movie.qualities;
+  if (q && typeof q === 'object') {
+    if (String(q['1080p'] || '').trim()) return true;
+    if (String(q['720p']  || '').trim()) return true;
+  }
+  // External embed sources (YouTube, VidSrc, etc.) are HD by default
+  if (String(movie.videoUrl || '').trim()) return true;
+  // Check sources array for any non-upload server (embed = HD)
+  if (Array.isArray(movie.sources) && movie.sources.length) {
+    return movie.sources.some((s) => s.server && s.server !== 'upload');
+  }
+  return false;
+}
+
+// Returns 'Subbed', 'Dubbed', or '' based on subDubTag field.
+// Only shown for anime/cartoon categories.
+function _getSubDubBadge(movie) {
+  const cat = String(movie.category || '').toLowerCase();
+  if (cat !== 'anime' && cat !== 'cartoon') return '';
+  const tag = String(movie.subDubTag || '').trim();
+  if (tag === 'Dubbed') return 'Dubbed';
+  if (tag === 'Subbed') return 'Subbed';
+  // Default anime to Subbed when tag is absent
+  if (cat === 'anime') return 'Subbed';
+  return '';
+}
+
 function createMovieCard(movie, opts = {}) {
   if (!movie) return '';
 
@@ -414,6 +447,22 @@ function createMovieCard(movie, opts = {}) {
       </div>
     </div>` : '';
 
+  // ── Poster overlay badges ──────────────────────────────────
+  // HD badge: shown when the movie has 720p/1080p quality data
+  //           or any external embed source (reads `qualities` + `sources`
+  //           fields directly from the MongoDB document).
+  const showHd      = _hasHdQuality(movie);
+  const subDubBadge = _getSubDubBadge(movie);   // 'Subbed' | 'Dubbed' | ''
+
+  const hdBadgeHtml = showHd
+    ? `<span class="cp-badge cp-badge--hd" aria-label="HD quality">HD</span>`
+    : '';
+  const subDubBadgeHtml = subDubBadge === 'Dubbed'
+    ? `<span class="cp-badge cp-badge--dub" aria-label="Dubbed">DUB</span>`
+    : subDubBadge === 'Subbed'
+      ? `<span class="cp-badge cp-badge--sub" aria-label="Subbed">SUB</span>`
+      : '';
+
   return `
     <div class="movie-card" data-id="${movie._id}">
       <div class="card-thumbnail">
@@ -429,6 +478,8 @@ function createMovieCard(movie, opts = {}) {
         <div class="card-rating">
           <i class="ri-star-fill"></i> ${rating}
         </div>
+        ${hdBadgeHtml}
+        ${subDubBadgeHtml}
         ${progressBar}
       </div>
       <div class="card-info">

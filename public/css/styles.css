@@ -868,3 +868,45 @@ body.movie-details-page .player-embed iframe {
     padding: 0;
     box-sizing: border-box;
 }
+
+/* ══════════════════════════════
+   POSTER OVERLAY BADGES (base)
+   Full theme colours live in theme.css.
+   These rules define layout/position only
+   so they work even without theme.css loaded.
+══════════════════════════════ */
+.cp-badge {
+  position: absolute;
+  z-index: 4;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 4px;
+  line-height: 1.4;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  -webkit-font-smoothing: antialiased;
+}
+.cp-badge--hd  { bottom: 8px; left: 8px;  background: rgba(59,130,246,0.88); color: #fff; }
+.cp-badge--sub { bottom: 8px; right: 8px; background: rgba(139,92,246,0.88); color: #fff; }
+.cp-badge--dub { bottom: 8px; right: 8px; background: rgba(16,185,129,0.88); color: #fff; }
+
+/* ══════════════════════════════
+   CONTINUE WATCHING PROGRESS BAR
+══════════════════════════════ */
+.card-progress-bar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: rgba(255,255,255,0.12);
+  z-index: 3;
+}
+.card-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  transition: width 0.3s ease;
+}

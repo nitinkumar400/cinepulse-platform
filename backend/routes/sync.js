@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Movie = require('../models/Movie');
-const { protect, adminOnly } = require('../middleware/authMiddleware');
+const { cronOrAdmin } = require('../middleware/authMiddleware');
 const { fetchList, requestTmdbWithRetry, formatItem } = require('../services/tmdbService');
 
 const ANILIST_API = 'https://graphql.anilist.co';
@@ -126,7 +126,7 @@ function pruneNullIdFields(setPayload = {}) {
   return payload;
 }
 
-router.post('/', protect, adminOnly, async (req, res) => {
+router.post('/', cronOrAdmin, async (req, res) => {
   try {
     const [popularMovies, popularTv, trendingAll] = await Promise.all([
       fetchList('movie', 'popular', { page: 1 }),
@@ -242,7 +242,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
   }
 });
 
-router.post('/anime', protect, adminOnly, async (req, res) => {
+router.post('/anime', cronOrAdmin, async (req, res) => {
   try {
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || req.body?.limit || '50', 10) || 50));
     const byTitleQuery = `
