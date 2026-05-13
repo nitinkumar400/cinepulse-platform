@@ -12,8 +12,10 @@
 9. [Key Features](#9-key-features)
 10. [Running the Project](#10-running-the-project)
 11. [Deployment](#11-deployment)
-12. [Common Tasks](#12-common-tasks)
+12. [Common Tasks (Mass Seed, Sync, Embed Servers)](#12-common-tasks)
 13. [Known Issues & Solutions](#13-known-issues--solutions)
+14. [Production Deployment (Current State)](#14-production-deployment-current-state)
+15. [Loading More Content](#15-loading-more-content)
 
 ---
 
@@ -635,26 +637,105 @@ Create in root:
 
 ## 12. Common Tasks
 
-### Sync TMDB Content
+### Mass Seed — Load 50,000+ Records (Movies, TV, Anime)
+
+The platform includes a standalone Node.js script that bulk-imports content from TMDB and AniList directly into MongoDB Atlas. This is the primary way to bootstrap the catalog.
+
+**Location:** `scripts/mass_seed.js`
+
 ```bash
-curl -X POST https://your-api.com/api/sync \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+# Full run — all 4 phases (~50,000 records, takes ~9 hours total)
+npm run seed
+
+# Individual phases (can be run independently)
+npm run seed:movies    # Phase 1: 20,000 popular movies from TMDB
+npm run seed:tv        # Phase 2: 20,000 popular TV shows from TMDB
+npm run seed:anime     # Phase 3+4: 10,000 anime from TMDB + AniList enrichment
+
+# Test without writing to DB
+npm run seed:dry
+
+# Resume a specific phase after interruption
+node scripts/mass_seed.js --phase=4
 ```
 
-### Sync Anime
+**How it works:**
+| Phase | Source | Records | Rate Limit | Time |
+|-------|--------|---------|-----------|------|
+| 1 | TMDB `/discover/movie` | ~10,000 movies | 200ms/req | ~35 min |
+| 2 | TMDB `/discover/tv` (non-anime) | ~10,000 TV shows | 200ms/req | ~35 min |
+| 3 | TMDB `/discover/tv` (ja + genre=16) | ~5,000 anime | 200ms/req | ~18 min |
+| 4 | AniList GraphQL (enrichment) | maps anilistId + nextAiring | **2500ms/req** | ~8 hrs |
+
+**Key design:**
+- Uses `bulkWrite` with `upsert:true` in batches of 500 — safe to re-run (idempotent)
+- Clears batch array after every flush to prevent OOM
+- Handles sparse unique index collisions via `pruneNullIds()`
+- Ctrl+C is safe — all committed batches are preserved
+- Writes directly to the `movies` collection in the database specified by `MONGODB_URI`
+
+**Prerequisites:**
+- `MONGODB_URI` must be set in `.env` (pointing to Atlas with `/cinestream` database)
+- `TMDB_API_KEY` must be set in `.env`
+- Node.js 18+
+
+---
+
+### Sync TMDB Content (Small Batch — via API)
+
+For incremental syncs (20 records at a time), use the API endpoint:
+
 ```bash
-curl -X POST "https://your-api.com/api/sync/anime?limit=50" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+# Using admin JWT
+curl -X POST https://cinepulse-platform.vercel.app/api/sync \
+  -H "Authorization: Bearer YOUR_ADMIN_JWT"
+
+# Using CRON_SECRET (for schedulers)
+curl -X POST https://cinepulse-platform.vercel.app/api/sync \
+  -H "Authorization: Bearer YOUR_CRON_SECRET"
 ```
+
+This is also triggered automatically by Vercel Cron at 3:00 AM UTC daily.
+
+### Sync Anime (Small Batch — via API)
+
+```bash
+curl -X POST "https://cinepulse-platform.vercel.app/api/sync/anime?limit=50" \
+  -H "Authorization: Bearer YOUR_ADMIN_JWT"
+```
+
+Triggered automatically by Vercel Cron at 3:30 AM UTC daily.
 
 ### Add New Embed Server
 Edit `public/js/embedServers.js`:
 ```javascript
-const EMBED_SERVERS = [
-  { name: 'NewServer', url: 'https://newserver.to/embed/...' },
-  // ...existing servers
-];
+// Add to STANDARD_SERVERS object (for movies/TV with tmdbId)
+newserver: {
+  name: 'NewServer',
+  key: 'newserver',
+  priority: 8,                    // lower = higher priority
+  sandboxPolicy: 'balanced',      // or 'none' if server rejects sandbox
+  movieUrl: (tmdbId) => `https://newserver.com/embed/movie/${tmdbId}`,
+  tvUrl: (tmdbId, season, episode) => `https://newserver.com/embed/tv/${tmdbId}/${season}/${episode}`,
+  timeout: 8000,
+},
 ```
+
+**Current working embed servers (as of May 2026):**
+| # | Server | Domain | Sandbox | Status |
+|---|--------|--------|---------|--------|
+| 1 | VidSrc | `vidsrc.me` | balanced | ✅ Working |
+| 2 | 2Embed | `2embed.cc` | balanced | ✅ Working |
+| 3 | MultiEmbed | `multiembed.mov` | balanced | ✅ Working |
+| 4 | AutoEmbed | `autoembed.co` | **none** | ✅ Working |
+| 5 | VidLink | `vidlink.pro` | **none** | ✅ Working |
+| 6 | VidSrc Pro | `vidsrc.wiki` | balanced | ✅ Working |
+| 7 | SmashyStream | `player.smashy.stream` | balanced | ✅ Working |
+
+**Dead domains (do NOT use):**
+- `vidsrc.to` — domain expired
+- `embed.su` — server IP not found
+- `vidsrc.xyz` — dead
 
 ### Change Admin Credentials
 Update `.env`:
@@ -690,16 +771,16 @@ db.movies.createIndex({ tmdb_id: 1 }, { unique: true, sparse: true })
 ```
 
 ### Issue: CORS Errors
-**Solution**: Check `.env`:
+**Solution**: Set `FRONTEND_URL` in Vercel env vars:
 ```env
-FRONTEND_URL=https://your-domain.vercel.app
+FRONTEND_URL=https://cinepulse-platform.vercel.app
 ```
-Add to allowed origins in `backend/config/env.js`.
+The CORS handler in `server.js` uses `corsOriginHandler` which reads from `FRONTEND_URL`, `CORS_ORIGINS`, and `VERCEL_URL` (auto-injected by Vercel).
 
 ### Issue: MongoDB Connection Timeout (Serverless)
 **Solution**: 
-- Ensure DB connection middleware runs before each request
-- Use connection caching in `backend/database/db.js`
+- Ensure DB connection middleware runs before each request (already implemented)
+- Use connection caching in `backend/database/db.js` (already implemented)
 - Set appropriate pool sizes in `.env`
 
 ### Issue: Admin Login Not Working
@@ -710,6 +791,146 @@ Add to allowed origins in `backend/config/env.js`.
 2. Server auto-creates admin on first run
 3. Restart server after changing credentials
 
+### Issue: Movies Not Showing on Vercel (Empty Homepage)
+**Cause**: `MONGODB_URI` not set in Vercel environment variables.
+
+**Solution**:
+1. Go to Vercel Dashboard → Settings → Environment Variables
+2. Add `MONGODB_URI` with your full Atlas connection string
+3. Ensure the URI ends with `/cinestream` (no hyphen) — this is the database name
+4. Add `FRONTEND_URL=https://cinepulse-platform.vercel.app`
+5. Redeploy
+
+### Issue: Vercel Cron Sync Not Running
+**Cause**: Vercel Cron sends `x-vercel-cron: 1` header but no Bearer token.
+
+**Solution**: Already fixed — `cronOrAdmin` middleware now accepts the `x-vercel-cron` header when `CRON_SECRET` is configured in env vars. Ensure `CRON_SECRET` (32+ chars) is set in Vercel env vars.
+
+### Issue: Embed Server Shows "Sandbox not allowed"
+**Cause**: Some providers (AutoEmbed, VidLink) reject iframe sandbox attributes.
+
+**Solution**: Set `sandboxPolicy: 'none'` for that server in `embedServers.js`. The player's iframe renderer checks this field and removes the sandbox attribute entirely for those providers.
+
+---
+
+## 14. Production Deployment (Current State)
+
+### Live URLs
+- **Frontend:** https://cinepulse-platform.vercel.app
+- **API Base:** https://cinepulse-platform.vercel.app/api
+- **Health:** https://cinepulse-platform.vercel.app/health
+- **Sitemap:** https://cinepulse-platform.vercel.app/sitemap.xml
+
+### Vercel Environment Variables (Required)
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MONGODB_URI` | Full Atlas connection string (database: `cinestream`) | `mongodb://user:pass@...mongodb.net:27017/.../cinestream?ssl=true&...` |
+| `TMDB_API_KEY` | TMDB v3 API key | `684d731b...` |
+| `JWT_SECRET` | JWT signing secret (32+ chars) | `cine-stream-jwt-secret-...` |
+| `ADMIN_EMAIL` | Admin account email | `admin@example.com` |
+| `ADMIN_PASSWORD` | Admin account password | (your password) |
+| `FRONTEND_URL` | Canonical frontend URL | `https://cinepulse-platform.vercel.app` |
+| `CRON_SECRET` | Secret for cron auth (32+ chars) | (generate with `node -e "console.log(require('crypto').randomBytes(40).toString('hex'))"`) |
+| `NODE_ENV` | Environment flag | `production` |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name (for uploads) | `dhdu7hadz` |
+| `CLOUDINARY_API_KEY` | Cloudinary API key | `839711912261986` |
+| `CLOUDINARY_API_SECRET` | Cloudinary API secret | (your secret) |
+
+### Vercel Cron Jobs (Automatic)
+| Schedule | Endpoint | What it does |
+|----------|----------|-------------|
+| `0 3 * * *` (3:00 AM UTC daily) | `POST /api/sync` | Syncs 20 trending TMDB movies/TV |
+| `30 3 * * *` (3:30 AM UTC daily) | `POST /api/sync/anime` | Syncs 50 popular anime from AniList |
+
+### Rate Limits (Production)
+| Endpoint | Limit | Window |
+|----------|-------|--------|
+| `/api/auth/*` | 12 requests | 15 minutes |
+| `/api/movies/*` | 180 requests | 15 minutes |
+| `/api/sync/*` | 5 requests | 1 hour |
+| `/api/ai/*` | 10 requests | 1 hour |
+| All other `/api/*` | 250 requests | 15 minutes |
+
+### Clean URL Routing (SEO)
+| Clean URL | Resolves to |
+|-----------|-------------|
+| `/watch/movie/:id` | `movie-details.html?id=:id` |
+| `/watch/series/:id` | `movie-details.html?id=:id` |
+| `/watch/anime/:id` | `movie-details.html?id=:id` |
+| `/watch/tv/:id` | `movie-details.html?id=:id` |
+| `/watch/documentary/:id` | `movie-details.html?id=:id` |
+| `/watch/cartoon/:id` | `movie-details.html?id=:id` |
+
+### Database Info
+- **Cluster:** MongoDB Atlas (M0 Free / M2+)
+- **Database name:** `cinestream` (no hyphen)
+- **Collection:** `movies` (~50,000 documents)
+- **Indexes:** tmdbId (unique sparse), tmdb_id (unique sparse), anilistId (sparse), category, title, views, text search
+
+---
+
+## 15. Loading More Content
+
+### Option A: Run the Mass Seed Again (Idempotent)
+The seed script uses `upsert:true` — running it again will update existing records and add any new ones TMDB has added since the last run.
+
+```bash
+npm run seed
+```
+
+### Option B: Increase TMDB Page Limits
+Edit `scripts/mass_seed.js` constants to fetch more pages:
+```javascript
+const MOVIE_PAGES  = 1000;  // increase for more movies (max 500 pages = 10,000 per TMDB)
+const TV_PAGES     = 1000;  // increase for more TV shows
+const ANIME_PAGES  = 500;   // increase for more anime
+```
+
+> Note: TMDB's Discover API caps at 500 pages (10,000 results) per query. To get more, use different sort orders or filters (e.g., by year, by genre).
+
+### Option C: Use the Admin Dashboard (Manual)
+1. Login at `/admin`
+2. Go to TMDB Import page (`/tmdb-import.html`)
+3. Search for specific movies/shows and import them one by one
+4. Or use the bulk presets (Top 20 Popular, Trending, Bollywood, etc.)
+
+### Option D: Use the API Sync Endpoint (Small Batches)
+```bash
+# Sync latest trending (20 records)
+curl -X POST https://cinepulse-platform.vercel.app/api/sync \
+  -H "Authorization: Bearer YOUR_ADMIN_JWT"
+
+# Sync anime (50 records)
+curl -X POST "https://cinepulse-platform.vercel.app/api/sync/anime?limit=50" \
+  -H "Authorization: Bearer YOUR_ADMIN_JWT"
+```
+
+### Option E: Add Content by Genre/Region
+Modify the seed script's TMDB Discover params to target specific content:
+```javascript
+// Bollywood movies
+const data = await tmdbGet('/discover/movie', {
+  sort_by: 'popularity.desc',
+  with_original_language: 'hi',
+  page,
+});
+
+// Korean dramas
+const data = await tmdbGet('/discover/tv', {
+  sort_by: 'popularity.desc',
+  with_original_language: 'ko',
+  page,
+});
+
+// Chinese animation (Donghua)
+const data = await tmdbGet('/discover/tv', {
+  sort_by: 'popularity.desc',
+  with_original_language: 'zh',
+  with_genres: '16',
+  page,
+});
+```
+
 ---
 
 ## Quick Start Commands
@@ -718,15 +939,29 @@ Add to allowed origins in `backend/config/env.js`.
 # Clone/fresh start
 npm install
 
-# Run locally
+# Run locally (development)
 npm run dev
 
 # Test health
 curl http://localhost:5001/health
 
-# Sync TMDB (requires admin auth)
+# Mass seed — load 50,000 records from TMDB + AniList
+npm run seed
+
+# Seed only movies (fast, ~35 min)
+npm run seed:movies
+
+# Seed only TV shows (fast, ~35 min)
+npm run seed:tv
+
+# Seed only anime + AniList enrichment (~8 hrs)
+npm run seed:anime
+
+# Dry run (no DB writes, just counts)
+npm run seed:dry
+
+# Sync TMDB via API (requires admin auth, 20 records)
 curl -X POST http://localhost:5001/api/sync \
-  -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT"
 
 # Build for production
@@ -740,4 +975,5 @@ vercel deploy --prod
 ---
 
 *Last Updated: May 2026*
-*Maintained by: Development Team*
+*Platform: CinePulse (formerly CineStream)*
+*Maintained by: Nitin Mishra*
