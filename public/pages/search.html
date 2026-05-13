@@ -439,40 +439,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // ── NAVBAR ──
 function setupNavbar() {
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
-  const sec  = document.getElementById('userSection');
-  if (!sec) return;
-
-  if (user) {
-    const avatarBg = user.avatar?.startsWith('#') ? user.avatar : 'var(--accent)';
-    sec.innerHTML = `
-      <a href="profile.html"
-         style="font-size:13px;color:var(--text-secondary);
-                text-decoration:none;display:flex;align-items:center;gap:6px;">
-        <div style="width:28px;height:28px;border-radius:50%;
-                    background:${escapeHTML(avatarBg)};display:flex;align-items:center;
-                    justify-content:center;font-size:12px;font-weight:700;color:#fff;">
-          ${user.username ? user.username[0].toUpperCase() : 'U'}
-        </div>
-        Hi, ${escapeHTML(user.username || 'User')}
-      </a>
-      ${user.role === 'admin'
-        ? `<a href="admin.html" style="margin-left:8px;">
-             <button class="btn-nav"><i class="ri-upload-cloud-line"></i></button>
-           </a>`
-        : ''}
-      <button id="navLogout" class="btn-nav"
-              style="background:var(--bg-card);color:var(--text-secondary);margin-left:8px;">
-        Logout
-      </button>`;
-    document.getElementById('navLogout')?.addEventListener('click', () => {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = 'login.html';
-    });
-  } else {
-    sec.innerHTML = `<a href="login.html"><button class="btn-nav">Sign In</button></a>`;
-  }
+  // Stateless Public Site: no auth buttons in public navbar
+  const sec = document.getElementById('userSection');
+  if (sec) sec.innerHTML = '';
 }
 
 // ── BUILD YEAR OPTIONS ──

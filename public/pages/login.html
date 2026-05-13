@@ -61,88 +61,18 @@
   <script src="../js/api.js"></script>
   <script src="../js/pwa.js"></script>
   <script>
-    (async function guardLoginPage() {
+    // login.html now redirects to admin.html which has its own login gate
+    (function() {
       const token = localStorage.getItem('token');
-      if (!token) return;
-
-      try {
-        const payload = await apiRequest('/auth/me', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        const me = payload?.user || null;
-        if (me?.role === 'admin') {
-          saveAuth(token, me);
-          window.location.href = 'admin.html';
-          return;
-        }
-      } catch {}
-
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-    })();
-
-    document.getElementById('togglePassword').addEventListener('click', function () {
-      const passwordInput = document.getElementById('password');
-      passwordInput.type = passwordInput.type === 'password' ? 'text' : 'password';
-      this.className = passwordInput.type === 'text'
-        ? 'ri-eye-off-line password-toggle'
-        : 'ri-eye-line password-toggle';
-    });
-
-    function showAlert(message, type = 'error') {
-      const box = document.getElementById('alertBox');
-      const icon = type === 'error' ? 'ri-error-warning-line' : 'ri-checkbox-circle-line';
-      box.innerHTML = `
-        <div class="alert alert-${type}">
-          <i class="${icon}"></i> ${message}
-        </div>`;
-      box.style.display = 'block';
-      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-
-    document.getElementById('loginForm').addEventListener('submit', async (event) => {
-      event.preventDefault();
-
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value;
-      const button = document.getElementById('loginBtn');
-
-      if (!email || !password) {
-        showAlert('Please enter email and password');
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      // If already logged in as admin, go straight to admin panel
+      if (token && user?.role === 'admin') {
+        window.location.href = 'admin.html';
         return;
       }
-
-      button.innerHTML = '<i class="ri-loader-4-line"></i> <span>Signing in...</span>';
-      button.disabled = true;
-
-      try {
-        const payload = await apiRequest('/auth/admin/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
-        });
-
-        if (!payload.token || !payload.user) {
-          throw new Error('INVALID_LOGIN_RESPONSE');
-        }
-
-        saveAuth(payload.token, payload.user);
-        showAlert('Login successful! Redirecting...', 'success');
-
-        setTimeout(() => {
-          window.location.href = 'admin.html';
-        }, 1000);
-      } catch (error) {
-        showAlert(
-          error.message === 'INVALID_LOGIN_RESPONSE'
-            ? 'Login succeeded but returned incomplete account data.'
-            : (error.message || 'Cannot connect to server. Is the backend running?')
-        );
-        button.innerHTML = '<i class="ri-login-box-line"></i> <span>Sign In</span>';
-        button.disabled = false;
-      }
-    });
+      // Otherwise redirect to admin.html which has the login form
+      window.location.href = 'admin.html';
+    })();
   </script>
 </body>
 </html>

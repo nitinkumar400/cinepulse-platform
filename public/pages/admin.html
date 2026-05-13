@@ -17,7 +17,7 @@
 </head>
 <body>
 
-<nav class="navbar solid">
+<nav class="navbar solid" id="adminNavbar" style="display:none;">
   <a href="index.html" class="nav-logo">CINE<span>STREAM</span></a>
   <div class="nav-right">
     <a href="index.html" class="btn btn-outline" style="padding:8px 16px;font-size:13px;">
@@ -30,13 +30,55 @@
       <i class="ri-download-cloud-line"></i> Import Anime
     </a>
     <a href="tmdb-import.html" class="btn btn-outline" style="padding:8px 16px;font-size:13px;">
-  <i class="ri-film-line"></i> Import Movies
-</a>
+      <i class="ri-film-line"></i> Import Movies
+    </a>
     <button class="btn-nav" id="logoutBtn">Logout</button>
   </div>
 </nav>
 
-<div class="admin-page">
+<!-- ═══════════════════════════════════════════════════════════════
+     ADMIN LOGIN GATE — shown when no valid admin session exists
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="adminLoginGate" class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <h1>CINE<span>STREAM</span></h1>
+      <p>Admin control center</p>
+    </div>
+
+    <h2 class="auth-title">Admin Sign In</h2>
+    <p class="auth-subtitle">Only admin accounts can access this panel</p>
+    <div id="adminAlertBox" style="display:none;"></div>
+
+    <form id="adminLoginForm">
+      <div class="form-group">
+        <label>Email Address</label>
+        <div class="input-with-icon">
+          <i class="ri-mail-line input-icon"></i>
+          <input type="email" id="adminEmail" placeholder="your@email.com" autocomplete="email" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Password</label>
+        <div class="input-with-icon">
+          <i class="ri-lock-line input-icon"></i>
+          <input type="password" id="adminPassword" placeholder="Enter your password" autocomplete="current-password" required>
+          <i class="ri-eye-line password-toggle" id="adminTogglePassword"></i>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-full" id="adminLoginBtn">
+        <i class="ri-login-box-line"></i>
+        <span>Sign In</span>
+      </button>
+    </form>
+
+    <div class="auth-footer">Public signup is disabled. Only admins can access this page.</div>
+  </div>
+</div>
+
+<div class="admin-page" id="adminPanel" style="display:none;">
 
   <div class="admin-header">
     <h1 class="admin-title"><span>Admin</span> Panel</h1>
@@ -672,5 +714,133 @@
 <script src="../js/app.js" defer></script>
 <script src="../js/pwa.js" defer></script>
 <script src="../js/adminDashboard.js" defer></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// ADMIN LOGIN GATE LOGIC
+// This is the ONLY page with a login form.
+// On load: check for existing admin token → verify → reveal panel
+// On login: authenticate → store token → reveal panel
+// ═══════════════════════════════════════════════════════════════
+(function () {
+  const loginGate = document.getElementById('adminLoginGate');
+  const adminPanel = document.getElementById('adminPanel');
+  const adminNavbar = document.getElementById('adminNavbar');
+
+  function showAdminPanel() {
+    loginGate.style.display = 'none';
+    adminPanel.style.display = 'block';
+    adminNavbar.style.display = '';
+  }
+
+  function showLoginGate() {
+    loginGate.style.display = '';
+    adminPanel.style.display = 'none';
+    adminNavbar.style.display = 'none';
+  }
+
+  function showLoginAlert(message, type) {
+    const box = document.getElementById('adminAlertBox');
+    const icon = type === 'error' ? 'ri-error-warning-line' : 'ri-checkbox-circle-line';
+    box.innerHTML = '<div class="alert alert-' + type + '"><i class="' + icon + '"></i> ' + message + '</div>';
+    box.style.display = 'block';
+  }
+
+  // Check existing session on page load
+  async function checkExistingSession() {
+    const token = localStorage.getItem('token');
+    if (!token) { showLoginGate(); return; }
+
+    try {
+      const res = await fetch((window.__APP_CONFIG?.apiBase || '/api') + '/auth/me', {
+        headers: { Authorization: 'Bearer ' + token },
+      });
+      if (!res.ok) throw new Error('Invalid session');
+      const payload = await res.json();
+      const user = payload?.user || payload?.data?.user || payload;
+      if (user?.role === 'admin') {
+        localStorage.setItem('user', JSON.stringify(user));
+        showAdminPanel();
+      } else {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        showLoginGate();
+      }
+    } catch (e) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      showLoginGate();
+    }
+  }
+
+  // Password toggle
+  document.getElementById('adminTogglePassword')?.addEventListener('click', function () {
+    const input = document.getElementById('adminPassword');
+    input.type = input.type === 'password' ? 'text' : 'password';
+    this.className = input.type === 'text'
+      ? 'ri-eye-off-line password-toggle'
+      : 'ri-eye-line password-toggle';
+  });
+
+  // Login form submit
+  document.getElementById('adminLoginForm')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const email = document.getElementById('adminEmail').value.trim();
+    const password = document.getElementById('adminPassword').value;
+    const btn = document.getElementById('adminLoginBtn');
+
+    if (!email || !password) {
+      showLoginAlert('Please enter email and password', 'error');
+      return;
+    }
+
+    btn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> <span>Signing in...</span>';
+    btn.disabled = true;
+
+    try {
+      const res = await fetch((window.__APP_CONFIG?.apiBase || '/api') + '/auth/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, password: password }),
+      });
+      const payload = await res.json();
+
+      if (!res.ok) {
+        throw new Error(payload.message || 'Login failed');
+      }
+      if (!payload.token || !payload.user) {
+        throw new Error('Login succeeded but returned incomplete data.');
+      }
+
+      localStorage.setItem('token', payload.token);
+      localStorage.setItem('user', JSON.stringify(payload.user));
+      showLoginAlert('Login successful! Loading admin panel...', 'success');
+
+      setTimeout(function () {
+        showAdminPanel();
+        // Re-trigger DOMContentLoaded-dependent init in adminDashboard.js
+        window.dispatchEvent(new Event('admin-authenticated'));
+      }, 600);
+    } catch (err) {
+      showLoginAlert(err.message || 'Cannot connect to server.', 'error');
+      btn.innerHTML = '<i class="ri-login-box-line"></i> <span>Sign In</span>';
+      btn.disabled = false;
+    }
+  });
+
+  // Logout handler
+  document.getElementById('logoutBtn')?.addEventListener('click', function () {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    showLoginGate();
+  });
+
+  // Run session check when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checkExistingSession);
+  } else {
+    checkExistingSession();
+  }
+})();
+</script>
 </body>
 </html>

@@ -411,14 +411,15 @@ function bindMovieSourceInputs() {
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // INIT
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-window.addEventListener('DOMContentLoaded', async () => {
+window.addEventListener('DOMContentLoaded', () => { initAdminDashboard(); });
+window.addEventListener('admin-authenticated', () => { initAdminDashboard(); });
+
+async function initAdminDashboard() {
   const token = localStorage.getItem('token');
   let user = JSON.parse(localStorage.getItem('user') || 'null');
 
-  if (!token) {
-    window.location.href = 'login.html';
-    return;
-  }
+  // If no token, do nothing — the admin login gate in admin.html handles this
+  if (!token) return;
 
   if (!user || user.role !== 'admin') {
     try {
@@ -435,16 +436,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     } catch {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = 'login.html';
       return;
     }
   }
 
   // All event listeners in one place
-  document.getElementById('logoutBtn').addEventListener('click', () => {
+  document.getElementById('logoutBtn')?.addEventListener('click', () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    window.location.href = 'login.html';
+    window.location.reload();
   });
 
   document.getElementById('resetMovieBtn').addEventListener('click', resetMovieForm);
@@ -501,7 +501,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   loadMoviesList();
   loadSeriesList();
   toggleAdminPanel('contentOps');
-});
+}
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // DRAG AND DROP

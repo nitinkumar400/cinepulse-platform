@@ -483,9 +483,6 @@
       <i class="ri-search-line search-icon"></i>
       <input type="text" id="searchInput" placeholder="Search movies, anime, series...">
     </div>
-    <a href="admin.html" id="adminBtn" style="display:none;">
-      <button class="btn-nav"><i class="ri-upload-cloud-line"></i> Upload</button>
-    </a>
     <div id="userSection"></div>
   </div>
 </nav>
@@ -617,11 +614,11 @@
       </ul>
     </div>
     <div class="footer-col">
-      <h4>Admin</h4>
+      <h4>More</h4>
       <ul>
-        <li><a href="login.html">Admin Sign In</a></li>
-        <li><a href="admin.html">Admin Dashboard</a></li>
-        <li><a href="profile.html">Admin Profile</a></li>
+        <li><a href="?category=movie">All Movies</a></li>
+        <li><a href="?category=anime">All Anime</a></li>
+        <li><a href="?category=series">All Series</a></li>
       </ul>
     </div>
   </div>
@@ -709,33 +706,9 @@ function bindIndexImageFallback(root = document) {
 }
 
 function setupPageNavbar() {
-  const user = getUser();
+  // Stateless Public Site: no auth buttons in public navbar
   const sec = document.getElementById('userSection');
-  const adminBtn = document.getElementById('adminBtn');
-
-  if (user) {
-    const avatarBg = user.avatar?.startsWith('#') ? user.avatar : 'var(--accent)';
-    sec.innerHTML = `
-      <a href="profile.html" style="font-size:13px;color:var(--text-secondary);text-decoration:none;display:flex;align-items:center;gap:8px;">
-        <div style="width:30px;height:30px;border-radius:50%;background:${avatarBg};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">
-          ${escapeHtml((user.username || 'U').slice(0, 1).toUpperCase())}
-        </div>
-        Hi, ${escapeHtml(user.username || 'User')}
-      </a>
-      <button class="btn-nav" id="logoutBtn" style="background:var(--bg-card);color:var(--text-secondary);margin-left:8px;">Logout</button>`;
-
-    document.getElementById('logoutBtn')?.addEventListener('click', () => {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.reload();
-    });
-
-    if (user.role === 'admin') {
-      adminBtn.style.display = 'block';
-    }
-  } else {
-    sec.innerHTML = `<a href="login.html"><button class="btn-nav">Sign In</button></a>`;
-  }
+  if (sec) sec.innerHTML = '';
 }
 
 function setupSearch() {

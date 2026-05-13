@@ -453,54 +453,15 @@ function handleCardClick(e) {
 // ══════════════════════════════════════════
 function initNavbar() {
   const sec  = document.getElementById('userSection');
-  const user = getUser();
   if (!sec) return;
 
-  if (user) {
-    const avatarBg = user.avatar?.startsWith('#') ? user.avatar : 'var(--accent)';
-
-    sec.innerHTML = `
-      <div class="nav-user-wrap">
-        <a href="/pages/search.html" class="nav-icon-btn" title="Search">
-          <i class="ri-search-line"></i>
-        </a>
-        <div class="nav-notifications" id="navNotifications">
-          <button class="nav-icon-btn" id="notifBtn" title="Notifications">
-            <i class="ri-notification-3-line"></i>
-            <span class="notif-badge" id="notifBadge" style="display:none;"></span>
-          </button>
-        </div>
-        <a href="/pages/profile.html"
-           class="nav-avatar"
-           style="background:${escapeHtml(avatarBg)};"
-           title="${escapeHtml(user.username || 'Profile')}">
-          ${escapeHtml((user.username || 'U')[0].toUpperCase())}
-        </a>
-        ${isAdmin()
-          ? `<a href="/pages/admin.html">
-               <button class="btn-nav btn-nav-admin">
-                 <i class="ri-upload-cloud-line"></i> Upload
-               </button>
-             </a>`
-          : ''}
-        <button class="btn-nav btn-nav-logout" id="logoutBtn">Logout</button>
-      </div>`;
-
-    document.getElementById('logoutBtn')
-      ?.addEventListener('click', () => logout(true));
-
-    // FIX: Notification bell click was completely missing
-    document.getElementById('notifBtn')
-      ?.addEventListener('click', () => {
-        window.location.href = '/pages/profile.html#notifications';
-      });
-
-  } else {
-    sec.innerHTML = `
-      <a href="/login">
-        <button class="btn-nav">Admin Sign In</button>
-      </a>`;
-  }
+  // Stateless Public Site: navbar only shows search icon, no auth buttons
+  sec.innerHTML = `
+    <div class="nav-user-wrap">
+      <a href="/pages/search.html" class="nav-icon-btn" title="Search">
+        <i class="ri-search-line"></i>
+      </a>
+    </div>`;
 
   // Scroll effect
   const navbar = document.getElementById('navbar');
@@ -596,11 +557,12 @@ function clearAuthSession() {
 }
 
 function redirectToAdminLogin() {
-  if (window.location.pathname === '/login' || window.location.pathname === '/login.html') {
+  const path = window.location.pathname;
+  if (path === '/pages/admin.html' || path.endsWith('/admin.html')) {
     return;
   }
 
-  window.location.href = '/login';
+  window.location.href = '/pages/admin.html';
 }
 
 async function performApiFetchWithRetry(endpoint, options = {}) {
@@ -843,17 +805,26 @@ const NotificationSystem = {
 };
 
 function isPublicRoute(pathname = window.location.pathname) {
-  return pathname === '/login'
-    || pathname === '/login.html'
-    || pathname === '/offline'
-    || pathname === '/offline.html';
+  // Stateless Public Site: all public-facing pages are accessible without auth
+  // Admin page has its own inline login gate, so it's also "public" from the router's perspective
+  const publicPaths = [
+    '/', '/index.html', '/pages/index.html',
+    '/pages/movie-details.html', '/pages/search.html',
+    '/pages/episode.html', '/pages/player.html',
+    '/pages/admin.html',
+    '/login', '/login.html', '/pages/login.html',
+    '/offline', '/offline.html', '/pages/offline.html',
+  ];
+  return publicPaths.some(p => pathname === p || pathname.endsWith(p));
 }
 
 function enforceAdminPageAccess() {
+  // Stateless Public Site: public routes never redirect to login
   if (isPublicRoute()) {
     return true;
   }
 
+  // Only admin-only pages (admin.html, dashboard.html, etc.) enforce auth
   const user = getUser();
   if (!getToken() || !user || user.role !== 'admin') {
     clearAuthSession();

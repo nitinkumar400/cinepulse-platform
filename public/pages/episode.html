@@ -1069,40 +1069,11 @@ function setupProgressTracking() {
 
 // ══════════════════════════════════════════
 // NAVBAR
-// FIX: Removed inline onclick="logout()"
+// Stateless Public Site: no auth buttons in public navbar
 // ══════════════════════════════════════════
 function setupNavbar() {
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
-  const sec  = document.getElementById('userSection');
-  if (!sec) return;
-
-  if (user) {
-    sec.innerHTML = `
-      <span style="font-size:13px;color:var(--text-secondary);">
-        Hi, ${escapeHtml(user.username || 'User')}
-      </span>
-      ${user.role === 'admin'
-        ? `<a href="/pages/admin.html">
-             <button class="btn-nav" style="margin-left:10px;">
-               <i class="ri-upload-cloud-line"></i> Upload
-             </button>
-           </a>`
-        : ''}
-      <button class="btn-nav" id="navLogoutBtn"
-              style="background:var(--bg-card);color:var(--text-secondary);margin-left:10px;">
-        Logout
-      </button>`;
-
-    document.getElementById('navLogoutBtn').addEventListener('click', () => {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/pages/login.html';
-    });
-
-  } else {
-    sec.innerHTML =
-      `<a href="/pages/login.html"><button class="btn-nav">Sign In</button></a>`;
-  }
+  const sec = document.getElementById('userSection');
+  if (sec) sec.innerHTML = '';
 }
 
 // ── escapeHtml fallback ──

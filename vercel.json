@@ -13,6 +13,14 @@
   },
   "rewrites": [
     {
+      "source": "/",
+      "destination": "/pages/index.html"
+    },
+    {
+      "source": "/login",
+      "destination": "/pages/login.html"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/server.js"
     },
