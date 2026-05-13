@@ -624,8 +624,8 @@ function clearAuthSession() {
 }
 
 function redirectToAdminLogin() {
-  const path = window.location.pathname;
-  if (path === '/pages/admin.html' || path.endsWith('/admin.html')) {
+  const path = window.location.pathname.replace(/\.html$/, '');
+  if (path === '/pages/admin' || path.endsWith('/admin')) {
     return;
   }
 
@@ -875,15 +875,16 @@ const NotificationSystem = {
 function isPublicRoute(pathname = window.location.pathname) {
   // Stateless Public Site: all public-facing pages are accessible without auth
   // Admin page has its own inline login gate, so it's also "public" from the router's perspective
+  const normalizedPath = pathname.replace(/\.html$/, '');
   const publicPaths = [
-    '/', '/index.html', '/pages/index.html',
-    '/pages/movie-details.html', '/pages/search.html',
-    '/pages/episode.html', '/pages/player.html',
-    '/pages/admin.html',
-    '/login', '/login.html', '/pages/login.html',
-    '/offline', '/offline.html', '/pages/offline.html',
+    '/', '/index', '/pages/index',
+    '/pages/movie-details', '/pages/search',
+    '/pages/episode', '/pages/player',
+    '/pages/admin',
+    '/login', '/pages/login',
+    '/offline', '/pages/offline',
   ];
-  return publicPaths.some(p => pathname === p || pathname.endsWith(p));
+  return publicPaths.some(p => normalizedPath === p || normalizedPath.endsWith(p));
 }
 
 function enforceAdminPageAccess() {
