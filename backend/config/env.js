@@ -9,7 +9,7 @@ const DEFAULTS = {
   NODE_ENV: runtime,
   PORT: '5001',
   HOST: '0.0.0.0',
-  MONGO_URI: 'mongodb://127.0.0.1:27017/cine-stream',
+  MONGO_URI: 'mongodb://127.0.0.1:27017/cinestream',
   FRONTEND_URL: runtime === 'production' ? '' : 'http://localhost:5001',
   CORS_ORIGINS: runtime === 'production' ? '*' : '',
   JWT_EXPIRES_IN: runtime === 'production' ? '7d' : '30d',
