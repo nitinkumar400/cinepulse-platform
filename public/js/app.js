@@ -328,42 +328,27 @@ function logout(redirect = true) {
 }
 
 // ══════════════════════════════════════════
-// MEDIA URL HELPER
-// Handles: Cloudinary/AniList (http), TMDB relative paths (/xxx.jpg),
-//          poisoned localhost URLs (http://localhost:PORT/filename.jpg),
-//          and local paths
+// MEDIA URL HELPER — Bulletproof Sanitizer
+// Strategy: trust only AniList absolute URLs. Everything else is treated as
+// a TMDB image hash (even if prefixed with a corrupted domain like
+// localhost, 192.168.x.x, etc.) and reduced to the filename, then rebuilt
+// against the official TMDB image CDN.
 // ══════════════════════════════════════════
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
 const POSTER_PLACEHOLDER_URL = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';
 
-function sanitizeTmdbPath(url, size) {
-  // Detect poisoned localhost/127.0.0.1 URLs saved during local dev
-  // e.g. http://localhost:5001/kqjL17yufvn9.jpg → https://image.tmdb.org/t/p/w500/kqjL17yufvn9.jpg
-  if (/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url)) {
-    const filename = url.split('/').pop().split('?')[0];
-    if (filename) return `${TMDB_IMAGE_BASE}${size || 'w500'}/${filename}`;
-    return POSTER_PLACEHOLDER_URL;
-  }
-  return null; // not a poisoned URL
+function getImageUrl(path, size) {
+  if (!path) return POSTER_PLACEHOLDER_URL;
+  // AniList URLs are already perfectly formatted — pass through untouched
+  if (path.includes('anilist.co')) return path;
+  // Everything else is treated as a TMDB image — strip down to filename and rebuild
+  const filename = String(path).split('/').pop();
+  if (!filename) return POSTER_PLACEHOLDER_URL;
+  return `${TMDB_IMAGE_BASE}${size || 'w500'}/${filename}`;
 }
 
-function getImageUrl(url, size) {
-  if (!url) return POSTER_PLACEHOLDER_URL;
-  if (url.startsWith('data:')) return url;
-  // Sanitize poisoned localhost URLs before anything else
-  const sanitized = sanitizeTmdbPath(url, size);
-  if (sanitized) return sanitized;
-  // AniList / Cloudinary / any other absolute URL
-  if (url.startsWith('http')) return url;
-  // TMDB relative paths start with /
-  if (url.startsWith('/')) return `${TMDB_IMAGE_BASE}${size || 'w500'}${url}`;
-  // Local paths — prepend media base
-  const base = (typeof MEDIA_BASE !== 'undefined') ? MEDIA_BASE : '';
-  return base + url;
-}
-
-function getBackdropUrl(url) {
-  return getImageUrl(url, 'original');
+function getBackdropUrl(path) {
+  return getImageUrl(path, 'original');
 }
 
 const mediaUrl = getImageUrl;
@@ -854,10 +839,10 @@ function enforceAdminPageAccess() {
     return true;
   }
 
-  // Only admin-only pages (admin.html, dashboard.html, etc.) enforce auth
-  const user = getUser();
-  if (!getToken() || !user || user.role !== 'admin') {
-    clearAuthSession();
+  // Nuclear Auth Guard: admin-only pages just check token presence.
+  // Backend validates role on every API call; 401/403 triggers the apiFetch
+  // interceptor which handles the logout redirect safely.
+  if (!getToken()) {
     redirectToAdminLogin();
     return false;
   }

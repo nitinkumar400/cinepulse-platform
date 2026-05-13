@@ -265,18 +265,13 @@ const startTime = parseInt(urlParams.get('t') || '0');
 const POSTER_PH = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQwIiBoZWlnaHQ9IjM2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';
 const THUMB_PH  = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjY4IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMxYTFhMjQiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1zaXplPSIyMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iIGZpbGw9IiM0NDQiPuKWkDwvdGV4dD48L3N2Zz4=';
 
-function mediaUrl(url, size) {
-  if (!url) return '';
-  if (url.startsWith('data:')) return url;
-  // Sanitize poisoned localhost/127.0.0.1 URLs saved during local dev
-  if (/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url)) {
-    const filename = url.split('/').pop().split('?')[0];
-    return filename ? `https://image.tmdb.org/t/p/${size || 'w500'}/${filename}` : '';
-  }
-  if (url.startsWith('http')) return url;
-  if (url.startsWith('/')) return `https://image.tmdb.org/t/p/${size || 'w500'}${url}`;
-  const base = (typeof MEDIA_BASE !== 'undefined') ? MEDIA_BASE : '';
-  return base + url;
+// Bulletproof image resolver — same policy as app.js/getImageUrl
+function mediaUrl(path, size) {
+  if (!path) return '';
+  if (path.includes('anilist.co')) return path;
+  const filename = String(path).split('/').pop();
+  if (!filename) return '';
+  return `https://image.tmdb.org/t/p/${size || 'w500'}/${filename}`;
 }
 
 function toast(msg, type = 'success') {

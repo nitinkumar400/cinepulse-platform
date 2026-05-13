@@ -342,22 +342,17 @@
 // FIX: The root cause of broken images.
 // Old code: `${MEDIA_BASE}${m.thumbnailUrl}`
 // When thumbnailUrl is already a full Cloudinary URL (https://res.cloudinary.com/...)
-// this produced: http://localhost:5000https://res.cloudinary.com/... — BROKEN
-// Fix: check if URL already starts with http, skip MEDIA_BASE if so
-// Fix: Handle TMDB relative paths (/xxx.jpg) via image.tmdb.org CDN
-// Fix: Sanitize poisoned localhost URLs saved during local dev
+// Bulletproof image resolver:
+// - null/undefined → placeholder
+// - anilist.co URL → pass through
+// - anything else → strip to filename, rebuild via TMDB CDN
 // ══════════════════════════════════════════
-function getImageUrl(url, size) {
-  if (!url) return '';
-  if (url.startsWith('data:')) return url;
-  // Sanitize poisoned localhost/127.0.0.1 URLs
-  if (/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url)) {
-    const filename = url.split('/').pop().split('?')[0];
-    return filename ? `https://image.tmdb.org/t/p/${size || 'w500'}/${filename}` : '';
-  }
-  if (url.startsWith('http')) return url;
-  if (url.startsWith('/')) return `https://image.tmdb.org/t/p/${size || 'w500'}${url}`;
-  return (typeof MEDIA_BASE !== 'undefined' ? MEDIA_BASE : '') + url;
+function getImageUrl(path, size) {
+  if (!path) return '';
+  if (path.includes('anilist.co')) return path;
+  const filename = String(path).split('/').pop();
+  if (!filename) return '';
+  return `https://image.tmdb.org/t/p/${size || 'w500'}/${filename}`;
 }
 
 const PLACEHOLDER = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';

@@ -415,30 +415,9 @@ window.addEventListener('DOMContentLoaded', () => { initAdminDashboard(); });
 window.addEventListener('admin-authenticated', () => { initAdminDashboard(); });
 
 async function initAdminDashboard() {
-  const token = localStorage.getItem('token');
-  let user = JSON.parse(localStorage.getItem('user') || 'null');
-
-  // If no token, do nothing — the admin login gate in admin.html handles this
-  if (!token) return;
-
-  if (!user || user.role !== 'admin') {
-    try {
-      const res = await apiFetch('/auth/me', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const payload = await res.json();
-      const me = unwrapResponse(payload)?.user || payload?.user || unwrapResponse(payload);
-      if (!res.ok || !payload.success || !me || me.role !== 'admin') {
-        throw new Error('ADMIN_SESSION_INVALID');
-      }
-      user = me;
-      localStorage.setItem('user', JSON.stringify(user));
-    } catch {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      return;
-    }
-  }
+  // Nuclear Auth Guard: token presence only.
+  // Backend validates on every API call; 401/403 triggers the apiFetch interceptor.
+  if (!localStorage.getItem('token')) return;
 
   // All event listeners in one place
   document.getElementById('logoutBtn')?.addEventListener('click', () => {

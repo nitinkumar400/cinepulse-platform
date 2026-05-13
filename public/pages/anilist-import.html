@@ -325,11 +325,10 @@ const PRESETS = {
 
 // ── ON LOAD ──
 window.addEventListener('DOMContentLoaded', () => {
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
-  const role = user?.role || user?.data?.role || '';
-  const currentToken = localStorage.getItem('token');
-  if (!currentToken || role !== 'admin') {
-    window.location.href = 'admin.html';
+  // Nuclear Auth Guard: backend validates the token on every API call.
+  // Frontend only checks presence — no user/role parsing, no race conditions.
+  if (!localStorage.getItem('token')) {
+    window.location.href = '/pages/admin.html';
     return;
   }
   document.getElementById('logoutBtn')?.addEventListener('click', logout);

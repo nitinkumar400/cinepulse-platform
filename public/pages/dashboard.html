@@ -457,20 +457,19 @@ function destroyAll() {
 }
 
 // ══════════════════════════════════════════
-// AUTH + INIT
+// AUTH + INIT — Nuclear Guard
+// Token presence only; backend validates on every API call.
 // ══════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
-  const user  = JSON.parse(localStorage.getItem('user') || 'null');
-  const token = localStorage.getItem('token');
-  const role  = user?.role || user?.data?.role || '';
-  if (!token || role !== 'admin') {
-    window.location.href = 'admin.html'; return;
+  if (!localStorage.getItem('token')) {
+    window.location.href = '/pages/admin.html';
+    return;
   }
 
   document.getElementById('logoutBtn').addEventListener('click', () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    window.location.href = 'admin.html';
+    window.location.href = '/pages/admin.html';
   });
 
   document.getElementById('refreshBtn').addEventListener('click', refreshAll);
