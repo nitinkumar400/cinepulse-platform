@@ -10,66 +10,67 @@ const EmbedServers = (() => {
 
   // ═══════════════════════════════════════════════════════════════════════════
   // STANDARD SERVERS — For Movies & TV (requires tmdb_id)
+  // Ordered by VERIFIED reliability (May 2026 live testing)
   // ═══════════════════════════════════════════════════════════════════════════
   const STANDARD_SERVERS = {
-    // Priority 1 — VidSrc: reliable, allows cross-origin embedding (vidsrc.me is the stable domain)
-    vidsrc: {
-      name: 'VidSrc',
-      key: 'vidsrc',
+    // Priority 1 — VidLink: CONFIRMED WORKING — loads actual video player
+    vidlink: {
+      name: 'VidLink',
+      key: 'vidlink',
       priority: 1,
-      sandboxPolicy: 'balanced',
-      movieUrl: (tmdbId) => `https://vidsrc.me/embed/movie?tmdb=${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
-      timeout: 8000,
+      sandboxPolicy: 'none',  // VidLink rejects any sandbox attribute
+      movieUrl: (tmdbId) => `https://vidlink.pro/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}`,
+      timeout: 9000,
     },
-    // Priority 2 — 2Embed: confirmed working with sandbox on localhost
+    // Priority 2 — Videasy (vidsrc.cc): VERIFIED ALIVE — returns full player
+    videasy: {
+      name: 'Videasy',
+      key: 'videasy',
+      priority: 2,
+      sandboxPolicy: 'none',
+      movieUrl: (tmdbId) => `https://vidsrc.cc/v2/embed/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidsrc.cc/v2/embed/tv/${tmdbId}/${season}/${episode}`,
+      timeout: 9000,
+    },
+    // Priority 3 — Nontongo: VERIFIED ALIVE — returns movie title + player
+    nontongo: {
+      name: 'Nontongo',
+      key: 'nontongo',
+      priority: 3,
+      sandboxPolicy: 'none',
+      movieUrl: (tmdbId) => `https://nontongo.win/embed/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://nontongo.win/embed/tv/${tmdbId}/${season}/${episode}`,
+      timeout: 9000,
+    },
+    // Priority 4 — VidSrc.icu: VERIFIED ALIVE — returns player page
+    vidsrcicu: {
+      name: 'VidSrc ICU',
+      key: 'vidsrcicu',
+      priority: 4,
+      sandboxPolicy: 'none',
+      movieUrl: (tmdbId) => `https://vidsrc.icu/embed/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidsrc.icu/embed/tv/${tmdbId}/${season}/${episode}`,
+      timeout: 9000,
+    },
+    // Priority 5 — 2Embed: ALIVE but needs sandbox:'none' to avoid "Sandbox Detected" error
     embed2: {
       name: '2Embed',
       key: 'embed2',
-      priority: 2,
+      priority: 5,
       sandboxPolicy: 'none',
       movieUrl: (tmdbId) => `https://www.2embed.cc/embed/${tmdbId}`,
       tvUrl: (tmdbId, season, episode) => `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`,
       timeout: 8000,
     },
-    // Priority 3 — AutoEmbed: rejects sandbox attribute — sandboxPolicy:'none'
-    autoembed: {
-      name: 'AutoEmbed',
-      key: 'autoembed',
-      priority: 3,
-      sandboxPolicy: 'none',  // AutoEmbed shows "Sandbox not allowed" if any sandbox present
-      movieUrl: (tmdbId) => `https://autoembed.co/movie/tmdb/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://autoembed.co/tv/tmdb/${tmdbId}-${season}-${episode}`,
-      timeout: 8000,
-    },
-    // Priority 4 — VidLink: explicitly rejects any sandbox attribute — sandboxPolicy:'none'
-    vidlink: {
-      name: 'VidLink',
-      key: 'vidlink',
-      priority: 4,
-      sandboxPolicy: 'none',  // This provider shows "Please Disable Sandbox" if any sandbox present
-      movieUrl: (tmdbId) => `https://vidlink.pro/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}`,
-      timeout: 9000,
-    },
-    // Priority 5 — VidSrc Wiki: stable alternative, good production coverage
-    superembed: {
-      name: 'VidSrc Pro',
-      key: 'superembed',
-      priority: 5,
-      sandboxPolicy: 'balanced',
-      movieUrl: (tmdbId) => `https://vidsrc.wiki/embed/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidsrc.wiki/embed/tv/${tmdbId}/${season}/${episode}`,
-      timeout: 9000,
-    },
-    // Priority 6 — SmashyStream: works on production, may block localhost
-    smashy: {
-      name: 'SmashyStream',
-      key: 'smashy',
+    // Priority 6 — VidSrc.me: ALIVE but often shows "media not available" — last resort
+    vidsrc: {
+      name: 'VidSrc',
+      key: 'vidsrc',
       priority: 6,
-      sandboxPolicy: 'balanced',
-      movieUrl: (tmdbId) => `https://player.smashy.stream/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://player.smashy.stream/tv/${tmdbId}?s=${season}&e=${episode}`,
+      sandboxPolicy: 'none',
+      movieUrl: (tmdbId) => `https://vidsrc.me/embed/movie?tmdb=${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
       timeout: 8000,
     },
   };
