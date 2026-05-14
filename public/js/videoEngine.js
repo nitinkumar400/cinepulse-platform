@@ -22,7 +22,7 @@ const VideoEngine = (() => {
   // ─────────────────────────────────────────────────────────────────────────
   // CONSTANTS
   // ─────────────────────────────────────────────────────────────────────────
-  const WATCHDOG_TIMEOUT_MS = 6500; // 6.5 seconds
+  const STATIC_TRUST_TIMEOUT_MS = 3500; // 3.5 seconds
   const TOAST_DURATION_MS = 3500;
 
   // Legacy priority map (kept for backward compat with upload/native sources)
@@ -42,7 +42,7 @@ const VideoEngine = (() => {
   // FAILOVER STATE
   // ─────────────────────────────────────────────────────────────────────────
   let _activeServerIndex = 0;
-  let _watchdogTimer = null;
+  let _staticTrustTimer = null;
   let _handshakeReceived = false;
   let _currentSources = [];
   let _currentMovie = null;
@@ -54,7 +54,6 @@ const VideoEngine = (() => {
   let _onCircuitBreakCallback = null;
   let _onStreamVerifiedCallback = null;
   let _messageListenerBound = false;
-  let _consecutiveLoadNoHandshake = 0;
 
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -167,8 +166,11 @@ const VideoEngine = (() => {
   function handleHandshakeSuccess(signal) {
     if (_handshakeReceived) return; // Already handled
     _handshakeReceived = true;
-    _consecutiveLoadNoHandshake = 0;
-    clearWatchdog();
+    
+    if (_staticTrustTimer !== null) {
+      clearTimeout(_staticTrustTimer);
+      _staticTrustTimer = null;
+    }
 
     // Mark current source as working
     if (_currentSources[_activeServerIndex]) {
@@ -180,114 +182,25 @@ const VideoEngine = (() => {
     }
   }
 
-
   // ─────────────────────────────────────────────────────────────────────────
-  // B. THE 6.5-SECOND WATCHDOG TIMER
-  // Starts on every iframe mount. If it expires without a handshake,
-  // triggers switchToBackupServer().
+  // STATIC TRUST TIMEOUT
   // ─────────────────────────────────────────────────────────────────────────
-  function startWatchdog() {
-    clearWatchdog();
+  function startStaticTrustTimeout() {
+    if (_staticTrustTimer !== null) {
+      clearTimeout(_staticTrustTimer);
+      _staticTrustTimer = null;
+    }
     _handshakeReceived = false;
 
-    _watchdogTimer = setTimeout(() => {
-      if (_handshakeReceived) return; // Race condition guard
+    _staticTrustTimer = setTimeout(() => {
+      if (_handshakeReceived) return;
+      _handshakeReceived = true;
       
-      // Check native onload
-      if (_iframeElement && _iframeElement.dataset.onloadFired === "true") {
-        if (_consecutiveLoadNoHandshake < 2) {
-          // Increment threshold and allow failover to proceed (e.g. 404 page loaded)
-          _consecutiveLoadNoHandshake++;
-          switchToBackupServer();
-          return;
-        }
-
-        clearWatchdog();
-        // Remove loading spinner by triggering stream verified
-        if (typeof _onStreamVerifiedCallback === 'function') {
-          _onStreamVerifiedCallback(_currentSources[_activeServerIndex], 'native-onload');
-        }
-        
-        // Render elegant text notification
-        const wrapper = _containerElement || (_iframeElement && _iframeElement.parentElement);
-        if (wrapper) {
-          const existing = document.getElementById('adblock-fallback-note');
-          if (existing) existing.remove();
-          
-          const note = document.createElement('div');
-          note.id = 'adblock-fallback-note';
-          note.textContent = "Using secure fallback stream. If video doesn't play, try disabling your AdBlocker/Shields.";
-          note.style.cssText = `
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.8);
-            z-index: 9999;
-            pointer-events: none;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-          `;
-          wrapper.appendChild(note);
-        }
-        return;
+      // Time is up, simply reveal the iframe.
+      if (typeof _onStreamVerifiedCallback === 'function') {
+        _onStreamVerifiedCallback(_currentSources[_activeServerIndex], 'static-trust-timeout');
       }
-
-      // Timer expired and onload failed — assume stream is stalled/broken
-      switchToBackupServer();
-    }, WATCHDOG_TIMEOUT_MS);
-  }
-
-  function clearWatchdog() {
-    if (_watchdogTimer !== null) {
-      clearTimeout(_watchdogTimer);
-      _watchdogTimer = null;
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // D. SEAMLESS SILENT FAILOVER EXECUTION
-  // ─────────────────────────────────────────────────────────────────────────
-  function switchToBackupServer() {
-    // Mark current as failed
-    if (_currentSources[_activeServerIndex]) {
-      _currentSources[_activeServerIndex].status = 'failed';
-    }
-
-    // Increment to next priority mirror
-    const nextIndex = _activeServerIndex + 1;
-
-    // E. CIRCUIT BREAKER — all mirrors exhausted
-    if (nextIndex >= _currentSources.length) {
-      clearWatchdog();
-      _circuitBroken = true;
-
-      if (typeof _onCircuitBreakCallback === 'function') {
-        _onCircuitBreakCallback();
-      }
-      return;
-    }
-
-    // Move to next server
-    _activeServerIndex = nextIndex;
-    const nextSource = _currentSources[_activeServerIndex];
-
-    // DOM Iframe Rebuilder: destroy and recreate iframe for clean state
-    rebuildIframe(nextSource.embedUrl || nextSource.url, nextSource.sandboxPolicy || 'balanced');
-
-    // Show non-intrusive toast
-    showFailoverToast('Optimizing stream quality, routing to secure backup lane...');
-
-    // Notify callback (movieDetailsPage hooks into this)
-    if (typeof _onFailoverCallback === 'function') {
-      _onFailoverCallback(_activeServerIndex, nextSource);
-    }
-
-    // Step 7: Kick off the 6.5-second autonomous watchdog monitoring countdown
-    startWatchdog();
+    }, STATIC_TRUST_TIMEOUT_MS);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -542,8 +455,8 @@ const VideoEngine = (() => {
     const firstSource = _currentSources[0];
     rebuildIframe(firstSource.embedUrl || firstSource.url, firstSource.sandboxPolicy || 'balanced');
 
-    // Start the 6.5s watchdog
-    startWatchdog();
+    // Start the static trust timeout (3.5s)
+    startStaticTrustTimeout();
 
     return {
       sources: _currentSources,
@@ -560,7 +473,10 @@ const VideoEngine = (() => {
   function retryAllServers() {
     // Flush circuit breaker state
     _circuitBroken = false;
-    clearWatchdog();
+    if (_staticTrustTimer !== null) {
+      clearTimeout(_staticTrustTimer);
+      _staticTrustTimer = null;
+    }
 
     // Reset all source statuses to unknown
     _currentSources.forEach(s => { s.status = 'unknown'; });
@@ -578,8 +494,8 @@ const VideoEngine = (() => {
       rebuildIframe(first.embedUrl || first.url, first.sandboxPolicy || 'balanced');
     }
 
-    // Start fresh watchdog cycle
-    startWatchdog();
+    // Start fresh static trust cycle
+    startStaticTrustTimeout();
 
     // Notify failover callback of reset
     if (typeof _onFailoverCallback === 'function') {
@@ -592,22 +508,30 @@ const VideoEngine = (() => {
   // ─────────────────────────────────────────────────────────────────────────
   function switchToServer(index) {
     if (index < 0 || index >= _currentSources.length) return;
-    clearWatchdog();
+    if (_staticTrustTimer !== null) {
+      clearTimeout(_staticTrustTimer);
+      _staticTrustTimer = null;
+    }
     _handshakeReceived = false;
-    _consecutiveLoadNoHandshake = 0;
     _activeServerIndex = index;
 
     const source = _currentSources[index];
 
     // DOM Iframe Rebuilder: fresh iframe for manual switch
     rebuildIframe(source.embedUrl || source.url, source.sandboxPolicy || 'balanced');
+    
+    // Start fresh static trust cycle
+    startStaticTrustTimeout();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
   // STOP — Cleanup when navigating away or destroying player
   // ─────────────────────────────────────────────────────────────────────────
   function stop() {
-    clearWatchdog();
+    if (_staticTrustTimer !== null) {
+      clearTimeout(_staticTrustTimer);
+      _staticTrustTimer = null;
+    }
     _handshakeReceived = false;
     _circuitBroken = false;
     _currentSources = [];
@@ -762,12 +686,9 @@ const VideoEngine = (() => {
   window.VideoEngine = {
     // New Failover Monitoring Loop API
     mountStream,
-    switchToBackupServer,
     switchToServer,
     retryAllServers,
     stop,
-    startWatchdog,
-    clearWatchdog,
     renderCircuitBreakerScreen,
     applyIframeSandbox,
     rebuildIframe,
@@ -789,7 +710,6 @@ const VideoEngine = (() => {
     getNextSource,
     getEmbedServers,
     SERVERS: Object.keys(SERVER_PRIORITY),
-    WATCHDOG_TIMEOUT_MS,
   };
 
   return window.VideoEngine;
