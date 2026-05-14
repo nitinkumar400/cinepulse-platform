@@ -25,6 +25,8 @@ let progressTimer           = null;
 // ── Episode/UI state ──
 let seasonsData    = {};
 let selectedRating = 0;
+let currentPlayingSeason    = 1;
+let currentPlayingEpisode   = 1;
 
 // ─────────────────────────────────────────────────────────────────────────
 // SESSION FAILED-PROVIDER MANAGEMENT
@@ -91,13 +93,16 @@ async function loadOpenSubtitles(movieTitle, movieId) {
         if (nums.length === 0) {
           if ((String(currentMovie?.provider || '').toLowerCase() === 'anilist' || currentMovie?.category === 'anime')
             && Number(currentMovie?.totalEpisodes || 0) > 1) {
+            
             const tmdbId = Number(currentMovie?.tmdbId || currentMovie?.tmdb_id || 0);
-            if (!tmdbId) {
+            const anilistId = currentMovie?.anilistId || currentMovie?.anilist_id || currentMovie?.providerId;
+            
+            if (!tmdbId && !anilistId) {
               grid.innerHTML = `
                 <div class="empty-state" style="grid-column:1/-1;">
                   <div class="empty-state-icon">📺</div>
-                  <h3>Episodes require TMDB mapping</h3>
-                  <p style="color:var(--text-muted);">Anime is imported, but TMDB ID is missing so VidSrc episode links cannot be generated yet.</p>
+                  <h3>Episodes require TMDB or AniList mapping</h3>
+                  <p style="color:var(--text-muted);">Anime is imported, but both TMDB ID and AniList ID are missing.</p>
                 </div>`;
               return;
             }
@@ -106,9 +111,8 @@ async function loadOpenSubtitles(movieTitle, movieId) {
             const animeSeasonNumber = getAnimeSeasonNumber(currentMovie);
             const rows = Array.from({ length: totalEpisodes }, (_, idx) => {
               const epNumber = idx + 1;
-              const embedUrl = buildAnimeEpisodeEmbedUrl(tmdbId, animeSeasonNumber, epNumber);
               return `
-                <div class="episode-card" data-anime-embed-url="${escapeHtml(embedUrl)}">
+                <div class="episode-card" data-anime-season="${animeSeasonNumber}" data-anime-ep="${epNumber}">
                   <img class="ep-card-thumb" src="${mediaUrl(currentMovie?.thumbnailUrl) || THUMB_PH}"
                     alt="${escapeHtml(currentMovie?.title || 'Anime Episode')}"
                     loading="lazy"
@@ -118,7 +122,7 @@ async function loadOpenSubtitles(movieTitle, movieId) {
                     <div class="ep-card-num">Season ${animeSeasonNumber} · Episode ${epNumber}</div>
                     <div class="ep-card-title">${escapeHtml(currentMovie?.title || 'Anime')}</div>
                     <div class="ep-card-meta">
-                      <span><i class="ri-broadcast-line"></i> Stream via VidSrc</span>
+                      <span><i class="ri-broadcast-line"></i> Play Episode</span>
                     </div>
                   </div>
                   <div class="ep-play-btn"><i class="ri-play-fill" style="color:#fff;"></i></div>
@@ -237,7 +241,7 @@ function ensureUpcomingEpisodeFallback(movie) {
 
     section.style.display = 'block';
     grid.innerHTML = `
-      <div class="episode-card" data-anime-embed-url="${escapeHtml(embedUrl)}">
+      <div class="episode-card" data-anime-season="${animeSeasonNumber}" data-anime-ep="${nextEp}" data-anime-embed-url="${escapeHtml(embedUrl)}">
         <img class="ep-card-thumb" src="${mediaUrl(movie?.thumbnailUrl) || THUMB_PH}"
           alt="${escapeHtml(movie?.title || 'Anime Episode')}"
           loading="lazy"
@@ -444,16 +448,67 @@ userLoggedIn = !!token;
     const card = e.target.closest('.episode-card');
     if (!card) return;
 
-    const animeEmbedUrl = String(card.dataset.animeEmbedUrl || '').trim();
-    if (animeEmbedUrl) {
-      window.open(animeEmbedUrl, '_blank', 'noopener,noreferrer');
+    if (card.dataset.animeEp) {
+      const s = parseInt(card.dataset.animeSeason) || 1;
+      const ep = parseInt(card.dataset.animeEp) || 1;
+      playEpisodeInPlace(s, ep);
       return;
     }
 
     if (card.dataset.epId) {
-      window.location.href = `episode.html?id=${card.dataset.epId}`;
+      // Legacy fallback for custom uploaded episodes could go here, 
+      // but for Hydra embeds, we extract season/ep directly.
+      const rawText = card.textContent || '';
+      const sMatch = rawText.match(/Season\s*(\d+)/i);
+      const eMatch = rawText.match(/Episode\s*(\d+)/i);
+      const s = sMatch ? parseInt(sMatch[1]) : 1;
+      const ep = eMatch ? parseInt(eMatch[1]) : 1;
+      playEpisodeInPlace(s, ep);
     }
   });
+
+  // ── IN-PLACE EPISODE PLAYBACK ──
+  window.playEpisodeInPlace = async function(season, episode) {
+    try {
+      showPlayerLoader(true, `Mounting Season ${season} Episode ${episode}...`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      currentPlayingSeason = season;
+      currentPlayingEpisode = episode;
+
+      let hydraSources = [];
+      if (typeof EmbedServers !== 'undefined' && typeof EmbedServers.buildHydraSources === 'function') {
+        hydraSources = EmbedServers.buildHydraSources(currentMovie, season, episode);
+      }
+      
+      let newSources = [...hydraSources];
+
+      if (newSources.length === 0) {
+         showPlayerMessage('No streaming servers available for this episode.', 3000);
+         showPlayerLoader(false);
+         return;
+      }
+
+      playbackSources = reorderSourcesBySessionHealth(newSources);
+      activeSourceIndex = 0;
+      
+      // Update UI active state
+      document.querySelectorAll('.episode-card').forEach(c => {
+         c.style.borderColor = 'var(--border)';
+         const isAnimeMatch = c.dataset.animeSeason == season && c.dataset.animeEp == episode;
+         const textMatch = c.textContent.includes(`Season ${season}`) && c.textContent.includes(`Episode ${episode}`);
+         if (isAnimeMatch || (c.dataset.epId && textMatch)) {
+           c.style.borderColor = 'var(--accent)';
+         }
+      });
+
+      renderServerSelector();
+      renderVideo(playbackSources[0]);
+    } catch (err) {
+      console.error('Failed to play episode in-place:', err);
+      showPlayerMessage('Failed to initialize episode stream.');
+    }
+  };
 
   // 3. Recommendations Grid Delegation
   document.getElementById('recGrid').addEventListener('click', (e) => {
@@ -1140,7 +1195,7 @@ function injectAnimeFallbackCSS() {
   const css = `
     #episodesGrid[data-anime-fallback="1"] .spinner-container { display: none !important; }
     #episodesGrid[data-anime-fallback="1"] .empty-state { display: none !important; }
-    #episodesGrid[data-anime-fallback="1"]::before {
+    #episodesGrid[data-anime-fallback="1"]:empty::before {
       content: "Upcoming episode coming soon";
       display: block;
       grid-column: 1 / -1;
@@ -1563,7 +1618,7 @@ async function loadEpisodes(seriesId) {
           const embedUrl = tmdbId ? buildAnimeEpisodeEmbedUrl(tmdbId, animeSeasonNumber, nextAiringEpisode) : '';
           const metaLabel = tmdbId ? nextAiringLabel : 'TMDB mapping pending';
           grid.innerHTML = `
-            <div class="episode-card" data-anime-embed-url="${escapeHtml(embedUrl)}">
+            <div class="episode-card" data-anime-season="${animeSeasonNumber}" data-anime-ep="${nextAiringEpisode}" data-anime-embed-url="${escapeHtml(embedUrl)}">
               <img class="ep-card-thumb" src="${mediaUrl(currentMovie?.thumbnailUrl) || THUMB_PH}"
                 alt="${escapeHtml(currentMovie?.title || 'Anime Episode')}"
                 loading="lazy"
@@ -1597,7 +1652,7 @@ async function loadEpisodes(seriesId) {
             const epNumber = idx + 1;
             const embedUrl = buildAnimeEpisodeEmbedUrl(tmdbId, animeSeasonNumber, epNumber);
             return `
-              <div class="episode-card" data-anime-embed-url="${escapeHtml(embedUrl)}">
+              <div class="episode-card" data-anime-season="${animeSeasonNumber}" data-anime-ep="${epNumber}" data-anime-embed-url="${escapeHtml(embedUrl)}">
                 <img class="ep-card-thumb" src="${mediaUrl(currentMovie?.thumbnailUrl) || THUMB_PH}"
                   alt="${escapeHtml(currentMovie?.title || 'Anime Episode')}"
                   loading="lazy"
@@ -2185,8 +2240,8 @@ async function switchPlaybackSource(index, options = {}) {
 
     VideoEngine.mountStream({
       movie: currentMovie,
-      season: currentMovie?.animeSeasonNumber || 1,
-      episode: 1,
+      season: currentPlayingSeason || currentMovie?.animeSeasonNumber || 1,
+      episode: currentPlayingEpisode || 1,
       iframeElement: frame,
       containerElement: getEmbedShell(),
       sources: remainingSources,
@@ -2246,8 +2301,8 @@ async function setupPlayback(movie) {
       try {
         hydraSources = EmbedServers.buildHydraSources(
           movie,
-          movie.season || 1,
-          movie.episode || 1
+          currentPlayingSeason || movie.season || 1,
+          currentPlayingEpisode || movie.episode || 1
         );
       } catch (hydrErr) {
         console.warn('[Hydra] buildHydraSources failed:', hydrErr.message);

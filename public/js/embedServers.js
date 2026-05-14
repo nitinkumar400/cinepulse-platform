@@ -27,7 +27,7 @@ const EmbedServers = (() => {
       name: '2Embed',
       key: 'embed2',
       priority: 2,
-      sandboxPolicy: 'balanced',
+      sandboxPolicy: 'none',
       movieUrl: (tmdbId) => `https://www.2embed.cc/embed/${tmdbId}`,
       tvUrl: (tmdbId, season, episode) => `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`,
       timeout: 8000,
