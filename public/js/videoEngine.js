@@ -54,6 +54,7 @@ const VideoEngine = (() => {
   let _onCircuitBreakCallback = null;
   let _onStreamVerifiedCallback = null;
   let _messageListenerBound = false;
+  let _consecutiveLoadNoHandshake = 0;
 
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -166,6 +167,7 @@ const VideoEngine = (() => {
   function handleHandshakeSuccess(signal) {
     if (_handshakeReceived) return; // Already handled
     _handshakeReceived = true;
+    _consecutiveLoadNoHandshake = 0;
     clearWatchdog();
 
     // Mark current source as working
@@ -193,6 +195,13 @@ const VideoEngine = (() => {
       
       // Check native onload
       if (_iframeElement && _iframeElement.dataset.onloadFired === "true") {
+        if (_consecutiveLoadNoHandshake < 2) {
+          // Increment threshold and allow failover to proceed (e.g. 404 page loaded)
+          _consecutiveLoadNoHandshake++;
+          switchToBackupServer();
+          return;
+        }
+
         clearWatchdog();
         // Remove loading spinner by triggering stream verified
         if (typeof _onStreamVerifiedCallback === 'function') {
@@ -585,6 +594,7 @@ const VideoEngine = (() => {
     if (index < 0 || index >= _currentSources.length) return;
     clearWatchdog();
     _handshakeReceived = false;
+    _consecutiveLoadNoHandshake = 0;
     _activeServerIndex = index;
 
     const source = _currentSources[index];
