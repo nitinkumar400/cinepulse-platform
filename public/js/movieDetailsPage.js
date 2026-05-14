@@ -2109,25 +2109,12 @@ async function switchPlaybackSource(index, options = {}) {
     video.load();
   }
 
-  // ── Clear the iframe early if onload fires before the timer ──
-  frame.onload = () => {
-    if (switchToken !== activePlayerSwitchToken) return;
-    initProviderPlayer(source);
-    // Do NOT hide loader here — let the static trust timer handle it
-    // This prevents the iframe showing a blank/error page before 3.5s
-  };
+  // ── SANDBOX REMOVAL FIRST — before src is set, so the provider never
+  //    sees a sandboxed parent when its scripts execute.
+  //    All our providers explicitly reject sandbox restrictions.
+  frame.removeAttribute('sandbox');
 
-  // ── Hydra Security: per-provider sandbox policy ──
-  const sandboxPolicy = source.sandboxPolicy || 'balanced';
-  if (typeof VideoEngine !== 'undefined' && VideoEngine.applyIframeSandbox) {
-    VideoEngine.applyIframeSandbox(frame, sandboxPolicy);
-  } else if (sandboxPolicy === 'none') {
-    frame.removeAttribute('sandbox');
-  } else {
-    frame.setAttribute('sandbox',
-      'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation'
-    );
-  }
+  // ── iframe attributes ──
   frame.referrerPolicy = 'no-referrer';
   frame.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture; gyroscope; accelerometer';
   frame.allowFullscreen = true;
@@ -2135,6 +2122,15 @@ async function switchPlaybackSource(index, options = {}) {
   frame.setAttribute('webkitallowfullscreen', 'true');
   frame.setAttribute('mozallowfullscreen', 'true');
   frame.removeAttribute('srcdoc');
+
+  // ── onload handler (fires if the server responds quickly) ──
+  frame.onload = () => {
+    if (switchToken !== activePlayerSwitchToken) return;
+    initProviderPlayer(source);
+    // Do NOT hide loader here — let the static trust timer handle it
+  };
+
+  // ── Assign src last — after all attributes are in place ──
   frame.src = source.embedUrl;
   loadProviderSubtitleTracks(source).catch(() => {});
 

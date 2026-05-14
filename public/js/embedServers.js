@@ -33,14 +33,14 @@ const EmbedServers = (() => {
       tvUrl: (tmdbId, season, episode) => `https://vidsrc.cc/v2/embed/tv/${tmdbId}/${season}/${episode}`,
       timeout: 9000,
     },
-    // Priority 3 — Nontongo: VERIFIED ALIVE — returns movie title + player
-    nontongo: {
-      name: 'Nontongo',
-      key: 'nontongo',
+    // Priority 3 — VidSrc.io: VERIFIED ALIVE — returns correct movie title, supports tmdb param
+    vidsrcio: {
+      name: 'VidSrc IO',
+      key: 'vidsrcio',
       priority: 3,
       sandboxPolicy: 'none',
-      movieUrl: (tmdbId) => `https://nontongo.win/embed/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://nontongo.win/embed/tv/${tmdbId}/${season}/${episode}`,
+      movieUrl: (tmdbId) => `https://vidsrc.io/embed/movie?tmdb=${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidsrc.io/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
       timeout: 9000,
     },
     // Priority 4 — VidSrc.icu: VERIFIED ALIVE — returns player page
@@ -63,15 +63,15 @@ const EmbedServers = (() => {
       tvUrl: (tmdbId, season, episode) => `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`,
       timeout: 8000,
     },
-    // Priority 6 — VidSrc.me: ALIVE but often shows "media not available" — last resort
+    // Priority 6 — VidSrc.to: VERIFIED ALIVE — robust player via vsembed.ru backend
     vidsrc: {
       name: 'VidSrc',
       key: 'vidsrc',
       priority: 6,
       sandboxPolicy: 'none',
-      movieUrl: (tmdbId) => `https://vidsrc.me/embed/movie?tmdb=${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
-      timeout: 8000,
+      movieUrl: (tmdbId) => `https://vidsrc.to/embed/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}`,
+      timeout: 9000,
     },
   };
 

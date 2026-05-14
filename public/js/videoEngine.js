@@ -207,16 +207,10 @@ const VideoEngine = (() => {
   // ─────────────────────────────────────────────────────────────────────────
   function applyIframeSandbox(iframe, policy) {
     if (!iframe) return;
-
-    if (policy === 'none') {
-      // Provider rejects sandbox entirely — strip it
-      iframe.removeAttribute('sandbox');
-    } else {
-      // Balanced: allow scripts + same-origin + forms
-      iframe.setAttribute('sandbox',
-        'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation'
-      );
-    }
+    // All embed providers reject sandbox restrictions — always remove it.
+    // Keeping sandbox causes "Iframe Sandbox Detected" errors from providers
+    // that check if they are running inside a restricted iframe context.
+    iframe.removeAttribute('sandbox');
   }
 
   // ─────────────────────────────────────────────────────────────────────────
