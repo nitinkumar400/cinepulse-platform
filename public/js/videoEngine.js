@@ -1,17 +1,16 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * VideoEngine v3.0 — Autonomous Failover Monitoring Loop
+ * VideoEngine v4.0 — Static Trust Model (User-Driven Server Selection)
  * ═══════════════════════════════════════════════════════════════════════════
- *
- * Implements a 6.5-second watchdog timer with cross-domain handshake
- * interception to detect broken/stalled streams from third-party embeds.
  *
  * Architecture:
  *   1. Priority-Ordered Waterfall Array (from EmbedServers.STANDARD_SERVERS)
- *   2. 6.5s Watchdog Timer per iframe mount
- *   3. Cross-Domain postMessage Handshake Interceptor
- *   4. Silent Failover with toast notification
- *   5. Circuit Breaker end-state after all mirrors exhausted
+ *   2. 3.5s Static Trust Timeout — reveals iframe after fixed delay
+ *   3. Cross-Domain postMessage Handshake (early spinner dismiss if received)
+ *   4. Manual server switching — NO automatic rotation
+ *
+ * The watchdog auto-failover loop was removed to prevent infinite switching
+ * caused by AdBlockers/Brave Shields stripping cross-domain postMessage.
  *
  * Safety: Does NOT alter Express routes, serverless functions, or Mongoose
  * configs. All URL parameters (?id, &season, &episode) are preserved.

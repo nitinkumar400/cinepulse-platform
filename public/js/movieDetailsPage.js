@@ -419,9 +419,10 @@ userLoggedIn = !!token;
   // Server button delegation (replaces old <select>)
   document.getElementById('serverButtons').addEventListener('click', (e) => {
     const btn = e.target.closest('.srv-btn');
-    if (!btn) return;
+    if (!btn || btn.disabled) return;
     const nextIndex = parseInt(btn.dataset.index, 10);
-    if (Number.isInteger(nextIndex) && nextIndex !== activeSourceIndex) {
+    if (Number.isInteger(nextIndex)) {
+      // Always allow manual server switch — even to the same server (force reload)
       switchPlaybackSource(nextIndex);
     }
   });
@@ -503,7 +504,7 @@ userLoggedIn = !!token;
       });
 
       renderServerSelector();
-      renderVideo(playbackSources[0]);
+      switchPlaybackSource(0);
     } catch (err) {
       console.error('Failed to play episode in-place:', err);
       showPlayerMessage('Failed to initialize episode stream.');
@@ -756,14 +757,14 @@ function renderServerSelector() {
         class="srv-btn ${isActive ? 'srv-active' : ''} ${isFailed ? 'srv-failed' : ''}"
         data-index="${index}"
         id="srvBtn${serverNum}"
-        title="${escapeHtml(providerName)}${isFailed ? ' (Unavailable)' : ''}"
+        title="${escapeHtml(providerName)}${isFailed ? ' (Previously failed — click to retry)' : ''}"
         style="
           padding: 7px 18px;
           border: 1.5px solid ${isActive ? 'var(--accent, #e50914)' : 'rgba(255,255,255,0.18)'};
           background: ${isActive ? 'linear-gradient(135deg, var(--accent, #e50914), #c40812)' : 'rgba(255,255,255,0.04)'};
           color: ${isActive ? '#fff' : 'rgba(255,255,255,0.75)'};
           border-radius: 8px;
-          cursor: ${isFailed ? 'not-allowed' : 'pointer'};
+          cursor: pointer;
           font-size: 12.5px;
           font-weight: ${isActive ? '600' : '500'};
           letter-spacing: 0.3px;
@@ -771,14 +772,12 @@ function renderServerSelector() {
           display: inline-flex;
           align-items: center;
           gap: 7px;
-          opacity: ${isFailed ? '0.45' : '1'};
+          opacity: ${isFailed ? '0.55' : '1'};
           box-shadow: ${isActive ? '0 2px 12px rgba(229,9,20,0.35)' : 'none'};
         "
-        ${isFailed ? 'disabled' : ''}
       >
         <span style="width:7px;height:7px;border-radius:50%;background:${statusColor};box-shadow:0 0 5px ${statusColor}88;flex-shrink:0;"></span>
         Server ${serverNum}
-        ${isSessionFailed ? '<span style="font-size:10px;letter-spacing:0.5px;">SKIP</span>' : ''}
       </button>
     `;
   }).join('');
@@ -812,6 +811,26 @@ function renderServerSelector() {
     renderServerSelector();
     showPlayerMessage('Server list reset for this session.', 2400);
   };
+
+  // ── Helper Text UX: inject hint below server buttons ──
+  let helperText = document.getElementById('serverHelperText');
+  if (!helperText && playbackSources.length > 1) {
+    helperText = document.createElement('p');
+    helperText.id = 'serverHelperText';
+    helperText.className = 'server-helper-text';
+    helperText.innerHTML = '💡 <strong>Tip:</strong> If a video doesn\'t load or shows an error, please try selecting a different Server.';
+    helperText.style.cssText = `
+      margin: 8px 0 0 0;
+      padding: 0;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.45);
+      text-align: left;
+      line-height: 1.5;
+      width: 100%;
+      letter-spacing: 0.2px;
+    `;
+    switcher.appendChild(helperText);
+  }
 }
 
 function renderNoPlaybackState() {
@@ -2130,6 +2149,10 @@ function wireNativeFallback() {
 async function switchPlaybackSource(index, options = {}) {
   if (!playbackSources[index]) return;
 
+  // ── HARD RESET: Cancel any previous static trust timer ──
+  clearTimeout(switchPlaybackSource._staticTrustTimer);
+  clearTimeout(switchPlaybackSource.embedTimer);
+
   restoreNativeShellMarkup();
   wireNativeFallback();
   getVideoElement()?.pause();
@@ -2139,15 +2162,11 @@ async function switchPlaybackSource(index, options = {}) {
   const source = playbackSources[index];
   const switchToken = ++activePlayerSwitchToken;
   const shortcutsBtn = document.getElementById('shortcutsBtn');
-  showPlayerLoader(true, options.auto ? 'Switching source...' : 'Loading stream...');
-  setPlayerStatus(options.auto ? `Switching to ${source.label}...` : `Loading ${source.label}...`, options.auto ? 'switching' : '');
+  const serverNum = index + 1;
+  showPlayerLoader(true, `Loading Server ${serverNum}...`);
+  setPlayerStatus(`Now playing • Server ${serverNum} • ${source.serverName || source.label}`, options.auto ? 'switching' : '');
   if (shortcutsBtn) {
     shortcutsBtn.style.opacity = source.server === 'upload' ? '1' : '0.55';
-  }
-
-  // ── Stop any previous VideoEngine watchdog cycle ──
-  if (typeof VideoEngine !== 'undefined' && VideoEngine.clearWatchdog) {
-    VideoEngine.clearWatchdog();
   }
 
   if (source.server === 'upload') {
@@ -2165,7 +2184,7 @@ async function switchPlaybackSource(index, options = {}) {
 
     const onCanPlay = () => {
       if (switchToken !== activePlayerSwitchToken) return;
-      clearTimeout(switchPlaybackSource.embedTimer);
+      clearTimeout(switchPlaybackSource._staticTrustTimer);
       showPlayerLoader(false);
       setPlayerStatus(`Now playing • ${source.statusLabel || source.label}`);
       if (startTime > 0 && video.currentTime < startTime) {
@@ -2185,11 +2204,6 @@ async function switchPlaybackSource(index, options = {}) {
   const sourceUrlForValidation = source.url || source.embedUrl || '';
   if (!source.embedUrl || window.isOfflinePlaybackSource?.(sourceUrlForValidation, source.sourceType || source.server)) {
     renderSourceOffline(source, 'Content currently unavailable. Please try another server.');
-    if (index < playbackSources.length - 1) {
-      setTimeout(() => {
-        switchPlaybackSource(index + 1, { auto: true }).catch(() => {});
-      }, 250);
-    }
     return;
   }
   const video = getVideoElement();
@@ -2198,12 +2212,12 @@ async function switchPlaybackSource(index, options = {}) {
     video.load();
   }
 
+  // ── Clear the iframe early if onload fires before the timer ──
   frame.onload = () => {
     if (switchToken !== activePlayerSwitchToken) return;
-    clearTimeout(switchPlaybackSource.embedTimer);
     initProviderPlayer(source);
-    showPlayerLoader(false);
-    setPlayerStatus(`Now playing • ${source.statusLabel || source.label}`);
+    // Do NOT hide loader here — let the static trust timer handle it
+    // This prevents the iframe showing a blank/error page before 3.5s
   };
 
   // ── Hydra Security: per-provider sandbox policy ──
@@ -2228,69 +2242,17 @@ async function switchPlaybackSource(index, options = {}) {
   loadProviderSubtitleTracks(source).catch(() => {});
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // AUTONOMOUS FAILOVER MONITORING LOOP — VideoEngine Integration
-  // Mount the watchdog + cross-domain handshake listener via VideoEngine.
-  // The 6.5s timer auto-triggers failover if no readiness signal arrives.
+  // STATIC TRUST TIMER — 3.5 second guaranteed spinner dismiss
+  // After 3.5s, unconditionally hide the spinner and reveal the iframe.
+  // No automatic server rotation. User controls server switching manually.
   // ═══════════════════════════════════════════════════════════════════════════
-  clearTimeout(switchPlaybackSource.embedTimer);
-
-  if (typeof VideoEngine !== 'undefined' && VideoEngine.mountStream) {
-    // Build remaining sources from current index onward for the watchdog
-    const remainingSources = playbackSources.slice(index).filter(s => s.isEmbed || s.isExternal);
-
-    VideoEngine.mountStream({
-      movie: currentMovie,
-      season: currentPlayingSeason || currentMovie?.animeSeasonNumber || 1,
-      episode: currentPlayingEpisode || 1,
-      iframeElement: frame,
-      containerElement: getEmbedShell(),
-      sources: remainingSources,
-      onFailover: (newRelativeIndex, nextSource) => {
-        // Map relative index back to absolute playbackSources index
-        const absoluteIndex = playbackSources.findIndex(s => s.id === nextSource.id || s.server === nextSource.server);
-        if (absoluteIndex !== -1 && absoluteIndex !== activeSourceIndex) {
-          activeSourceIndex = absoluteIndex;
-          renderServerSelector();
-          showPlayerLoader(true, 'Optimizing stream...');
-          setPlayerStatus(`Routing to ${nextSource.serverName || nextSource.label}...`, 'switching');
-        }
-      },
-      onCircuitBreak: () => {
-        // All mirrors exhausted — render beautiful error screen
-        showPlayerLoader(false);
-        const embedShell = getEmbedShell();
-        if (embedShell && typeof VideoEngine.renderCircuitBreakerScreen === 'function') {
-          VideoEngine.renderCircuitBreakerScreen(embedShell);
-        } else {
-          setPlayerStatus('Stream currently undergoing automated maintenance. Please try again shortly.', 'error');
-          showPlayerMessage('All servers exhausted. Please try again later.', 5000);
-        }
-      },
-      onStreamVerified: (verifiedSource, signal) => {
-        showPlayerLoader(false);
-        const label = verifiedSource?.statusLabel || verifiedSource?.label || 'Server';
-        setPlayerStatus(`Now playing • ${label}`);
-        // Mark as working in our local sources
-        if (verifiedSource && playbackSources[activeSourceIndex]) {
-          playbackSources[activeSourceIndex].status = 'working';
-          renderServerSelector();
-        }
-      },
-    });
-  } else {
-    // Fallback: legacy 5s timer if VideoEngine watchdog unavailable
-    switchPlaybackSource.embedTimer = setTimeout(() => {
-      if (switchToken !== activePlayerSwitchToken) return;
-      markProviderFailed(source);
-      if (index < playbackSources.length - 1) {
-        showPlayerMessage('Server slow — trying next...');
-        setPlayerStatus('Switching to faster server...', 'switching');
-        switchPlaybackSource(index + 1, { auto: true }).catch(() => {});
-      } else {
-        renderSourceOffline(source, 'All servers are currently slow. Please try again or select a server manually.');
-      }
-    }, 5000);
-  }
+  switchPlaybackSource._staticTrustTimer = setTimeout(() => {
+    if (switchToken !== activePlayerSwitchToken) return;
+    showPlayerLoader(false);
+    source.status = 'ready';
+    setPlayerStatus(`Now playing • Server ${serverNum} • ${source.serverName || source.label}`);
+    renderServerSelector();
+  }, 3500);
 }
 
 async function setupPlayback(movie) {
