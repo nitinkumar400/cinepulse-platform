@@ -22,6 +22,63 @@ let activeEmbedPlayer       = null;
 let providerSubtitleBlobUrls = [];
 let progressTimer           = null;
 
+/**
+ * ══════════════════════════════════════════
+ * GHOST PROFILE & AFFINITY TRACKER
+ * Strategy: Zero-login personalization using localStorage
+ * ══════════════════════════════════════════
+ */
+function updateGhostProfile(mediaData, season, episode) {
+  if (!mediaData || !mediaData._id) return;
+
+  // 1. Continue Watching History (cinepulse_history)
+  try {
+    const HISTORY_KEY = 'cinepulse_history';
+    let history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    
+    const historyItem = {
+      id: mediaData._id,
+      tmdbId: mediaData.tmdbId || mediaData.tmdb_id,
+      anilistId: mediaData.anilistId || mediaData.anilist_id,
+      title: mediaData.title,
+      category: mediaData.category,
+      season: parseInt(season) || 1,
+      episode: parseInt(episode) || 1,
+      posterUrl: mediaData.bannerUrl || mediaData.thumbnailUrl,
+      timestamp: Date.now()
+    };
+
+    // Filter out existing entry for the same media ID
+    history = history.filter(item => item.id !== mediaData._id);
+    // Add to front
+    history.unshift(historyItem);
+    // Cap at 20
+    history = history.slice(0, 20);
+    
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch (e) {
+    console.warn('[GhostProfile] History update failed:', e.message);
+  }
+
+  // 2. Affinity Tracker (user_affinity)
+  try {
+    const AFFINITY_KEY = 'user_affinity';
+    let affinity = JSON.parse(localStorage.getItem(AFFINITY_KEY) || '{}');
+    
+    const genres = Array.isArray(mediaData.genre) ? mediaData.genre : [];
+    genres.forEach(g => {
+      const genre = String(g).trim();
+      if (genre) {
+        affinity[genre] = (affinity[genre] || 0) + 1;
+      }
+    });
+    
+    localStorage.setItem(AFFINITY_KEY, JSON.stringify(affinity));
+  } catch (e) {
+    console.warn('[GhostProfile] Affinity update failed:', e.message);
+  }
+}
+
 // ── Episode/UI state ──
 let seasonsData    = {};
 let selectedRating = 0;
@@ -419,6 +476,9 @@ userLoggedIn = !!token;
     try {
       showPlayerLoader(true, `Mounting Season ${season} Episode ${episode}...`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      // Track in Ghost Profile
+      updateGhostProfile(currentMovie, season, episode);
 
       window.currentPlayingSeason = parseInt(season);
       window.currentPlayingEpisode = parseInt(episode);
@@ -2544,6 +2604,10 @@ async function switchPlaybackSource(index, options = {}) {
 }
 
 async function setupPlayback(movie) {
+  // Track in Ghost Profile if it's a movie (initial load is the "Play")
+  if (String(movie?.category || '').toLowerCase() === 'movie') {
+    updateGhostProfile(movie, 1, 1);
+  }
   try {
     // ── Global Master Hydra: build sources from EmbedServers first ──
     let hydraSources = [];

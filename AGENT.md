@@ -1161,6 +1161,22 @@ Implemented a seamless binge-watching experience for anime content using native 
 
 ---
 
+## 23. Ghost Profile Personalization (May 2026)
+
+### 1. Client-Side Affinity Tracking
+Implemented a zero-login tracking system using `localStorage` to curate content per user without requiring backend accounts.
+- **`user_affinity` Tracker**: Scans genres of watched content and increments scores locally.
+- **Hero Billboard Personalization**: The homepage Hero algorithm evaluates `user_affinity` to find the user's top genre, then dynamically scans the live trending API to surface a matching featured title.
+- **Premium Hero UI**: Added dynamic logo support (`logoUrl`), 3-dot genre pills, a dynamic "92% - 99% Match" score, and Netflix-style action buttons.
+
+### 2. Continue Watching History
+Built a local watch history engine.
+- **`cinepulse_history`**: Tracks up to 20 recently viewed items including ID, Title, Category, Season, Episode, and Poster.
+- **Dynamic Row Rendering**: `renderContinueWatching()` injects a dedicated row below the Hero section if history exists.
+- **Visual Context**: Automatically applies `S1:E4` style badges for Anime and Series, passing `resume=true` and explicit episode parameters via URL to allow one-click playback resumption.
+
+---
+
 ## Quick Start Commands
 
 ```bash
@@ -1205,5 +1221,5 @@ vercel deploy --prod
 *Last Updated: May 16, 2026*
 *Platform: CinePulse (formerly CineStream)*
 *Database: 107,810 documents (Live on Atlas)*
-*Status: Anime HLS Streaming & Auto-Play - LIVE*
+*Status: Ghost Profile Personalization - LIVE*
 *Maintained by: Nitin Mishra & AI Coding Assistant*
