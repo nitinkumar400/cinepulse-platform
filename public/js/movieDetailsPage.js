@@ -420,8 +420,60 @@ userLoggedIn = !!token;
       showPlayerLoader(true, `Mounting Season ${season} Episode ${episode}...`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      currentPlayingSeason = season;
-      currentPlayingEpisode = episode;
+      window.currentPlayingSeason = parseInt(season);
+      window.currentPlayingEpisode = parseInt(episode);
+      currentPlayingSeason = parseInt(season);
+      currentPlayingEpisode = parseInt(episode);
+
+      // Consumet API Interception for Anime
+      if (String(currentMovie?.category || '').toLowerCase() === 'anime' && (currentMovie?.anilistId || currentMovie?.anilist_id)) {
+        const currentAnilistId = currentMovie.anilistId || currentMovie.anilist_id;
+        const CONSUMET_BASE = "https://consumet-api-latest-qe60.onrender.com";
+        try {
+          const response = await fetch(`${CONSUMET_BASE}/meta/anilist/info/${currentAnilistId}`);
+          const data = await response.json();
+          const epObj = (data.episodes || []).find(ep => parseInt(ep.number) === parseInt(episode));
+          if (epObj && epObj.id) {
+            const targetEpisodeId = epObj.id;
+            const streamRes = await fetch(`${CONSUMET_BASE}/meta/anilist/watch/${targetEpisodeId}`);
+            const streamData = await streamRes.json();
+            const sources = streamData.sources || [];
+            const bestSource = sources.find(s => s.quality === '1080p') || sources.find(s => s.quality === 'default') || sources.find(s => s.url && s.url.endsWith('.m3u8')) || sources[0];
+            
+            if (bestSource && bestSource.url) {
+              const m3u8Url = bestSource.url;
+              if (window.VideoEngine && typeof window.VideoEngine.mountNativeStream === 'function') {
+                showPlayerLoader(false);
+                window.VideoEngine.mountNativeStream(m3u8Url);
+                
+                // Update UI active state
+                document.querySelectorAll('.episode-card').forEach(c => {
+                  c.style.borderColor = 'var(--border)';
+                  const isAnimeMatch = c.dataset.animeSeason == season && c.dataset.animeEp == episode;
+                  const textMatch = c.textContent.includes(`Season ${season}`) && c.textContent.includes(`Episode ${episode}`);
+                  if (isAnimeMatch || (c.dataset.epId && textMatch)) {
+                    c.style.borderColor = 'var(--accent)';
+                  }
+                });
+
+                // Update the URL silently for bookmarking/sharing
+                const url = new URL(window.location);
+                url.searchParams.set('id', currentMovieId);
+                url.searchParams.set('season', season);
+                url.searchParams.set('episode', episode);
+                window.history.pushState({}, '', url);
+
+                if (typeof renderEpisodeNavigation === 'function') {
+                  renderEpisodeNavigation();
+                }
+                return; // Intercept successful
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[Consumet] Native anime stream fetch failed. Falling back to Hydra.', err);
+        }
+      }
 
       let hydraSources = [];
       if (typeof EmbedServers !== 'undefined' && typeof EmbedServers.buildHydraSources === 'function') {
@@ -464,12 +516,61 @@ userLoggedIn = !!token;
       renderServerSelector();
       switchPlaybackSource(0);
 
-      if (typeof renderEpisodeNavigation === 'function') {
+      if (typeof window.renderEpisodeNavigation === 'function') {
+        window.renderEpisodeNavigation();
+      } else if (typeof renderEpisodeNavigation === 'function') {
         renderEpisodeNavigation();
       }
     } catch (err) {
       console.error('Failed to play episode in-place:', err);
       showPlayerMessage('Failed to initialize episode stream.');
+    }
+  };
+
+  window.renderEpisodeNavigation = function() {
+    const container = document.getElementById('videoContainer');
+    if (!container) return;
+    
+    let navRow = document.getElementById('episode-nav-row');
+    if (!navRow) {
+      navRow = document.createElement('div');
+      navRow.id = 'episode-nav-row';
+      navRow.style.cssText = 'display:flex; justify-content:space-between; margin-top:16px; width:100%;';
+      
+      const prevBtn = document.createElement('button');
+      prevBtn.id = 'btn-prev-ep';
+      prevBtn.innerHTML = '⟵ Previous';
+      prevBtn.className = 'btn btn-secondary';
+      prevBtn.style.cssText = 'padding:10px 24px; font-weight:600; cursor:pointer;';
+      prevBtn.onclick = () => {
+        if (window.currentPlayingEpisode > 1) {
+          window.playEpisodeInPlace(window.currentPlayingSeason, window.currentPlayingEpisode - 1);
+        }
+      };
+      
+      const nextBtn = document.createElement('button');
+      nextBtn.id = 'btn-next-ep';
+      nextBtn.innerHTML = 'Next ⟶';
+      nextBtn.className = 'btn btn-primary';
+      nextBtn.style.cssText = 'padding:10px 24px; font-weight:600; cursor:pointer;';
+      nextBtn.onclick = () => {
+        if (window.currentPlayingEpisode < (window.maxAnimeEpisodesCount || 9999)) {
+          window.playEpisodeInPlace(window.currentPlayingSeason, window.currentPlayingEpisode + 1);
+        }
+      };
+
+      navRow.appendChild(prevBtn);
+      navRow.appendChild(nextBtn);
+      container.parentNode.insertBefore(navRow, container.nextSibling);
+    }
+    
+    const prevBtn = document.getElementById('btn-prev-ep');
+    if (prevBtn) {
+      prevBtn.style.visibility = window.currentPlayingEpisode > 1 ? 'visible' : 'hidden';
+    }
+    const nextBtn = document.getElementById('btn-next-ep');
+    if (nextBtn) {
+      nextBtn.style.visibility = (window.currentPlayingEpisode < (window.maxAnimeEpisodesCount || 9999)) ? 'visible' : 'hidden';
     }
   };
 
@@ -1169,6 +1270,7 @@ window.drawAnimeChunk = function(startEp, endEp, seasonNumber) {
 };
 
 window.renderAnimeEpisodes = function(totalEpisodes, seasonNumber) {
+  window.maxAnimeEpisodesCount = totalEpisodes;
   const grid = document.getElementById('episodesGrid');
   const chunks = Math.ceil(totalEpisodes / 50);
   
@@ -1569,8 +1671,35 @@ async function loadEpisodes(seriesId) {
   const tabs    = document.getElementById('episodeSeasonTabs');
   section.style.display = 'block';
 
-  // isTvLike: covers all multi-episode content types
   const cat = String(currentMovie?.category || '').toLowerCase();
+
+  // 1. FIX ANIME EPISODE GENERATION (SELF-HEALING)
+  if (cat === 'anime') {
+    let totalEpisodes = Number(currentMovie?.totalEpisodes || 0);
+    const animeSeasonNumber = getAnimeSeasonNumber(currentMovie);
+    const currentAnilistId = currentMovie?.anilistId || currentMovie?.anilist_id;
+
+    if (totalEpisodes > 1) {
+      window.renderAnimeEpisodes(totalEpisodes, animeSeasonNumber);
+      return;
+    } else if (currentAnilistId) {
+      grid.innerHTML = '<div class="spinner-container"><div class="spinner"></div></div>';
+      try {
+        const res = await fetch("https://consumet-api-latest-qe60.onrender.com/meta/anilist/info/" + currentAnilistId);
+        const json = await res.json();
+        let fetchedCount = json.totalEpisodes || (json.episodes && json.episodes.length) || 0;
+        if (fetchedCount > 0) {
+          currentMovie.totalEpisodes = fetchedCount;
+          window.renderAnimeEpisodes(fetchedCount, animeSeasonNumber);
+          return;
+        }
+      } catch (err) {
+        console.warn('Consumet Self-Healing check failed', err);
+      }
+    }
+  }
+
+  // isTvLike: covers all multi-episode content types
   const isTvLike = ['series', 'anime', 'cartoon', 'tv', 'k-drama', 'asian-drama', 'asian_drama', 'kdrama', 'chinese-drama', 'cdrama', 'c-drama'].includes(cat);
   const tmdbId = Number(currentMovie?.tmdbId || currentMovie?.tmdb_id || 0);
 

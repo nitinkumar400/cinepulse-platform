@@ -666,6 +666,134 @@ const VideoEngine = (() => {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // NATIVE HLS.JS STREAM MOUNTER (FOR ANIME EXPERIMENTAL FLOW)
+  // ─────────────────────────────────────────────────────────────────────────
+  let autoPlayCountdownTimer = null;
+  let countdownSecondsLeft = 8;
+
+  function triggerAutoPlayCountdown(wrapper) {
+    if (autoPlayCountdownTimer) clearInterval(autoPlayCountdownTimer);
+    countdownSecondsLeft = 8;
+    
+    let overlay = document.getElementById('autoplay-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'autoplay-overlay';
+      overlay.style.cssText = 'position:absolute; inset:0; background:rgba(0,0,0,0.85); z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-family:sans-serif; backdrop-filter:blur(4px); border-radius:8px;';
+      
+      const title = document.createElement('h2');
+      title.textContent = 'Next Episode Playing In...';
+      title.style.cssText = 'margin-bottom:20px; font-size:24px; font-weight:600; text-shadow:0 2px 4px rgba(0,0,0,0.5);';
+      
+      const count = document.createElement('div');
+      count.id = 'autoplay-count';
+      count.style.cssText = 'font-size:72px; font-weight:bold; margin-bottom:30px; text-shadow:0 4px 12px rgba(0,0,0,0.5);';
+      
+      const btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex; gap:16px;';
+      
+      const playBtn = document.createElement('button');
+      playBtn.innerHTML = '<i class="ri-play-fill"></i> Play Now';
+      playBtn.style.cssText = 'padding:12px 28px; background:#e50914; color:white; border:none; border-radius:4px; font-size:16px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px; transition:transform 0.2s;';
+      playBtn.onmouseover = () => playBtn.style.transform = 'scale(1.05)';
+      playBtn.onmouseout = () => playBtn.style.transform = 'scale(1)';
+      playBtn.onclick = () => {
+        clearInterval(autoPlayCountdownTimer);
+        overlay.remove();
+        if (typeof window.playEpisodeInPlace === 'function') {
+           window.playEpisodeInPlace(window.currentPlayingSeason || 1, window.currentPlayingEpisode + 1);
+        }
+      };
+      
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.style.cssText = 'padding:12px 28px; background:rgba(255,255,255,0.15); color:white; border:1px solid rgba(255,255,255,0.3); border-radius:4px; font-size:16px; font-weight:500; cursor:pointer; transition:background 0.2s;';
+      cancelBtn.onmouseover = () => cancelBtn.style.background = 'rgba(255,255,255,0.25)';
+      cancelBtn.onmouseout = () => cancelBtn.style.background = 'rgba(255,255,255,0.15)';
+      cancelBtn.onclick = () => {
+        clearInterval(autoPlayCountdownTimer);
+        overlay.remove();
+      };
+      
+      btnRow.appendChild(playBtn);
+      btnRow.appendChild(cancelBtn);
+      
+      overlay.appendChild(title);
+      overlay.appendChild(count);
+      overlay.appendChild(btnRow);
+      wrapper.appendChild(overlay);
+    }
+    
+    const countEl = document.getElementById('autoplay-count');
+    countEl.textContent = countdownSecondsLeft;
+    
+    autoPlayCountdownTimer = setInterval(() => {
+      countdownSecondsLeft--;
+      countEl.textContent = countdownSecondsLeft;
+      if (countdownSecondsLeft <= 0) {
+        clearInterval(autoPlayCountdownTimer);
+        const currentOverlay = document.getElementById('autoplay-overlay');
+        if (currentOverlay) currentOverlay.remove();
+        
+        if (typeof window.playEpisodeInPlace === 'function') {
+           window.playEpisodeInPlace(window.currentPlayingSeason || 1, window.currentPlayingEpisode + 1);
+        }
+      }
+    }, 1000);
+  }
+
+  function mountNativeStream(streamUrl) {
+    const wrapper = _containerElement || document.getElementById('nativePlayerShell') || document.getElementById('embedPlayerHost') || document.querySelector('.player-viewport');
+    if (!wrapper) {
+      console.warn('[VideoEngine] No container found for native stream mount.');
+      return;
+    }
+    
+    // Hide or destroy existing iframe
+    if (_iframeElement) {
+      _iframeElement.style.display = 'none';
+    }
+    const existingIframe = wrapper.querySelector('iframe');
+    if (existingIframe) existingIframe.style.display = 'none';
+
+    // Remove any existing native stream player
+    const existingPlayer = document.getElementById('native-stream-player');
+    if (existingPlayer) existingPlayer.remove();
+
+    // Create new video element
+    const videoElement = document.createElement('video');
+    videoElement.id = 'native-stream-player';
+    videoElement.controls = true;
+    videoElement.style.cssText = 'width:100%; height:100%; background:#000; border-radius:8px; position:absolute; inset:0; z-index:10;';
+    
+    // Check if player-stage is active, if not, find a suitable parent or make wrapper relative
+    if (wrapper.style.position !== 'absolute' && wrapper.style.position !== 'relative') {
+      wrapper.style.position = 'relative';
+    }
+    
+    wrapper.appendChild(videoElement);
+
+    // Instantiate HLS.js
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+      const hlsInstance = new Hls();
+      hlsInstance.loadSource(streamUrl);
+      hlsInstance.attachMedia(videoElement);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => videoElement.play());
+    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+      videoElement.src = streamUrl;
+      videoElement.play();
+    } else {
+      console.error('[VideoEngine] HLS playback not supported by browser.');
+    }
+
+    videoElement.addEventListener('ended', () => {
+      if (window.currentPlayingEpisode + 1 <= (window.maxAnimeEpisodesCount || 9999)) {
+        triggerAutoPlayCountdown(wrapper);
+      }
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // GETTERS (for external inspection)
   // ─────────────────────────────────────────────────────────────────────────
   function getActiveServerIndex() { return _activeServerIndex; }
@@ -679,6 +807,7 @@ const VideoEngine = (() => {
   window.VideoEngine = {
     // New Failover Monitoring Loop API
     mountStream,
+    mountNativeStream,
     switchToServer,
     retryAllServers,
     stop,
