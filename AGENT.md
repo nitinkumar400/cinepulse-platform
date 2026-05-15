@@ -1140,6 +1140,27 @@ Since cross-origin iframes block native `ended` events, we implemented a user-dr
 
 ---
 
+## 22. Anime HLS Native Streaming & Auto-Play (May 2026)
+
+### 1. Consumet API & HLS Native Streaming
+Implemented a high-speed, ad-free streaming alternative for anime content using our private scraping infrastructure.
+- **Consumet Scraper Integration**: Integrated our private Render instance (`https://consumet-api-latest-qe60.onrender.com`) as a primary source for anime manifests.
+- **HLS.js Library**: Injected `hls.js` into the `<head>` of `movie-details.html` to allow the browser to parse `.m3u8` playlists directly within a native HTML5 video element.
+- **Native Player Mounting**: Created `VideoEngine.mountNativeStream(streamUrl)` in `videoEngine.js` which destroys existing iframes and builds an optimized `<video id="native-stream-player">` directly in the DOM.
+
+### 2. Anime Episode Self-Healing
+Added a robust fallback for anime titles with missing or incomplete metadata in the local database.
+- **Dynamic Episode Count Fetching**: If an anime's `totalEpisodes` is missing or set to 1, `loadEpisodes()` in `movieDetailsPage.js` performs an asynchronous lookup to the Consumet API `/meta/anilist/info/` endpoint.
+- **Automatic State Repair**: The system dynamically calculates the absolute episode count and updates the UI grid and `window.maxAnimeEpisodesCount` in real-time, preventing empty states.
+
+### 3. Netflix-Style Auto-Play Countdown
+Implemented a seamless binge-watching experience for anime content using native video events.
+- **'ended' Event Listener**: Attached an event listener to the native video player for the `ended` event (only possible with native streams, not cross-origin iframes).
+- **Auto-Play Overlay**: When an episode ends, if a next episode exists, a cinematic overlay appears with an 8-second countdown.
+- **Stateful Progression**: The countdown UI includes "Play Now" and "Cancel" buttons, automatically advancing via `playEpisodeInPlace()` when the timer expires.
+
+---
+
 ## Quick Start Commands
 
 ```bash
@@ -1181,8 +1202,8 @@ vercel deploy --prod
 
 ---
 
-*Last Updated: May 15, 2026*
+*Last Updated: May 16, 2026*
 *Platform: CinePulse (formerly CineStream)*
 *Database: 107,810 documents (Live on Atlas)*
-*Status: Seamless In-Place Playback & Anime UI - LIVE*
+*Status: Anime HLS Streaming & Auto-Play - LIVE*
 *Maintained by: Nitin Mishra & AI Coding Assistant*
