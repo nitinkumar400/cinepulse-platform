@@ -463,6 +463,10 @@ userLoggedIn = !!token;
 
       renderServerSelector();
       switchPlaybackSource(0);
+
+      if (typeof renderEpisodeNavigation === 'function') {
+        renderEpisodeNavigation();
+      }
     } catch (err) {
       console.error('Failed to play episode in-place:', err);
       showPlayerMessage('Failed to initialize episode stream.');
@@ -1088,11 +1092,68 @@ function injectAnimeFallbackCSS() {
     '.ep-btn { background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 10px 0; cursor: pointer; transition: all 0.2s; font-weight: 600; text-align: center; }\n' +
     '.ep-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); }\n' +
     '.ep-btn.active { background: rgba(52,211,153,0.2); color: #34d399; border-color: #34d399; }\n' +
-    '.chunk-dropdown { padding: 10px; border-radius: 6px; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 10px; width: 100%; max-width: 300px; cursor: pointer; }';
+    '.chunk-dropdown { padding: 10px; border-radius: 6px; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 10px; width: 100%; max-width: 300px; cursor: pointer; }\n' +
+    '/* ── Player Navigation UI ── */\n' +
+    '.player-episode-nav { display: flex; justify-content: space-between; align-items: center; max-width: 1080px; margin: 15px auto 0 auto; }\n' +
+    '.ep-nav-btn { background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px 20px; cursor: pointer; transition: all 0.2s; font-weight: 600; }\n' +
+    '.ep-nav-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); }';
   var s = document.createElement('style');
   s.id = 'anime-episodes-fallback';
   s.appendChild(document.createTextNode(css));
   document.head.appendChild(s);
+}
+
+function renderEpisodeNavigation() {
+  const containerId = 'player-episode-nav-container';
+  let container = document.getElementById(containerId);
+  
+  if (!container) {
+    container = document.createElement('div');
+    container.id = containerId;
+    container.className = 'player-episode-nav';
+    const videoContainer = document.getElementById('videoContainer');
+    if (videoContainer) {
+      videoContainer.parentNode.insertBefore(container, videoContainer.nextSibling);
+    } else {
+      return;
+    }
+
+    container.addEventListener('click', (e) => {
+      const btn = e.target.closest('.ep-nav-btn');
+      if (!btn) return;
+      const s = parseInt(btn.getAttribute('data-s'));
+      const ep = parseInt(btn.getAttribute('data-e'));
+      if (s && ep && typeof window.playEpisodeInPlace === 'function') {
+        window.playEpisodeInPlace(s, ep);
+      }
+    });
+  }
+
+  const currentEp = currentPlayingEpisode;
+  const currentSeason = currentPlayingSeason;
+  const nextEpNum = currentEp + 1;
+  const prevEpNum = currentEp - 1;
+
+  const hasNext = document.querySelector(`[data-anime-season="${currentSeason}"][data-anime-ep="${nextEpNum}"]`);
+  const hasPrev = document.querySelector(`[data-anime-season="${currentSeason}"][data-anime-ep="${prevEpNum}"]`);
+
+  let html = '';
+  if (hasPrev) {
+    html += `<button id="btn-prev-ep" class="ep-nav-btn" data-s="${currentSeason}" data-e="${prevEpNum}">⟵ Previous Episode</button>`;
+  } else {
+    html += `<div></div>`; 
+  }
+  
+  if (hasNext) {
+    html += `<button id="btn-next-ep" class="ep-nav-btn" data-s="${currentSeason}" data-e="${nextEpNum}">Next Episode ⟶</button>`;
+  }
+
+  if (!hasPrev && !hasNext) {
+    container.style.display = 'none';
+  } else {
+    container.style.display = 'flex';
+    container.innerHTML = html;
+  }
 }
 
 window.drawAnimeChunk = function(startEp, endEp, seasonNumber) {
