@@ -319,6 +319,19 @@ async function fetchDetails(tmdbId, type) {
   );
 }
 
+async function fetchSeasonDetails(tmdbId, seasonNumber) {
+  return requestTmdbWithRetry(
+    `/tv/${tmdbId}/season/${seasonNumber}`,
+    {
+      language: 'en-US',
+    },
+    {
+      attempts: 3,
+      timeoutMs: 7000,
+    }
+  );
+}
+
 module.exports = {
   TMDB_BASE,
   TMDB_IMG,
@@ -330,6 +343,7 @@ module.exports = {
   requestTmdbWithRetry,
   fetchList,
   fetchDetails,
+  fetchSeasonDetails,
   buildMovieDocument,
   buildTmdbRequest,
 };

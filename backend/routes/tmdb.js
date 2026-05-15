@@ -5,7 +5,7 @@ const fs = require('fs/promises');
 const Movie = require('../models/Movie');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 const { sendSuccess, sendError, asyncHandler } = require('../utils/apiResponse');
-const { fetchList, fetchDetails, normalizeRoutePayload, buildMovieDocument, TMDB_IMG, TMDB_IMG_W } = require('../services/tmdbService');
+const { fetchList, fetchDetails, fetchSeasonDetails, normalizeRoutePayload, buildMovieDocument, TMDB_IMG, TMDB_IMG_W } = require('../services/tmdbService');
 
 const router = express.Router();
 const importJobs = new Map();
@@ -235,6 +235,29 @@ router.get('/details/:id', asyncHandler(async (req, res) => {
       source: 'tmdb',
       type,
       tmdbId,
+    },
+  });
+}));
+
+router.get('/tv/:id/season/:season', asyncHandler(async (req, res) => {
+  const tmdbId = parseInt(req.params.id, 10);
+  const seasonNumber = parseInt(req.params.season, 10);
+
+  if (!tmdbId || isNaN(seasonNumber)) {
+    return sendError(res, new Error('TMDb ID and season number required'), {
+      status: 400,
+      code: 'TMDB_ID_SEASON_REQUIRED',
+    });
+  }
+
+  const details = await fetchSeasonDetails(tmdbId, seasonNumber);
+  return sendSuccess(res, { details }, {
+    message: 'TMDb season details loaded',
+    meta: {
+      source: 'tmdb',
+      type: 'tv',
+      tmdbId,
+      seasonNumber
     },
   });
 }));
