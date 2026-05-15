@@ -441,7 +441,16 @@ userLoggedIn = !!token;
     if (!btn) return;
     document.querySelectorAll('#episodeSeasonTabs .filter-tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
-    renderEpisodeCards(seasonsData[btn.dataset.season]);
+    
+    if (btn.hasAttribute('data-season-number')) {
+      const seasonNumber = parseInt(btn.getAttribute('data-season-number'), 10);
+      const tmdbId = Number(currentMovie?.tmdbId || currentMovie?.tmdb_id || 0);
+      if (typeof loadTmdbSeasonCards === 'function') {
+        loadTmdbSeasonCards(tmdbId, seasonNumber);
+      }
+    } else {
+      renderEpisodeCards(seasonsData[btn.dataset.season]);
+    }
   });
 
   // 2. Episodes Grid Delegation
@@ -1500,6 +1509,36 @@ async function loadEpisodes(seriesId) {
   const tabs    = document.getElementById('episodeSeasonTabs');
   section.style.display = 'block';
 
+  const isTvLike = ['series', 'anime', 'cartoon', 'tv'].includes(String(currentMovie?.category || '').toLowerCase());
+  const tmdbId = Number(currentMovie?.tmdbId || currentMovie?.tmdb_id || 0);
+
+  if (isTvLike && tmdbId) {
+    grid.innerHTML = '<div class="spinner-container"><div class="spinner"></div></div>';
+    try {
+      const detailsRes = await apiFetch(`/tmdb/details/${tmdbId}?type=tv`);
+      if (detailsRes.ok) {
+        const detailsPayload = await readJsonResponse(detailsRes);
+        const fullDetails = detailsPayload?.data?.details || detailsPayload?.details;
+        if (fullDetails && fullDetails.seasons && fullDetails.seasons.length > 0) {
+          let seasonsList = fullDetails.seasons.filter(s => s.season_number > 0);
+          if (seasonsList.length === 0) seasonsList = fullDetails.seasons;
+
+          tabs.innerHTML = seasonsList.map((s, i) =>
+            `<button class="filter-tab ${i === 0 ? 'active' : ''}" data-season-number="${s.season_number}">Season ${s.season_number}</button>`
+          ).join('');
+
+          window.tmdbSeasonsCache = {};
+          if (typeof loadTmdbSeasonCards === 'function') {
+            await loadTmdbSeasonCards(tmdbId, seasonsList[0].season_number);
+          }
+          return;
+        }
+      }
+    } catch(e) {
+      console.error('Failed to load TMDB seasons, falling back to local DB', e);
+    }
+  }
+
   try {
     const res  = await apiFetch(`/episodes/series/${seriesId}`, { silent: true });
     const data = await readJsonResponse(res);
@@ -1645,6 +1684,193 @@ function renderEpisodeCards(episodes) {
       <div class="ep-play-btn"><i class="ri-play-fill" style="color:#fff;"></i></div>
     </div>`).join('');
 }
+
+
+async function loadTmdbSeasonCards(tmdbId, seasonNumber) {
+  const grid = document.getElementById('episodesGrid');
+  grid.innerHTML = '<div class="spinner-container"><div class="spinner"></div></div>';
+
+  if (window.tmdbSeasonsCache && window.tmdbSeasonsCache[seasonNumber]) {
+    renderTmdbEpisodeCards(window.tmdbSeasonsCache[seasonNumber], seasonNumber);
+    return;
+  }
+
+  try {
+    const res = await apiFetch('/tmdb/tv/' + tmdbId + '/season/' + seasonNumber);
+    if (res.ok) {
+      const payload = await readJsonResponse(res);
+      const seasonDetails = payload?.data?.details || payload?.details;
+      if (seasonDetails && seasonDetails.episodes) {
+        if (!window.tmdbSeasonsCache) window.tmdbSeasonsCache = {};
+        window.tmdbSeasonsCache[seasonNumber] = seasonDetails.episodes;
+        renderTmdbEpisodeCards(seasonDetails.episodes, seasonNumber);
+        return;
+      }
+    }
+    grid.innerHTML = '<p style="color:var(--text-muted);padding:20px;text-align:center;">No episodes found for this season.</p>';
+  } catch (e) {
+    console.error('[TMDB Season Load]', e);
+    grid.innerHTML = '<p style="color:var(--text-muted);padding:20px;text-align:center;">Failed to load season details. Please try again.</p>';
+  }
+}
+
+function renderTmdbEpisodeCards(episodes, seasonNumber) {
+  const grid = document.getElementById('episodesGrid');
+  if (!episodes || episodes.length === 0) {
+    grid.innerHTML = '<p style="color:var(--text-muted);padding:20px;text-align:center;">No episodes found.</p>';
+    return;
+  }
+
+  // Netflix-style: single column list, NOT a multi-column grid
+  grid.style.display = 'flex';
+  grid.style.flexDirection = 'column';
+  grid.style.gap = '0';
+  grid.removeAttribute('data-anime-fallback');
+
+  var htmlParts = [];
+  var TMDB_STILL = 'https://image.tmdb.org/t/p/w500';
+  var fallbackThumb = mediaUrl(currentMovie?.thumbnailUrl) || THUMB_PH;
+
+  // Season header with episode count
+  htmlParts.push(
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06);">' +
+      '<span style="font-size:14px;color:var(--text-muted);">' + episodes.length + ' Episodes</span>' +
+      '<span style="font-size:12px;color:var(--text-muted);letter-spacing:0.5px;">SEASON ' + seasonNumber + '</span>' +
+    '</div>'
+  );
+
+  for (var i = 0; i < episodes.length; i++) {
+    var ep = episodes[i];
+    var stillUrl = ep.still_path ? (TMDB_STILL + ep.still_path) : fallbackThumb;
+    var airDate = 'Unknown';
+    if (ep.air_date) {
+      try {
+        airDate = new Date(ep.air_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch(e) { airDate = ep.air_date; }
+    }
+    var description = ep.overview
+      ? (ep.overview.length > 150 ? ep.overview.substring(0, 150) + '...' : ep.overview)
+      : 'No description available.';
+    var title = ep.name || ('Episode ' + ep.episode_number);
+    var runtime = ep.runtime ? (ep.runtime + ' min') : '';
+    var epNum = ep.episode_number;
+    var isPlaying = (currentPlayingSeason == seasonNumber && currentPlayingEpisode == epNum);
+
+    htmlParts.push(
+      '<div class="episode-card tmdb-ep-row' + (isPlaying ? ' tmdb-ep-playing' : '') + '"' +
+        ' data-anime-season="' + seasonNumber + '"' +
+        ' data-anime-ep="' + epNum + '">' +
+
+        // Episode number column
+        '<div class="tmdb-ep-num">' + epNum + '</div>' +
+
+        // Thumbnail column with play overlay
+        '<div class="tmdb-ep-thumb-wrap">' +
+          '<img class="tmdb-ep-thumb" src="' + escapeHtml(stillUrl) + '"' +
+            ' alt="' + escapeHtml(title) + '"' +
+            ' loading="lazy" referrerpolicy="no-referrer"' +
+            ' onerror="this.src=\'' + THUMB_PH + '\'">' +
+          '<div class="tmdb-ep-play-icon"><i class="ri-play-fill"></i></div>' +
+        '</div>' +
+
+        // Info column
+        '<div class="tmdb-ep-info">' +
+          '<div class="tmdb-ep-title-row">' +
+            '<span class="tmdb-ep-title">' + escapeHtml(title) + '</span>' +
+            (runtime ? '<span class="tmdb-ep-runtime">' + runtime + '</span>' : '') +
+          '</div>' +
+          '<p class="tmdb-ep-desc">' + escapeHtml(description) + '</p>' +
+          '<div class="tmdb-ep-meta">' +
+            '<span>' + airDate + '</span>' +
+            (ep.vote_average ? '<span>⭐ ' + Number(ep.vote_average).toFixed(1) + '</span>' : '') +
+          '</div>' +
+        '</div>' +
+
+      '</div>'
+    );
+  }
+
+  grid.innerHTML = htmlParts.join('');
+
+  // Inject premium styles once
+  if (!document.getElementById('tmdb-ep-styles')) {
+    var style = document.createElement('style');
+    style.id = 'tmdb-ep-styles';
+    style.textContent =
+      /* Row layout — Netflix horizontal style */
+      '.tmdb-ep-row {' +
+        'display:flex;align-items:center;gap:16px;' +
+        'padding:16px 0;cursor:pointer;' +
+        'border-bottom:1px solid rgba(255,255,255,0.06);' +
+        'transition:background 0.2s ease;' +
+      '}' +
+      '.tmdb-ep-row:last-child { border-bottom:none; }' +
+      '.tmdb-ep-row:hover { background:rgba(255,255,255,0.04);border-radius:8px;padding-left:8px;padding-right:8px; }' +
+
+      /* Now playing indicator */
+      '.tmdb-ep-playing { background:rgba(229,9,20,0.08) !important;border-radius:8px;padding-left:8px;padding-right:8px; }' +
+      '.tmdb-ep-playing .tmdb-ep-num { color:var(--accent);font-weight:700; }' +
+      '.tmdb-ep-playing .tmdb-ep-title { color:var(--accent); }' +
+
+      /* Episode number */
+      '.tmdb-ep-num {' +
+        'min-width:32px;font-size:24px;font-weight:500;' +
+        'color:var(--text-muted);text-align:center;flex-shrink:0;' +
+      '}' +
+
+      /* Thumbnail */
+      '.tmdb-ep-thumb-wrap {' +
+        'position:relative;width:175px;min-width:175px;aspect-ratio:16/9;' +
+        'border-radius:6px;overflow:hidden;flex-shrink:0;' +
+        'background:rgba(255,255,255,0.04);' +
+      '}' +
+      '.tmdb-ep-thumb {' +
+        'width:100%;height:100%;object-fit:cover;display:block;' +
+        'transition:transform 0.3s ease;' +
+      '}' +
+      '.tmdb-ep-row:hover .tmdb-ep-thumb { transform:scale(1.05); }' +
+      '.tmdb-ep-play-icon {' +
+        'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;' +
+        'background:rgba(0,0,0,0.45);opacity:0;transition:opacity 0.2s ease;' +
+      '}' +
+      '.tmdb-ep-play-icon i { font-size:32px;color:#fff; }' +
+      '.tmdb-ep-row:hover .tmdb-ep-play-icon { opacity:1; }' +
+
+      /* Info section */
+      '.tmdb-ep-info { flex:1;min-width:0; }' +
+      '.tmdb-ep-title-row {' +
+        'display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:6px;' +
+      '}' +
+      '.tmdb-ep-title {' +
+        'font-size:15px;font-weight:600;color:var(--text-primary);' +
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' +
+      '}' +
+      '.tmdb-ep-runtime {' +
+        'font-size:12px;color:var(--text-muted);white-space:nowrap;flex-shrink:0;' +
+      '}' +
+      '.tmdb-ep-desc {' +
+        'font-size:13px;color:var(--text-secondary);line-height:1.5;' +
+        'margin:0 0 6px 0;display:-webkit-box;-webkit-line-clamp:2;' +
+        '-webkit-box-orient:vertical;overflow:hidden;' +
+      '}' +
+      '.tmdb-ep-meta {' +
+        'display:flex;gap:12px;font-size:11px;color:var(--text-muted);' +
+        'text-transform:uppercase;letter-spacing:0.5px;' +
+      '}' +
+
+      /* Mobile: compact horizontal card */
+      '@media (max-width:768px) {' +
+        '.tmdb-ep-num { min-width:24px;font-size:16px; }' +
+        '.tmdb-ep-thumb-wrap { width:120px;min-width:120px; }' +
+        '.tmdb-ep-title { font-size:13px; }' +
+        '.tmdb-ep-desc { display:none; }' +
+        '.tmdb-ep-meta { font-size:10px; }' +
+      '}';
+
+    document.head.appendChild(style);
+  }
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────
 // RECOMMENDATIONS
