@@ -1509,33 +1509,40 @@ async function loadEpisodes(seriesId) {
   const tabs    = document.getElementById('episodeSeasonTabs');
   section.style.display = 'block';
 
-  const isTvLike = ['series', 'anime', 'cartoon', 'tv'].includes(String(currentMovie?.category || '').toLowerCase());
+  // isTvLike: covers all multi-episode content types
+  const cat = String(currentMovie?.category || '').toLowerCase();
+  const isTvLike = ['series', 'anime', 'cartoon', 'tv', 'k-drama', 'asian-drama', 'asian_drama', 'kdrama'].includes(cat);
   const tmdbId = Number(currentMovie?.tmdbId || currentMovie?.tmdb_id || 0);
 
+  // ── TMDB Path: for all series/dramas with a tmdbId, fetch rich metadata ──
+  // NOTE: readJsonResponse() in app.js calls parseApiPayload() which unwraps
+  // payload.data into the top-level object. So the response shape is:
+  //   { details: {...}, success: true, message: '...' }
+  // NOT { data: { details: {...} } } — that level is already flattened.
   if (isTvLike && tmdbId) {
     grid.innerHTML = '<div class="spinner-container"><div class="spinner"></div></div>';
     try {
-      const detailsRes = await apiFetch(`/tmdb/details/${tmdbId}?type=tv`);
+      const detailsRes = await apiFetch('/tmdb/details/' + tmdbId + '?type=tv');
       if (detailsRes.ok) {
-        const detailsPayload = await readJsonResponse(detailsRes);
-        const fullDetails = detailsPayload?.data?.details || detailsPayload?.details;
-        if (fullDetails && fullDetails.seasons && fullDetails.seasons.length > 0) {
+        const detailsPayload = await detailsRes.json().catch(() => ({}));
+        // Safely navigate: backend sends { success, data: { details: {...} } }
+        // but readJsonResponse flattens .data, so try both paths
+        const fullDetails = detailsPayload?.data?.details || detailsPayload?.details || detailsPayload?.data;
+        if (fullDetails && Array.isArray(fullDetails.seasons) && fullDetails.seasons.length > 0) {
           let seasonsList = fullDetails.seasons.filter(s => s.season_number > 0);
           if (seasonsList.length === 0) seasonsList = fullDetails.seasons;
 
           tabs.innerHTML = seasonsList.map((s, i) =>
-            `<button class="filter-tab ${i === 0 ? 'active' : ''}" data-season-number="${s.season_number}">Season ${s.season_number}</button>`
+            '<button class="filter-tab ' + (i === 0 ? 'active' : '') + '" data-season-number="' + s.season_number + '">Season ' + s.season_number + '</button>'
           ).join('');
 
           window.tmdbSeasonsCache = {};
-          if (typeof loadTmdbSeasonCards === 'function') {
-            await loadTmdbSeasonCards(tmdbId, seasonsList[0].season_number);
-          }
+          await loadTmdbSeasonCards(tmdbId, seasonsList[0].season_number);
           return;
         }
       }
     } catch(e) {
-      console.error('Failed to load TMDB seasons, falling back to local DB', e);
+      console.error('[Episodes] TMDB season fetch failed, falling back to local DB:', e.message);
     }
   }
 
@@ -1698,9 +1705,11 @@ async function loadTmdbSeasonCards(tmdbId, seasonNumber) {
   try {
     const res = await apiFetch('/tmdb/tv/' + tmdbId + '/season/' + seasonNumber);
     if (res.ok) {
-      const payload = await readJsonResponse(res);
-      const seasonDetails = payload?.data?.details || payload?.details;
-      if (seasonDetails && seasonDetails.episodes) {
+      // Use raw .json() to avoid parseApiPayload() stripping nested data
+      const raw = await res.json().catch(() => ({}));
+      // Backend: { success, data: { details: <tmdb_season> } }
+      const seasonDetails = raw?.data?.details || raw?.details || raw?.data;
+      if (seasonDetails && Array.isArray(seasonDetails.episodes) && seasonDetails.episodes.length > 0) {
         if (!window.tmdbSeasonsCache) window.tmdbSeasonsCache = {};
         window.tmdbSeasonsCache[seasonNumber] = seasonDetails.episodes;
         renderTmdbEpisodeCards(seasonDetails.episodes, seasonNumber);
