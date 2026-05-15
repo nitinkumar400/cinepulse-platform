@@ -449,6 +449,18 @@ userLoggedIn = !!token;
          }
       });
 
+      // Reset the static trust timer for the new stream
+      if (typeof switchPlaybackSource !== 'undefined' && switchPlaybackSource._staticTrustTimer) {
+        clearTimeout(switchPlaybackSource._staticTrustTimer);
+      }
+      
+      // Update the URL silently for bookmarking/sharing
+      const url = new URL(window.location);
+      url.searchParams.set('id', currentMovieId);
+      url.searchParams.set('season', season);
+      url.searchParams.set('episode', episode);
+      window.history.pushState({}, '', url);
+
       renderServerSelector();
       switchPlaybackSource(0);
     } catch (err) {
@@ -1070,12 +1082,67 @@ function injectAnimeFallbackCSS() {
       'display: block; grid-column: 1 / -1; padding: 18px; margin: 8px 0;' +
       'background: rgba(255,255,255,0.02); color: var(--text-muted, #9aa);' +
       'border-radius: 8px; text-align: center; font-weight: 600;' +
-    '}';
+    '}\n' +
+    '/* ── Anime Chunking UI ── */\n' +
+    '.anime-episode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin-top: 15px; }\n' +
+    '.ep-btn { background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 10px 0; cursor: pointer; transition: all 0.2s; font-weight: 600; text-align: center; }\n' +
+    '.ep-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); }\n' +
+    '.ep-btn.active { background: rgba(52,211,153,0.2); color: #34d399; border-color: #34d399; }\n' +
+    '.chunk-dropdown { padding: 10px; border-radius: 6px; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 10px; width: 100%; max-width: 300px; cursor: pointer; }';
   var s = document.createElement('style');
   s.id = 'anime-episodes-fallback';
   s.appendChild(document.createTextNode(css));
   document.head.appendChild(s);
 }
+
+window.drawAnimeChunk = function(startEp, endEp, seasonNumber) {
+  const container = document.getElementById('animeEpContainer');
+  if (!container) return;
+  
+  let html = '';
+  for (let i = startEp; i <= endEp; i++) {
+    const isActive = (window.currentPlayingSeason == seasonNumber && window.currentPlayingEpisode == i);
+    html += `<div class="ep-btn ${isActive ? 'active' : ''}" data-anime-season="${seasonNumber}" data-anime-ep="${i}">EP ${i}</div>`;
+  }
+  container.innerHTML = html;
+};
+
+window.renderAnimeEpisodes = function(totalEpisodes, seasonNumber) {
+  const grid = document.getElementById('episodesGrid');
+  const chunks = Math.ceil(totalEpisodes / 50);
+  
+  let dropdownHtml = '<select id="animeChunkSelect" class="chunk-dropdown">';
+  for (let i = 0; i < chunks; i++) {
+    const start = i * 50 + 1;
+    const end = Math.min((i + 1) * 50, totalEpisodes);
+    dropdownHtml += `<option value="${start}-${end}">Episodes ${start} - ${end}</option>`;
+  }
+  dropdownHtml += '</select>';
+  
+  const containerHtml = '<div id="animeEpContainer" class="anime-episode-grid"></div>';
+  grid.innerHTML = dropdownHtml + containerHtml;
+  
+  const select = document.getElementById('animeChunkSelect');
+  select.addEventListener('change', (e) => {
+    const [start, end] = e.target.value.split('-').map(Number);
+    window.drawAnimeChunk(start, end, seasonNumber);
+  });
+  
+  window.drawAnimeChunk(1, Math.min(50, totalEpisodes), seasonNumber);
+  
+  grid.addEventListener('click', (e) => {
+    const btn = e.target.closest('.ep-btn');
+    if (!btn) return;
+    
+    // UI Update handled mostly inside playEpisodeInPlace, but we can do a quick active set
+    document.querySelectorAll('.ep-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    
+    const s = parseInt(btn.dataset.animeSeason) || 1;
+    const ep = parseInt(btn.dataset.animeEp) || 1;
+    window.playEpisodeInPlace(s, ep);
+  });
+};
 
 function injectMovieJsonLd(movie) {
   // ─────────────────────────────────────────────────────────────────────
@@ -1443,7 +1510,7 @@ async function loadEpisodes(seriesId) {
 
   // isTvLike: covers all multi-episode content types
   const cat = String(currentMovie?.category || '').toLowerCase();
-  const isTvLike = ['series', 'anime', 'cartoon', 'tv', 'k-drama', 'asian-drama', 'asian_drama', 'kdrama'].includes(cat);
+  const isTvLike = ['series', 'anime', 'cartoon', 'tv', 'k-drama', 'asian-drama', 'asian_drama', 'kdrama', 'chinese-drama', 'cdrama', 'c-drama'].includes(cat);
   const tmdbId = Number(currentMovie?.tmdbId || currentMovie?.tmdb_id || 0);
 
   // ── TMDB Path: for all series/dramas with a tmdbId, fetch rich metadata ──
@@ -1531,39 +1598,10 @@ async function loadEpisodes(seriesId) {
         }
 
         if (Number(currentMovie?.totalEpisodes || 0) > 1) {
-          if (!tmdbId) {
-            grid.innerHTML = `
-              <div class="empty-state" style="grid-column:1/-1;">
-                <div class="empty-state-icon">📺</div>
-                <h3>Episodes require TMDB mapping</h3>
-                <p style="color:var(--text-muted);">Anime is imported, but TMDB ID is missing so VidSrc episode links cannot be generated yet.</p>
-              </div>`;
-            return;
-          }
-
-          const totalEpisodes = Math.min(500, Number(currentMovie.totalEpisodes || 0));
-          const rows = Array.from({ length: totalEpisodes }, (_, idx) => {
-            const epNumber = idx + 1;
-            const embedUrl = buildAnimeEpisodeEmbedUrl(tmdbId, animeSeasonNumber, epNumber);
-            return `
-              <div class="episode-card" data-anime-season="${animeSeasonNumber}" data-anime-ep="${epNumber}" data-anime-embed-url="${escapeHtml(embedUrl)}">
-                <img class="ep-card-thumb" src="${mediaUrl(currentMovie?.thumbnailUrl) || THUMB_PH}"
-                  alt="${escapeHtml(currentMovie?.title || 'Anime Episode')}"
-                  loading="lazy"
-                  referrerpolicy="no-referrer"
-                  onerror="this.src='${THUMB_PH}'">
-                <div style="flex:1;min-width:0;">
-                  <div class="ep-card-num">Season ${animeSeasonNumber} · Episode ${epNumber}</div>
-                  <div class="ep-card-title">${escapeHtml(currentMovie?.title || 'Anime')}</div>
-                  <div class="ep-card-meta">
-                    <span><i class="ri-broadcast-line"></i> Stream via VidSrc</span>
-                  </div>
-                </div>
-                <div class="ep-play-btn"><i class="ri-play-fill" style="color:#fff;"></i></div>
-              </div>`;
-          }).join('');
-
-          grid.innerHTML = rows || '<p style="color:var(--text-muted);padding:20px;">No episodes found</p>';
+          // If totalEpisodes is > 1, we can render the chunk grid regardless of TMDB ID.
+          // Native source lookup will handle falling back if TMDB is absent.
+          const totalEpisodes = Math.min(1500, Number(currentMovie.totalEpisodes || 0)); // Cap to 1500
+          window.renderAnimeEpisodes(totalEpisodes, animeSeasonNumber);
           return;
         }
       }
