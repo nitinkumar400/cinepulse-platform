@@ -77,21 +77,33 @@ const EmbedServers = (() => {
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ANIME SPECIALIST SERVERS — For Anime (requires anilist_id)
+  // Updated May 2026: Replaced dead domains (autoembed.cc, player.smashy.stream)
+  // with verified working anime embed providers
   // ═══════════════════════════════════════════════════════════════════════════
   const ANIME_SERVERS = {
-    animeautoembed: {
-      name: 'Anime AutoEmbed',
-      key: 'animeautoembed',
+    animevidsrc: {
+      name: 'Anime VidSrc',
+      key: 'animevidsrc',
       priority: 1,
-      animeUrl: (anilistId, episodeNumber) => `https://autoembed.cc/anime/anilist/${anilistId}/${episodeNumber}`,
+      sandboxPolicy: 'none',
+      animeUrl: (anilistId, episodeNumber) => `https://vidsrc.cc/v2/embed/tv/${anilistId}/${1}/${episodeNumber}?anilist=true`,
       timeout: 9000,
     },
-    smashyanime: {
-      name: 'Smashy Anime',
-      key: 'smashyanime',
+    anime2embed: {
+      name: 'Anime 2Embed',
+      key: 'anime2embed',
       priority: 2,
-      animeUrl: (anilistId, episodeNumber) => `https://player.smashy.stream/anime?anilist=${anilistId}&ep=${episodeNumber}`,
-      timeout: 8000,
+      sandboxPolicy: 'none',
+      animeUrl: (anilistId, episodeNumber) => `https://www.2embed.cc/embedanime/anilist-${anilistId}&ep=${episodeNumber}`,
+      timeout: 9000,
+    },
+    animevidsrcto: {
+      name: 'Anime VidSrc.to',
+      key: 'animevidsrcto',
+      priority: 3,
+      sandboxPolicy: 'none',
+      animeUrl: (anilistId, episodeNumber) => `https://vidsrc.to/embed/anime/anilist/${anilistId}/${episodeNumber}`,
+      timeout: 9000,
     },
   };
 
@@ -186,34 +198,33 @@ const EmbedServers = (() => {
         });
       });
 
-      // Anime fallback: if no anilist_id but has tmdb_id, use standard TV servers
-      if (!anilistId) {
-        const tmdbId = movieData?.tmdbId || movieData?.tmdb_id || null;
-        if (tmdbId) {
-          Object.values(STANDARD_SERVERS).forEach((server) => {
-            const url = server.tvUrl(tmdbId, Number(season || 1), Number(episode || 1));
-            if (!url) return;
+      // Anime fallback: ALWAYS add standard TV servers if tmdb_id exists
+      // (both when anilist_id is missing AND as additional fallback when it exists)
+      const tmdbId = movieData?.tmdbId || movieData?.tmdb_id || null;
+      if (tmdbId) {
+        Object.values(STANDARD_SERVERS).forEach((server) => {
+          const url = server.tvUrl(tmdbId, Number(season || 1), Number(episode || 1));
+          if (!url) return;
 
-            sources.push({
-              id: `hydra-std-${server.key}`,
-              server: server.key,
-              serverName: server.name,
-              label: `Server ${sources.length + 1}`,
-              priority: server.priority + 10,
-              url,
-              embedUrl: url,
-              playUrl: '',
-              quality: 'Auto',
-              isExternal: true,
-              isEmbed: true,
-              timeout: server.timeout,
-              sandboxPolicy: server.sandboxPolicy || 'balanced',
-              status: serverStatus[server.key] || 'unknown',
-              statusLabel: `Server ${sources.length + 1} • ${server.name}`,
-              sourceType: server.key,
-            });
+          sources.push({
+            id: `hydra-std-${server.key}`,
+            server: server.key,
+            serverName: server.name,
+            label: `Server ${sources.length + 1}`,
+            priority: server.priority + 10,
+            url,
+            embedUrl: url,
+            playUrl: '',
+            quality: 'Auto',
+            isExternal: true,
+            isEmbed: true,
+            timeout: server.timeout,
+            sandboxPolicy: server.sandboxPolicy || 'balanced',
+            status: serverStatus[server.key] || 'unknown',
+            statusLabel: `Server ${sources.length + 1} • ${server.name}`,
+            sourceType: server.key,
           });
-        }
+        });
       }
 
     } else {

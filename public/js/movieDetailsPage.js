@@ -485,17 +485,27 @@ userLoggedIn = !!token;
       currentPlayingSeason = parseInt(season);
       currentPlayingEpisode = parseInt(episode);
 
-      // Consumet API Interception for Anime
+      // Consumet API Interception for Anime (with 5s timeout to avoid cold-start hangs)
       if (String(currentMovie?.category || '').toLowerCase() === 'anime' && (currentMovie?.anilistId || currentMovie?.anilist_id)) {
         const currentAnilistId = currentMovie.anilistId || currentMovie.anilist_id;
         const CONSUMET_BASE = "https://consumet-api-latest-qe60.onrender.com";
         try {
-          const response = await fetch(`${CONSUMET_BASE}/meta/anilist/info/${currentAnilistId}`);
+          const consumetController = new AbortController();
+          const consumetTimeout = setTimeout(() => consumetController.abort(), 5000);
+          const response = await fetch(`${CONSUMET_BASE}/meta/anilist/info/${currentAnilistId}`, { signal: consumetController.signal });
+          clearTimeout(consumetTimeout);
           const data = await response.json();
           const epObj = (data.episodes || []).find(ep => parseInt(ep.number) === parseInt(episode));
+          // Set maxAnimeEpisodesCount from Consumet data for nav buttons
+          if (data.episodes && data.episodes.length > 0) {
+            window.maxAnimeEpisodesCount = data.episodes.length;
+          }
           if (epObj && epObj.id) {
             const targetEpisodeId = epObj.id;
-            const streamRes = await fetch(`${CONSUMET_BASE}/meta/anilist/watch/${targetEpisodeId}`);
+            const streamController = new AbortController();
+            const streamTimeout = setTimeout(() => streamController.abort(), 5000);
+            const streamRes = await fetch(`${CONSUMET_BASE}/meta/anilist/watch/${targetEpisodeId}`, { signal: streamController.signal });
+            clearTimeout(streamTimeout);
             const streamData = await streamRes.json();
             const sources = streamData.sources || [];
             const bestSource = sources.find(s => s.quality === '1080p') || sources.find(s => s.quality === 'default') || sources.find(s => s.url && s.url.endsWith('.m3u8')) || sources[0];
@@ -590,6 +600,15 @@ userLoggedIn = !!token;
   window.renderEpisodeNavigation = function() {
     const container = document.getElementById('videoContainer');
     if (!container) return;
+
+    // Only show navigation for multi-episode content (anime/series)
+    const cat = String(currentMovie?.category || '').toLowerCase();
+    const isTvLike = ['series', 'anime', 'cartoon', 'tv', 'k-drama', 'asian-drama', 'kdrama'].includes(cat);
+    if (!isTvLike) return;
+
+    const maxEp = window.maxAnimeEpisodesCount || Number(currentMovie?.totalEpisodes || 0);
+    // Don't show nav if we don't know the episode count or it's a single episode
+    if (maxEp <= 1) return;
     
     let navRow = document.getElementById('episode-nav-row');
     if (!navRow) {
@@ -614,7 +633,7 @@ userLoggedIn = !!token;
       nextBtn.className = 'btn btn-primary';
       nextBtn.style.cssText = 'padding:10px 24px; font-weight:600; cursor:pointer;';
       nextBtn.onclick = () => {
-        if (window.currentPlayingEpisode < (window.maxAnimeEpisodesCount || 9999)) {
+        if (window.currentPlayingEpisode < maxEp) {
           window.playEpisodeInPlace(window.currentPlayingSeason, window.currentPlayingEpisode + 1);
         }
       };
@@ -630,7 +649,7 @@ userLoggedIn = !!token;
     }
     const nextBtn = document.getElementById('btn-next-ep');
     if (nextBtn) {
-      nextBtn.style.visibility = (window.currentPlayingEpisode < (window.maxAnimeEpisodesCount || 9999)) ? 'visible' : 'hidden';
+      nextBtn.style.visibility = (window.currentPlayingEpisode < maxEp) ? 'visible' : 'hidden';
     }
   };
 
@@ -1745,7 +1764,10 @@ async function loadEpisodes(seriesId) {
     } else if (currentAnilistId) {
       grid.innerHTML = '<div class="spinner-container"><div class="spinner"></div></div>';
       try {
-        const res = await fetch("https://consumet-api-latest-qe60.onrender.com/meta/anilist/info/" + currentAnilistId);
+        const healController = new AbortController();
+        const healTimeout = setTimeout(() => healController.abort(), 5000);
+        const res = await fetch("https://consumet-api-latest-qe60.onrender.com/meta/anilist/info/" + currentAnilistId, { signal: healController.signal });
+        clearTimeout(healTimeout);
         const json = await res.json();
         let fetchedCount = json.totalEpisodes || (json.episodes && json.episodes.length) || 0;
         if (fetchedCount > 0) {
@@ -1756,6 +1778,12 @@ async function loadEpisodes(seriesId) {
       } catch (err) {
         console.warn('Consumet Self-Healing check failed', err);
       }
+      // Consumet failed or returned 0 episodes — generate a reasonable default
+      // For ongoing anime, assume at least 12 episodes; for completed, use 24
+      const fallbackCount = (currentMovie?.status === 'Ongoing') ? 12 : 24;
+      currentMovie.totalEpisodes = fallbackCount;
+      window.renderAnimeEpisodes(fallbackCount, animeSeasonNumber);
+      return;
     }
   }
 

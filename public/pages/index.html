@@ -573,6 +573,42 @@
     </div>
   </section>
 
+  <section class="rail-section">
+    <div class="rail-head">
+      <div>
+        <h2 class="rail-title">TOP RATED MOVIES</h2>
+        <div class="rail-subtitle">The highest rated movies in the catalog, curated by audience scores.</div>
+      </div>
+    </div>
+    <div class="stream-rail" id="topRatedMoviesRail">
+      <div class="home-empty">Loading top rated movies...</div>
+    </div>
+  </section>
+
+  <section class="rail-section">
+    <div class="rail-head">
+      <div>
+        <h2 class="rail-title">NEW RELEASES</h2>
+        <div class="rail-subtitle">Fresh titles just added to the platform.</div>
+      </div>
+    </div>
+    <div class="stream-rail" id="newReleasesRail">
+      <div class="home-empty">Loading new releases...</div>
+    </div>
+  </section>
+
+  <section class="rail-section">
+    <div class="rail-head">
+      <div>
+        <h2 class="rail-title">MOST POPULAR</h2>
+        <div class="rail-subtitle">The most watched titles across all categories.</div>
+      </div>
+    </div>
+    <div class="stream-rail" id="mostPopularRail">
+      <div class="home-empty">Loading popular titles...</div>
+    </div>
+  </section>
+
   <section class="spotlight-section">
     <div class="spotlight-panel">
       <div class="rail-head">
@@ -854,45 +890,115 @@ function injectHomepageJsonLd(items = []) {
 }
 
 function renderHero(movie) {
-  const backdropEl = document.getElementById('heroBackdrop');
-  if (!movie) {
-    if (backdropEl) backdropEl.style.backgroundImage = 'none';
-    return;
-  }
+  // This is now handled by the billboard carousel
+}
 
+// ═══════════════════════════════════════════════════════════════════════════
+// NETFLIX-STYLE HERO BILLBOARD CAROUSEL (5 rotating items)
+// ═══════════════════════════════════════════════════════════════════════════
+let billboardItems = [];
+let billboardIndex = 0;
+let billboardTimer = null;
+
+function renderBillboardItem(movie, index) {
+  if (!movie) return;
+  const backdropEl = document.getElementById('heroBackdrop');
   const backdropUrl = getImageUrl(movie.bannerUrl || movie.thumbnailUrl || '', 'original');
   if (backdropEl) {
     backdropEl.style.backgroundImage = backdropUrl ? `url('${backdropUrl}')` : 'none';
+    backdropEl.style.transition = 'opacity 0.6s ease';
   }
 
   const matchScore = Math.floor(Math.random() * (99 - 92 + 1)) + 92;
   const genres = (movie.genre || []).slice(0, 3).join(' • ');
+  const categoryLabel = movie.category === 'anime' ? 'Elite Anime' : (movie.category === 'series' ? 'Premium Series' : 'Movie');
   
-  // Use logoUrl if available, else text title
   const titleHtml = movie.logoUrl 
     ? `<img src="${getImageUrl(movie.logoUrl)}" alt="${escapeHtml(movie.title)}" style="max-width:400px; max-height:140px; object-fit:contain; margin-bottom:1.5rem; filter:drop-shadow(0 0 20px rgba(0,0,0,0.6));">`
     : `<h1 class="hero-headline">${escapeHtml(movie.title)}</h1>`;
 
+  const description = movie.description 
+    ? (movie.description.length > 150 ? movie.description.substring(0, 150) + '...' : movie.description)
+    : '';
+
   const heroCopy = document.getElementById('heroCopy');
   if (heroCopy) {
-    heroCopy.innerHTML = `
-      ${titleHtml}
-      <div class="hero-meta-row" style="margin-bottom:0.8rem;">
-        <span style="color:#46d369; font-weight:800;">${matchScore}% Match</span>
-        <span class="hero-pill">${movie.releaseYear || 'New'}</span>
-        <span class="hero-pill">${movie.category === 'anime' ? 'Elite Anime' : (movie.category === 'series' ? 'Premium Series' : 'Movie')}</span>
-      </div>
-      <div style="font-size:15px; font-weight:600; color:rgba(255,255,255,0.9); margin-bottom:2rem; letter-spacing:0.4px;">
-        ${escapeHtml(genres)}
-      </div>
-      <div class="hero-actions">
-        <a href="movie-details.html?id=${movie._id}" class="btn btn-primary" style="background:#fff; color:#000; border-radius:4px; padding:12px 32px;">
-          <i class="ri-play-fill"></i> Play Now
-        </a>
-        <a href="movie-details.html?id=${movie._id}" class="btn btn-secondary" style="border-radius:4px; padding:12px 32px;">
-          <i class="ri-information-line"></i> More Info
-        </a>
-      </div>`;
+    heroCopy.style.opacity = '0';
+    heroCopy.style.transition = 'opacity 0.4s ease';
+    setTimeout(() => {
+      heroCopy.innerHTML = `
+        ${titleHtml}
+        <div class="hero-meta-row" style="margin-bottom:0.8rem;">
+          <span style="color:#46d369; font-weight:800;">${matchScore}% Match</span>
+          <span class="hero-pill">${movie.releaseYear || 'New'}</span>
+          <span class="hero-pill">${categoryLabel}</span>
+          ${movie.averageRating ? `<span class="hero-pill rating">⭐ ${Number(movie.averageRating).toFixed(1)}</span>` : ''}
+        </div>
+        <div style="font-size:15px; font-weight:600; color:rgba(255,255,255,0.9); margin-bottom:1rem; letter-spacing:0.4px;">
+          ${escapeHtml(genres)}
+        </div>
+        ${description ? `<p class="hero-subcopy" style="margin-bottom:1.5rem;">${escapeHtml(description)}</p>` : ''}
+        <div class="hero-actions">
+          <a href="movie-details.html?id=${movie._id}" class="btn btn-primary" style="background:#fff; color:#000; border-radius:4px; padding:12px 32px;">
+            <i class="ri-play-fill"></i> Play Now
+          </a>
+          <a href="movie-details.html?id=${movie._id}" class="btn btn-secondary" style="border-radius:4px; padding:12px 32px;">
+            <i class="ri-information-line"></i> More Info
+          </a>
+        </div>
+        <div class="billboard-dots" style="display:flex; gap:8px; margin-top:24px; align-items:center;">
+          ${billboardItems.map((_, i) => `
+            <button class="billboard-dot" data-index="${i}" style="
+              width:${i === index ? '28px' : '10px'}; 
+              height:10px; 
+              border-radius:5px; 
+              border:none; 
+              background:${i === index ? '#e50914' : 'rgba(255,255,255,0.4)'}; 
+              cursor:pointer; 
+              transition:all 0.3s ease;
+              padding:0;
+            "></button>
+          `).join('')}
+        </div>`;
+      heroCopy.style.opacity = '1';
+      
+      // Bind dot clicks
+      heroCopy.querySelectorAll('.billboard-dot').forEach(dot => {
+        dot.addEventListener('click', () => {
+          const idx = parseInt(dot.dataset.index);
+          if (idx !== billboardIndex) {
+            billboardIndex = idx;
+            renderBillboardItem(billboardItems[billboardIndex], billboardIndex);
+            resetBillboardTimer();
+          }
+        });
+      });
+    }, 200);
+  }
+}
+
+function startBillboardRotation(items) {
+  billboardItems = items.slice(0, 5);
+  billboardIndex = 0;
+  if (billboardItems.length === 0) return;
+  
+  renderBillboardItem(billboardItems[0], 0);
+  
+  if (billboardItems.length > 1) {
+    billboardTimer = setInterval(() => {
+      billboardIndex = (billboardIndex + 1) % billboardItems.length;
+      renderBillboardItem(billboardItems[billboardIndex], billboardIndex);
+    }, 8000); // Rotate every 8 seconds
+  }
+}
+
+function resetBillboardTimer() {
+  if (billboardTimer) clearInterval(billboardTimer);
+  if (billboardItems.length > 1) {
+    billboardTimer = setInterval(() => {
+      billboardIndex = (billboardIndex + 1) % billboardItems.length;
+      renderBillboardItem(billboardItems[billboardIndex], billboardIndex);
+    }, 8000);
   }
 }
 
@@ -904,17 +1010,29 @@ function loadContinueWatchingRow() {
   try {
     const history = JSON.parse(localStorage.getItem('cinepulse_history') || '[]');
     if (history && history.length > 0) {
+      // Filter out items with missing essential data
+      const validHistory = history.filter(item => item && item.id && item.title);
+      if (validHistory.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+      
       section.style.display = 'block';
-      rail.innerHTML = history.map(item => {
+      rail.innerHTML = validHistory.map(item => {
         const isSeries = item.category === 'series' || item.category === 'anime';
         const badge = isSeries 
-          ? `<div style="position:absolute; bottom:10px; right:10px; background:rgba(229,9,20,0.9); color:white; font-size:10px; font-weight:800; padding:3px 8px; border-radius:4px; border:1px solid rgba(255,255,255,0.1); z-index:5;">S${item.season}:E${item.episode}</div>`
+          ? `<div style="position:absolute; bottom:10px; right:10px; background:rgba(229,9,20,0.9); color:white; font-size:10px; font-weight:800; padding:3px 8px; border-radius:4px; border:1px solid rgba(255,255,255,0.1); z-index:5;">S${item.season || 1}:E${item.episode || 1}</div>`
           : '';
         
+        const posterSrc = item.posterUrl ? getImageUrl(item.posterUrl) : '';
+        const imgHtml = posterSrc 
+          ? `<img src="${posterSrc}" alt="${escapeHtml(item.title)}" loading="lazy" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#1a1a2e,#16213e)';">`
+          : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e);"><i class="ri-film-line" style="font-size:32px;color:rgba(255,255,255,0.3);"></i></div>`;
+        
         return `
-          <a href="movie-details.html?id=${item.id}&resume=true&s=${item.season}&e=${item.episode}" class="movie-card" style="min-width:210px; position:relative;">
+          <a href="movie-details.html?id=${item.id}&resume=true&s=${item.season || 1}&e=${item.episode || 1}" class="movie-card" style="min-width:210px; position:relative;">
             <div class="card-thumbnail" style="aspect-ratio:2/3; border-radius:12px; overflow:hidden; border:1px solid rgba(255,255,255,0.08);">
-              <img src="${getImageUrl(item.posterUrl)}" alt="${escapeHtml(item.title)}" loading="lazy" style="width:100%; height:100%; object-fit:cover;">
+              ${imgHtml}
               <div class="card-overlay" style="background:linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 60%);">
                  <div class="card-play-btn" style="transform:scale(0.85); opacity:1;"><i class="ri-play-fill"></i></div>
               </div>
@@ -923,7 +1041,7 @@ function loadContinueWatchingRow() {
             <div class="card-info" style="padding:12px 4px;">
               <div class="card-title" style="font-size:14px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(item.title)}</div>
               <div style="font-size:12px; color:var(--text-muted); margin-top:4px; font-weight:500;">
-                ${item.category === 'movie' ? 'Resume Movie' : `Continue S${item.season}:E${item.episode}`}
+                ${item.category === 'movie' ? 'Resume Movie' : `Continue S${item.season || 1}:E${item.episode || 1}`}
               </div>
             </div>
           </a>
@@ -976,33 +1094,38 @@ async function loadHeroAndTrending() {
       emptyText: 'Trending titles will appear here as soon as content lands.',
     });
 
-    // ── Ghost Profile Personalization Algorithm ──
-    let heroItem = trending[0];
+    // ── Billboard Selection: Pick 5 diverse items for the hero carousel ──
+    let billboardCandidates = [];
     try {
       const affinityStr = localStorage.getItem('user_affinity');
-      if (affinityStr) {
+      if (affinityStr && trending.length >= 5) {
         const affinity = JSON.parse(affinityStr);
-        let topGenre = null;
-        let maxScore = -1;
-        for (const [genre, score] of Object.entries(affinity)) {
-          if (score > maxScore) {
-            maxScore = score;
-            topGenre = genre;
-          }
+        // Sort genres by score descending
+        const sortedGenres = Object.entries(affinity).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+        
+        // Pick personalized items: one per top genre, then fill with trending
+        const used = new Set();
+        for (const genre of sortedGenres.slice(0, 3)) {
+          const match = trending.find(item => !used.has(item._id) && (item.genre || []).includes(genre));
+          if (match) { billboardCandidates.push(match); used.add(match._id); }
         }
-
-        if (topGenre) {
-          // Find first item in trending that matches top genre
-          const match = trending.find(item => (item.genre || []).includes(topGenre));
-          if (match) heroItem = match;
+        // Fill remaining slots from trending
+        for (const item of trending) {
+          if (billboardCandidates.length >= 5) break;
+          if (!used.has(item._id)) { billboardCandidates.push(item); used.add(item._id); }
         }
       }
-    } catch (e) { console.warn('[GhostProfile] Hero personalization failed:', e); }
+    } catch (e) { console.warn('[GhostProfile] Billboard personalization failed:', e); }
 
-    renderHero(heroItem);
+    // Fallback: just use top 5 trending if personalization didn't produce enough
+    if (billboardCandidates.length < 5) {
+      billboardCandidates = trending.slice(0, 5);
+    }
+
+    startBillboardRotation(billboardCandidates);
   } catch (error) {
     renderRail('trendingRail', [], { emptyText: 'Trending titles could not be loaded.' });
-    renderHero(null);
+    renderBillboardItem(null, 0);
   }
 }
 
@@ -1103,6 +1226,36 @@ async function loadHomepagePosterGrid() {
   }
 }
 
+async function loadTopRatedMoviesRail() {
+  renderRailLoading('topRatedMoviesRail', 'Loading top rated movies...');
+  try {
+    const payload = await fetchMovieList('/movies?category=movie&limit=15&sort=highest_rated');
+    renderRail('topRatedMoviesRail', payload.movies || [], { emptyText: 'Top rated movies will appear here.' });
+  } catch (error) {
+    renderRail('topRatedMoviesRail', [], { emptyText: 'Could not load top rated movies.' });
+  }
+}
+
+async function loadNewReleasesRail() {
+  renderRailLoading('newReleasesRail', 'Loading new releases...');
+  try {
+    const payload = await fetchMovieList('/movies?limit=15&sort=newest');
+    renderRail('newReleasesRail', payload.movies || [], { emptyText: 'New releases will appear here.' });
+  } catch (error) {
+    renderRail('newReleasesRail', [], { emptyText: 'Could not load new releases.' });
+  }
+}
+
+async function loadMostPopularRail() {
+  renderRailLoading('mostPopularRail', 'Loading popular titles...');
+  try {
+    const payload = await fetchMovieList('/movies?limit=15&sort=most_viewed');
+    renderRail('mostPopularRail', payload.movies || [], { emptyText: 'Popular titles will appear here.' });
+  } catch (error) {
+    renderRail('mostPopularRail', [], { emptyText: 'Could not load popular titles.' });
+  }
+}
+
 function refreshCategorySections() {
   if (categoryRefreshTimer) {
     clearTimeout(categoryRefreshTimer);
@@ -1129,6 +1282,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     loadRecommendedRail(),
     loadCategoryRail('series', 'seriesRail', 'Premium series will appear here once titles are available.'),
     loadCategoryRail('anime', 'animeRail', 'Elite anime will appear here once titles are available.'),
+    loadTopRatedMoviesRail(),
+    loadNewReleasesRail(),
+    loadMostPopularRail(),
     loadSpotlightGrid(),
     loadHomepagePosterGrid(),
   ]);

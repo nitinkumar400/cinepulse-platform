@@ -743,10 +743,23 @@ const VideoEngine = (() => {
   }
 
   function mountNativeStream(streamUrl) {
-    const wrapper = _containerElement || document.getElementById('nativePlayerShell') || document.getElementById('embedPlayerHost') || document.querySelector('.player-viewport');
+    const viewport = document.querySelector('.player-viewport');
+    const nativeShell = document.getElementById('nativePlayerShell');
+    const embedShell = document.getElementById('embedShell');
+    const wrapper = nativeShell || viewport || _containerElement || document.getElementById('embedPlayerHost');
     if (!wrapper) {
       console.warn('[VideoEngine] No container found for native stream mount.');
       return;
+    }
+    
+    // Switch to native playback surface
+    if (nativeShell) {
+      nativeShell.classList.add('is-active');
+      nativeShell.style.display = 'block';
+    }
+    if (embedShell) {
+      embedShell.classList.remove('is-active');
+      embedShell.style.display = 'none';
     }
     
     // Hide or destroy existing iframe
@@ -756,17 +769,20 @@ const VideoEngine = (() => {
     const existingIframe = wrapper.querySelector('iframe');
     if (existingIframe) existingIframe.style.display = 'none';
 
-    // Remove any existing native stream player
+    // Remove any existing native stream player and the default video element
     const existingPlayer = document.getElementById('native-stream-player');
     if (existingPlayer) existingPlayer.remove();
+    const defaultVideo = document.getElementById('videoPlayer');
+    if (defaultVideo) defaultVideo.style.display = 'none';
 
     // Create new video element
     const videoElement = document.createElement('video');
     videoElement.id = 'native-stream-player';
     videoElement.controls = true;
+    videoElement.autoplay = true;
     videoElement.style.cssText = 'width:100%; height:100%; background:#000; border-radius:8px; position:absolute; inset:0; z-index:10;';
     
-    // Check if player-stage is active, if not, find a suitable parent or make wrapper relative
+    // Ensure wrapper has positioning context
     if (wrapper.style.position !== 'absolute' && wrapper.style.position !== 'relative') {
       wrapper.style.position = 'relative';
     }
@@ -775,20 +791,38 @@ const VideoEngine = (() => {
 
     // Instantiate HLS.js
     if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-      const hlsInstance = new Hls();
+      const hlsInstance = new Hls({
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+      });
       hlsInstance.loadSource(streamUrl);
       hlsInstance.attachMedia(videoElement);
-      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => videoElement.play());
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        videoElement.play().catch(() => {});
+      });
+      hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          console.warn('[VideoEngine] HLS fatal error, falling back to embed servers');
+          hlsInstance.destroy();
+          videoElement.remove();
+          if (defaultVideo) defaultVideo.style.display = 'block';
+        }
+      });
     } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
       videoElement.src = streamUrl;
-      videoElement.play();
+      videoElement.play().catch(() => {});
     } else {
       console.error('[VideoEngine] HLS playback not supported by browser.');
+      videoElement.remove();
+      if (defaultVideo) defaultVideo.style.display = 'block';
+      return;
     }
 
+    // Netflix-style autoplay countdown when episode ends
     videoElement.addEventListener('ended', () => {
-      if (window.currentPlayingEpisode + 1 <= (window.maxAnimeEpisodesCount || 9999)) {
-        triggerAutoPlayCountdown(wrapper);
+      const maxEp = window.maxAnimeEpisodesCount || Number(window.currentMovie?.totalEpisodes || 9999);
+      if (window.currentPlayingEpisode + 1 <= maxEp) {
+        triggerAutoPlayCountdown(viewport || wrapper);
       }
     });
   }

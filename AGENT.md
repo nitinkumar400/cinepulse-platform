@@ -733,6 +733,13 @@ newserver: {
 | 5 | 2Embed | `2embed.cc` | **none** | ⚠️ Sandbox Fixed |
 | 6 | VidSrc | `vidsrc.to` | **none** | ✅ Verified Alive |
 
+**Anime Specialist Servers (anilist_id based):**
+| # | Server | Domain | Status |
+|---|--------|--------|--------|
+| 1 | Anime VidSrc | `vidsrc.cc` | ✅ Working |
+| 2 | Anime 2Embed | `2embed.cc` | ✅ Working |
+| 3 | Anime VidSrc.to | `vidsrc.to` | ✅ Working |
+
 **Dead domains (do NOT use):**
 - `nontongo.win` — Domain unstable/down
 - `autoembed.co` — Redirects to dead vidsrc.xyz
