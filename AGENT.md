@@ -1114,8 +1114,29 @@ Resolved a critical desync between the frontend and backend:
 - **Data Parsing**: Standardized the API response wrapper to handle both direct and nested JSON payloads, ensuring frontend stability.
 
 ### 3. Broad Content Support
-- **Categories**: Expanded support to `k-drama`, `asian-drama`, and `kdrama`.
+- **Categories**: Expanded support to `k-drama`, `asian-drama`, and `kdrama`, as well as `chinese-drama`, `cdrama`, and `c-drama`.
 - **Fallbacks**: If TMDB data is unavailable, the system automatically reverts to local DB episodes or an "Upcoming Episode" preview for ongoing Anime.
+
+---
+
+## 21. Seamless Playback & Anime UI (May 2026)
+
+### 1. In-Place Episode Playback
+Deprecated the standalone `episode.html` file to create a true Single Page Application (SPA) viewing experience.
+- **Stateful Routing**: `playEpisodeInPlace(season, episode)` dynamically updates the `iframe` source without a page reload.
+- **Silent URL Updates**: Utilizes HTML5 `window.history.pushState` so users can still bookmark and share specific episode links.
+- **Watchdog Reset**: Automatically clears `_staticTrustTimer` intervals to prevent cross-stream loading collisions when users rapidly switch episodes.
+
+### 2. Anime Episode Chunking
+Resolved the DOM-bloat issue caused by rendering hundreds of episodes for long-running anime (e.g., Naruto, One Piece).
+- **AniList Absolute Numbering**: Drops the strict `tmdbId` dependency; if `totalEpisodes` > 1 is provided by the database, the grid generates automatically.
+- **Paginated Dropdown**: Divides episodes into chunks of 50 (`<select class="chunk-dropdown">`) to keep the DOM light.
+- **Premium Grid**: Implemented `drawAnimeChunk()` to dynamically render modern, dark-themed `.ep-btn` elements with active-state tracking.
+
+### 3. Next / Previous Episode Navigation
+Since cross-origin iframes block native `ended` events, we implemented a user-driven navigation bar directly beneath the video player.
+- **Dynamic DOM Query**: `renderEpisodeNavigation()` actively scans the episode grid to verify the existence of the previous/next episodes before rendering the buttons.
+- **Seamless Bingeing**: Clicking the buttons immediately triggers `playEpisodeInPlace()`, updates the active states, and scrolls the viewport to the top.
 
 ---
 
@@ -1163,5 +1184,5 @@ vercel deploy --prod
 *Last Updated: May 15, 2026*
 *Platform: CinePulse (formerly CineStream)*
 *Database: 107,810 documents (Live on Atlas)*
-*Status: Premium TV Experience (Phase 1 & 2) - LIVE*
+*Status: Seamless In-Place Playback & Anime UI - LIVE*
 *Maintained by: Nitin Mishra & AI Coding Assistant*
