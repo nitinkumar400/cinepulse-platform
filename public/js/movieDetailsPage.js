@@ -75,83 +75,20 @@ async function loadOpenSubtitles(movieTitle, movieId) {
   if (!token) return;
 
   try {
-    // 1. Search
-    const res  = await fetch(
-      `${API_BASE}/subtitles/search/${encodeURIComponent(movieTitle)}?langs=en,hi`,
-      { headers: { 'Authorization': `Bearer ${token}` } }
+    const res = await fetch(
+      API_BASE + '/subtitles/search/' + encodeURIComponent(movieTitle) + '?langs=en,hi',
+      { headers: { 'Authorization': 'Bearer ' + token } }
     );
     const data = await readJsonResponse(res);
-    if (!data.results?.length) return;
+    if (!data.results || !data.results.length) return;
 
-    // 2. Take best result (most downloaded)
-      try {
-        const res  = await apiFetch(`/episodes/series/${seriesId}`, { silent: true });
-        const data = await readJsonResponse(res);
-        const { seasons } = data;
-        const nums = Object.keys(seasons || {}).sort((a, b) => +a - +b);
-
-        if (nums.length === 0) {
-          if ((String(currentMovie?.provider || '').toLowerCase() === 'anilist' || currentMovie?.category === 'anime')
-            && Number(currentMovie?.totalEpisodes || 0) > 1) {
-            
-            const tmdbId = Number(currentMovie?.tmdbId || currentMovie?.tmdb_id || 0);
-            const anilistId = currentMovie?.anilistId || currentMovie?.anilist_id || currentMovie?.providerId;
-            
-            if (!tmdbId && !anilistId) {
-              grid.innerHTML = `
-                <div class="empty-state" style="grid-column:1/-1;">
-                  <div class="empty-state-icon">📺</div>
-                  <h3>Episodes require TMDB or AniList mapping</h3>
-                  <p style="color:var(--text-muted);">Anime is imported, but both TMDB ID and AniList ID are missing.</p>
-                </div>`;
-              return;
-            }
-
-            const totalEpisodes = Math.min(500, Number(currentMovie.totalEpisodes || 0));
-            const animeSeasonNumber = getAnimeSeasonNumber(currentMovie);
-            const rows = Array.from({ length: totalEpisodes }, (_, idx) => {
-              const epNumber = idx + 1;
-              return `
-                <div class="episode-card" data-anime-season="${animeSeasonNumber}" data-anime-ep="${epNumber}">
-                  <img class="ep-card-thumb" src="${mediaUrl(currentMovie?.thumbnailUrl) || THUMB_PH}"
-                    alt="${escapeHtml(currentMovie?.title || 'Anime Episode')}"
-                    loading="lazy"
-                    referrerpolicy="no-referrer"
-                    onerror="this.src='${THUMB_PH}'">
-                  <div style="flex:1;min-width:0;">
-                    <div class="ep-card-num">Season ${animeSeasonNumber} · Episode ${epNumber}</div>
-                    <div class="ep-card-title">${escapeHtml(currentMovie?.title || 'Anime')}</div>
-                    <div class="ep-card-meta">
-                      <span><i class="ri-broadcast-line"></i> Play Episode</span>
-                    </div>
-                  </div>
-                  <div class="ep-play-btn"><i class="ri-play-fill" style="color:#fff;"></i></div>
-                </div>`;
-            }).join('');
-
-            grid.innerHTML = rows || '<p style="color:var(--text-muted);padding:20px;">No episodes found</p>';
-            return;
-          }
-          grid.innerHTML = `
-            <div class="empty-state" style="grid-column:1/-1;">
-              <div class="empty-state-icon">🎬</div>
-              <h3>No episodes yet</h3>
-              <p style="color:var(--text-muted);">Upload episodes from the admin panel</p>
-            </div>`;
-          return;
-        }
-
-        seasonsData = seasons;
-        tabs.innerHTML = nums.map((s, i) =>
-          `<button class="filter-tab ${i === 0 ? 'active' : ''}" data-season="${s}">Season ${s}</button>`
-        ).join('');
-
-        renderEpisodeCards(seasons[nums[0]]);
-      } catch(e) {
-        grid.innerHTML = '<p style="color:var(--text-muted);padding:20px;">Failed to load episodes</p>';
-      }
+    // Take the best result (most downloaded) and load its download link
+    var best = data.results[0];
+    if (best && best.attributes && best.attributes.files && best.attributes.files[0]) {
+      console.log('[Subtitles] Best match:', best.attributes.feature_details?.title || 'Unknown');
+    }
   } catch(err) {
-    console.error('Subtitle/episode load error:', err);
+    console.warn('[Subtitles] Load failed:', err.message);
   }
 }
 
@@ -1034,7 +971,10 @@ function renderMovie(m) {
   document.getElementById('detailYear').textContent     = m.releaseYear || '—';
   document.getElementById('detailRating').textContent   = m.rating    || '—';
 
-  if (m.category === 'anime' || m.category === 'series' || m.category === 'cartoon') {
+  // Show status/episode count for all multi-episode content types
+  const catLower = String(m.category || '').toLowerCase();
+  const isMultiEpisode = ['anime', 'series', 'cartoon', 'tv', 'k-drama', 'asian-drama', 'asian_drama', 'kdrama'].includes(catLower);
+  if (isMultiEpisode) {
     if (m.status) {
       document.getElementById('detailStatusWrap').style.display = 'block';
       document.getElementById('detailStatus').textContent       = m.status;
@@ -1048,7 +988,7 @@ function renderMovie(m) {
   if (m.cast && m.cast.length > 0) {
     document.getElementById('castSection').style.display = 'block';
     document.getElementById('castList').innerHTML = m.cast.map(n =>
-      `<span style="background:var(--bg-card);padding:6px 16px;border-radius:20px; font-size:13px;color:var(--text-secondary);border:1px solid var(--border);">${escapeHtml(n)}</span>`
+      '<span style="background:var(--bg-card);padding:6px 16px;border-radius:20px; font-size:13px;color:var(--text-secondary);border:1px solid var(--border);">' + escapeHtml(n) + '</span>'
     ).join('');
   }
 
@@ -1068,81 +1008,73 @@ function renderMovie(m) {
 
   document.getElementById('playerTitle').textContent = m.title;
 
-  if (m.category === 'anime' || m.category === 'series' || m.category === 'cartoon') {
+  // ── EPISODES: trigger for ALL multi-episode content, not just anime/series/cartoon ──
+  if (isMultiEpisode) {
     // Ensure upcoming-episode fallback renders quickly for anime
-    try { ensureUpcomingEpisodeFallback(m); } catch (e) {}
+    if (catLower === 'anime') {
+      try { ensureUpcomingEpisodeFallback(m); } catch (e) {}
+    }
     loadEpisodes(m._id);
-    // Re-check after episodes load; if the grid is still empty, force the upcoming card
-    try { setTimeout(() => ensureUpcomingEpisodeFallback(m), 1200); } catch (e) {}
+    // Re-check after episodes load; if the grid is still empty, force the upcoming card for anime
+    if (catLower === 'anime') {
+      try { setTimeout(() => ensureUpcomingEpisodeFallback(m), 1200); } catch (e) {}
+    }
   }
 
   // ULTRA-AGGRESSIVE: Unconditional grid fill for anime after delay
-  if (String(m.category || '').toLowerCase() === 'anime') {
+  if (catLower === 'anime') {
     setTimeout(() => {
       const grid = document.getElementById('episodesGrid');
       if (!grid) return;
-      
-      // Check if grid has episode cards
-      const hasEpisodeCards = Array.from(grid.children || []).some(c => 
-        c.classList?.contains('episode-card') || c.classList?.contains('ep-card-thumb')
+      const hasEpisodeCards = Array.from(grid.children || []).some(c =>
+        c.classList && (c.classList.contains('episode-card') || c.classList.contains('tmdb-ep-row'))
       );
       if (hasEpisodeCards) return;
-      
-      // Check if it contains spinner or is empty/has placeholder
       const html = grid.innerHTML || '';
-      if (html.includes('episode-card') || (html.trim() !== '' && !html.includes('spinner'))) return;
-      
-      // Force inject upcoming episode card
+      if (html.includes('episode-card') || html.includes('tmdb-ep-row') || (html.trim() !== '' && !html.includes('spinner'))) return;
       const ep = (m.nextAiringEpisode?.episode || m.totalEpisodes || 1);
       const season = m.seasonNumber || 1;
-      grid.innerHTML = `<div class="episode-card" style="cursor:pointer;">
-        <div style="padding:20px;text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;">
-          <div style="font-size:18px;font-weight:600;margin-bottom:10px;">Season ${season} · Episode ${ep}</div>
-          <div style="color:var(--text-muted);font-size:14px;">${(m.title || 'Anime').substring(0, 40)}</div>
-          <div style="margin-top:15px;padding:8px 16px;background:rgba(52,211,153,0.2);border-radius:6px;color:#34d399;font-size:12px;">Upcoming Episode</div>
-        </div>
-      </div>`;
+      grid.innerHTML = '<div class="episode-card" style="cursor:pointer;">' +
+        '<div style="padding:20px;text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;">' +
+          '<div style="font-size:18px;font-weight:600;margin-bottom:10px;">Season ' + season + ' · Episode ' + ep + '</div>' +
+          '<div style="color:var(--text-muted);font-size:14px;">' + escapeHtml((m.title || 'Anime').substring(0, 40)) + '</div>' +
+          '<div style="margin-top:15px;padding:8px 16px;background:rgba(52,211,153,0.2);border-radius:6px;color:#34d399;font-size:12px;">Upcoming Episode</div>' +
+        '</div>' +
+      '</div>';
     }, 2500);
+    try {
+      injectAnimeFallbackCSS();
+      var fallbackGrid = document.getElementById('episodesGrid');
+      if (fallbackGrid) fallbackGrid.setAttribute('data-anime-fallback', '1');
+    } catch (e) {}
   }
 
-  // Harden: inject a simple CSS fallback so the episodesGrid is never visually empty for anime
-  try {
-    if (String(m.category || '').toLowerCase() === 'anime') {
-      injectAnimeFallbackCSS();
-      const grid = document.getElementById('episodesGrid');
-      if (grid) grid.setAttribute('data-anime-fallback', '1');
-    }
-  } catch (e) {}
-
-
-function injectAnimeFallbackCSS() {
-  if (document.getElementById('anime-episodes-fallback')) return;
-  const css = `
-    #episodesGrid[data-anime-fallback="1"] .spinner-container { display: none !important; }
-    #episodesGrid[data-anime-fallback="1"] .empty-state { display: none !important; }
-    #episodesGrid[data-anime-fallback="1"]:empty::before {
-      content: "Upcoming episode coming soon";
-      display: block;
-      grid-column: 1 / -1;
-      padding: 18px;
-      margin: 8px 0;
-      background: rgba(255,255,255,0.02);
-      color: var(--text-muted, #9aa); 
-      border-radius: 8px;
-      text-align: center;
-      font-weight: 600;
-    }
-  `;
-  const s = document.createElement('style');
-  s.id = 'anime-episodes-fallback';
-  s.appendChild(document.createTextNode(css));
-  document.head.appendChild(s);
-}
   setupCommentSection();
   loadComments();
   loadRecommendations(m._id, m.title);
   loadOtherSeasons(m._id, m.title);
   showState('content');
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ANIME FALLBACK CSS — injected once to prevent empty episode grid
+// Must be defined OUTSIDE renderMovie (was accidentally nested before)
+// ─────────────────────────────────────────────────────────────────────────
+function injectAnimeFallbackCSS() {
+  if (document.getElementById('anime-episodes-fallback')) return;
+  var css =
+    '#episodesGrid[data-anime-fallback="1"] .spinner-container { display: none !important; }' +
+    '#episodesGrid[data-anime-fallback="1"] .empty-state { display: none !important; }' +
+    '#episodesGrid[data-anime-fallback="1"]:empty::before {' +
+      'content: "Upcoming episode coming soon";' +
+      'display: block; grid-column: 1 / -1; padding: 18px; margin: 8px 0;' +
+      'background: rgba(255,255,255,0.02); color: var(--text-muted, #9aa);' +
+      'border-radius: 8px; text-align: center; font-weight: 600;' +
+    '}';
+  var s = document.createElement('style');
+  s.id = 'anime-episodes-fallback';
+  s.appendChild(document.createTextNode(css));
+  document.head.appendChild(s);
 }
 
 function injectMovieJsonLd(movie) {
