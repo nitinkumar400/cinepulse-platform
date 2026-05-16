@@ -18,6 +18,15 @@
 15. [Loading More Content](#15-loading-more-content)
 16. [Mass Seed v2.0 — 100K Matrix Edition](#16-mass-seed-v20--100k-matrix-edition)
 17. [Production Verification (107K Records Live)](#17-production-verification-107k-records-live)
+18. [Streaming Stability Overhaul](#18-streaming-stability-overhaul-may-2026)
+19. [Future Roadmap](#19-future-roadmap-premium-series-experience)
+20. [Premium TV Implementation](#20-premium-tv-implementation-details-may-2026)
+21. [Seamless Playback & Anime UI](#21-seamless-playback--anime-ui-may-2026)
+22. [⚠️ Consumet API DEPRECATED — Direct Embed Architecture](#22-consumet-api-deprecated--direct-embed-architecture-may-2026)
+23. [Ghost Profile Personalization](#23-ghost-profile-personalization-may-2026)
+24. [Database Healer & Cleanup Scripts](#24-database-healer--cleanup-scripts-may-2026)
+25. [Regional AniList Importer](#25-regional-anilist-importer-may-2026)
+26. [Auto-Ingest Pipeline (GitHub Actions)](#26-auto-ingest-pipeline-github-actions-may-2026)
 
 ---
 
@@ -208,6 +217,17 @@ cine-stream-platform-main/
 │
 └── api/
     └── server.js            # Vercel serverless function entry
+
+scripts/                            # Standalone Node.js maintenance scripts
+├── mass_seed.js                    # Bulk import 50K-100K records (TMDB+AniList)
+├── healAnimeIds.js                 # Title → AniList ID translator
+├── cleanupOrphanedAnime.js         # Delete anime missing anilistId
+├── importAniListRegional.js        # Region-based anime importer (JP/CN/KR/IN)
+└── autoIngest.js                   # 6-hourly auto-ingest pipeline
+
+.github/
+└── workflows/
+    └── auto-ingest.yml             # GitHub Actions: cron every 6h
 ```
 
 ---
@@ -1147,24 +1167,92 @@ Since cross-origin iframes block native `ended` events, we implemented a user-dr
 
 ---
 
-## 22. Anime HLS Native Streaming & Auto-Play (May 2026)
+## 22. Consumet API DEPRECATED — Direct Embed Architecture (May 2026)
 
-### 1. Consumet API & HLS Native Streaming
-Implemented a high-speed, ad-free streaming alternative for anime content using our private scraping infrastructure.
-- **Consumet Scraper Integration**: Integrated our private Render instance (`https://consumet-api-latest-qe60.onrender.com`) as a primary source for anime manifests.
-- **HLS.js Library**: Injected `hls.js` into the `<head>` of `movie-details.html` to allow the browser to parse `.m3u8` playlists directly within a native HTML5 video element.
-- **Native Player Mounting**: Created `VideoEngine.mountNativeStream(streamUrl)` in `videoEngine.js` which destroys existing iframes and builds an optimized `<video id="native-stream-player">` directly in the DOM.
+> ⚠️ **MAJOR ARCHITECTURAL CHANGE — May 16, 2026**
+>
+> All Consumet API integration has been **removed from the codebase**. The native HLS streaming path is now obsolete. Anime now plays exclusively through embed servers.
 
-### 2. Anime Episode Self-Healing
-Added a robust fallback for anime titles with missing or incomplete metadata in the local database.
-- **Dynamic Episode Count Fetching**: If an anime's `totalEpisodes` is missing or set to 1, `loadEpisodes()` in `movieDetailsPage.js` performs an asynchronous lookup to the Consumet API `/meta/anilist/info/` endpoint.
-- **Automatic State Repair**: The system dynamically calculates the absolute episode count and updates the UI grid and `window.maxAnimeEpisodesCount` in real-time, preventing empty states.
+### Why Consumet Was Removed
 
-### 3. Netflix-Style Auto-Play Countdown
-Implemented a seamless binge-watching experience for anime content using native video events.
-- **'ended' Event Listener**: Attached an event listener to the native video player for the `ended` event (only possible with native streams, not cross-origin iframes).
-- **Auto-Play Overlay**: When an episode ends, if a next episode exists, a cinematic overlay appears with an 8-second countdown.
-- **Stateful Progression**: The countdown UI includes "Play Now" and "Cancel" buttons, automatically advancing via `playEpisodeInPlace()` when the timer expires.
+The self-hosted Consumet instance at `https://consumet-api-latest-qe60.onrender.com` is **permanently broken** and cannot be fixed:
+
+1. **All scrapers return HTTP 500** — `/meta/anilist/info/*`, `/meta/anilist/watch/*`, `/anime/gogoanime/*`, `/anime/zoro/*`
+2. **Crunchyroll legal action (late 2025/early 2026)** wiped out 900+ anime piracy scrapers
+3. **Source sites changed structure** — GogoAnime, Zoro/HiAnime, AnimePahe all blocked or restructured
+4. **Upstream `riimuru/consumet-api` is abandoned** — no fix is coming
+5. **Fresh redeploys produce same broken result** — the code is fundamentally outdated
+
+The server itself stays alive (root URL returns "Welcome to consumet api! 🎉") but every actual content endpoint is dead.
+
+### What Was Removed From Code
+
+| File | What was removed |
+|------|------------------|
+| `public/js/movieDetailsPage.js` | Consumet fetch in `playEpisodeInPlace()` (5s timeout block) |
+| `public/js/movieDetailsPage.js` | Consumet self-healing call in `loadEpisodes()` |
+| `public/js/videoEngine.js` | `mountNativeStream()` HLS.js path is now unused (kept as legacy compat) |
+
+### What Was Added As Replacement
+
+**1. Direct AniList GraphQL for episode counts** (`public/js/movieDetailsPage.js`)
+
+When `totalEpisodes` is missing from the local DB, the player queries AniList GraphQL directly:
+```javascript
+const query = `query($id:Int){Media(id:$id,type:ANIME){episodes status}}`;
+fetch('https://graphql.anilist.co', {
+  method: 'POST',
+  body: JSON.stringify({ query, variables: { id: anilistId } })
+});
+```
+- Free, no API key required
+- Returns the canonical episode count from the AniList catalog
+- Falls back to status-based defaults (12 for Ongoing, 24 for Completed) if AniList returns 0
+
+**2. Direct-to-Hydra embed playback** (`public/js/movieDetailsPage.js`)
+
+`playEpisodeInPlace()` now skips Consumet entirely and goes straight to embed servers:
+```javascript
+const hydraSources = EmbedServers.buildHydraSources(currentMovie, season, episode);
+playbackSources = reorderSourcesBySessionHealth(hydraSources);
+switchPlaybackSource(0);
+```
+- Zero wasted time on dead API calls
+- Anime episodes load instantly
+- Same 9-server fallback chain as before (3 anime-specific + 6 standard TV)
+
+**3. Floating "Next Episode" button** (`public/js/movieDetailsPage.js`)
+
+Since cross-origin iframes block the `ended` event, autoplay countdown is replaced with a manual but elegant alternative:
+- Appears bottom-right of player **30 seconds** after an episode loads
+- Shows "Up Next — Episode N" with a red play circle
+- Click anywhere on the card to jump to next episode
+- Has a dismiss `✕` in top-right corner
+- Auto-disappears after 15 seconds if ignored
+- Slide-in animation from the right
+- Only renders for multi-episode content (anime, series, kdrama, cdrama, etc.)
+
+### Anime Embed Server List (Active)
+
+The 3 anime servers in `embedServers.js` are now production-grade:
+
+| # | Server | Domain | URL Pattern |
+|---|--------|--------|-------------|
+| 1 | Anime VidSrc | `vidsrc.cc` | `https://vidsrc.cc/v2/embed/tv/{anilistId}/1/{ep}?anilist=true` |
+| 2 | Anime 2Embed | `2embed.cc` | `https://www.2embed.cc/embedanime/anilist-{anilistId}&ep={ep}` |
+| 3 | Anime VidSrc.to | `vidsrc.to` | `https://vidsrc.to/embed/anime/anilist/{anilistId}/{ep}` |
+
+**Plus 6 standard TV servers as fallback** when anime has both `anilistId` and `tmdbId` — totaling **9 servers** per anime episode.
+
+### Health Check Updates
+
+| Endpoint | Old behavior | New behavior |
+|----------|--------------|--------------|
+| `consumet-api-latest-qe60.onrender.com` | Required for native HLS | **No longer used** — can be left running or shut down |
+| `graphql.anilist.co` | Used in admin sync only | Now also used by frontend for episode count fetching |
+| Embed servers (vidsrc.cc, 2embed.cc, vidsrc.to) | Movie/TV only | Now handle anime via dedicated routes |
+
+If you want to **shut down the Render Consumet instance** to save resources, you can do so safely. The platform no longer depends on it.
 
 ---
 
@@ -1181,6 +1269,174 @@ Built a local watch history engine.
 - **`cinepulse_history`**: Tracks up to 20 recently viewed items including ID, Title, Category, Season, Episode, and Poster.
 - **Dynamic Row Rendering**: `renderContinueWatching()` injects a dedicated row below the Hero section if history exists.
 - **Visual Context**: Automatically applies `S1:E4` style badges for Anime and Series, passing `resume=true` and explicit episode parameters via URL to allow one-click playback resumption.
+
+---
+
+## 24. Database Healer & Cleanup Scripts (May 2026)
+
+After bulk imports, anime records often arrive without the `anilistId` field — required for proper player routing. Two maintenance scripts handle this cleanup.
+
+### A. AniList ID Healer — `scripts/healAnimeIds.js`
+
+Translates titles → AniList IDs using AniList's free GraphQL search API.
+
+**Usage:**
+```bash
+npm run heal:anime:dry        # preview, no DB writes
+npm run heal:anime:limit      # test with first 50 records
+npm run heal:anime            # full run
+node scripts/healAnimeIds.js --skip=500   # resume from record 500
+```
+
+**How it works:**
+1. Queries MongoDB for `category: anime|cartoon` records missing `anilistId`
+2. For each one, searches AniList GraphQL by title (`type: ANIME, sort: SEARCH_MATCH`)
+3. Match priority: exact English title → exact Romaji → partial → first result
+4. Writes `anilistId`, `anilist_id`, and `totalEpisodes` back to MongoDB
+5. Rate-limited at 1500ms/request → ~40 req/min (AniList allows 90/min)
+
+**Real-world results from production run:**
+- ✅ ~76% match rate (most popular anime found correctly)
+- ⚠️ ~24% not in AniList (obscure/old titles — these are deletion candidates)
+
+### B. Orphaned Anime Cleanup — `scripts/cleanupOrphanedAnime.js`
+
+Deletes anime records that still have no `anilistId` after the healer ran. These titles aren't on AniList at all and have no playable source.
+
+**Usage:**
+```bash
+npm run cleanup:anime:dry     # preview only, no deletes
+npm run cleanup:anime:list    # print every title that will be deleted
+npm run cleanup:anime         # live delete (requires typing "YES")
+```
+
+**Safety features:**
+- Always shows a sample (first 10) or full list before deleting
+- Live mode requires explicit "YES" confirmation in terminal
+- Reports total count and percentage of catalog
+- Reports remaining anime count after cleanup
+- Ctrl+C aborts safely with no deletions
+
+---
+
+## 25. Regional AniList Importer (May 2026)
+
+`scripts/importAniListRegional.js` is a fully resume-safe importer that pulls anime from 4 specific countries via AniList's `countryOfOrigin` filter.
+
+### CLI
+
+```bash
+npm run import:anime           # all regions: JP → CN → KR → IN
+npm run import:anime:jp        # Japan only (~10K titles, 200 pages)
+npm run import:anime:cn        # China / Donghua only (~5K, 100 pages)
+npm run import:anime:kr        # Korea / Manhwa anime (~3K, 60 pages)
+npm run import:anime:in        # India (~1K, 20 pages)
+npm run import:anime:dry       # preview only
+npm run import:anime:reset     # clear progress and restart
+```
+
+### Resume Safety
+
+Progress is persisted to `scripts/.anilist_import_progress.json` after every page. If the script is interrupted (Ctrl+C, crash, network drop), running `npm run import:anime` again picks up exactly where it left off.
+
+### Deduplication
+
+Uses `anilistId` as the unique upsert key in `bulkWrite`. Re-running the script never creates duplicates — existing records get updated, new ones get inserted.
+
+### Rate Limit
+
+- 800ms delay between requests = ~75 req/min (AniList allows 90/min)
+- Auto-handles 429 responses with `Retry-After` header
+- 12s request timeout with auto-retry (up to 3 attempts)
+
+### Profile Configuration
+
+| Region | Country | Max Pages | Max Records | Description |
+|--------|---------|-----------|-------------|-------------|
+| JP | Japan | 200 | ~10,000 | Japanese Anime |
+| CN | China | 100 | ~5,000 | Donghua / Manhua adaptations |
+| KR | Korea | 60 | ~3,000 | Manhwa-based anime |
+| IN | India | 20 | ~1,000 | Indian animation |
+
+---
+
+## 26. Auto-Ingest Pipeline (GitHub Actions) (May 2026)
+
+Hands-off automated content ingestion. Runs every 6 hours via GitHub Actions to keep the catalog fresh with no manual intervention.
+
+### Components
+
+**Script:** `scripts/autoIngest.js`
+**Workflow:** `.github/workflows/auto-ingest.yml`
+
+### What It Fetches Each Run
+
+| Source | Endpoint | Records | Filter |
+|--------|----------|---------|--------|
+| **Airing TV Shows** | TMDB `/tv/on_the_air` | 60 (3 pages × 20) | currently airing this week |
+| **Digital Movies** | TMDB `/discover/movie` | 60 (3 pages × 20) | `primary_release_date.lte = today - 60 days`, `vote_count >= 50`, `vote_average >= 5.0` |
+| **Releasing Anime** | AniList GraphQL | 50 | `status: RELEASING`, sorted by `UPDATED_AT_DESC` |
+
+The 60-day filter on movies ensures only **digitally available** content gets imported — no theatrical-only/CAM-rip risk.
+
+### Trigger Configuration
+
+```yaml
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours
+  workflow_dispatch: {}     # manual trigger from Actions tab
+```
+
+### Concurrency Guard
+
+```yaml
+concurrency:
+  group: auto-ingest
+  cancel-in-progress: true
+```
+
+If a run is already executing when the next cron fires, the older run is cancelled and the new one starts fresh.
+
+### Required GitHub Secrets
+
+Set these in **Repo → Settings → Secrets and variables → Actions**:
+
+| Secret | Description |
+|--------|-------------|
+| `MONGODB_URI` | MongoDB Atlas connection string |
+| `MONGO_URI` | Same as above (alternate name) |
+| `TMDB_API_KEY` | TMDB v3 API key |
+
+### Upsert Logic
+
+- **Filter:** `{ $or: [{ tmdbId }, { tmdb_id: tmdbId }] }` for movies/TV, `{ $or: [{ anilistId }, { anilist_id }] }` for anime
+- **Strategy:** `findOneAndUpdate` with `upsert: true, setDefaultsOnInsert: true`
+- **Null safety:** `pruneNullIds()` strips zero/null ID fields before write
+- **Duplicate-key recovery:** On `code: 11000`, retries without the conflicting ID
+
+### Manual Run
+
+```bash
+# Locally
+npm run ingest
+
+# From GitHub UI
+Actions tab → "Auto-Ingest Pipeline" → "Run workflow"
+```
+
+### Monitoring
+
+The GitHub Actions log shows full output including per-source counts:
+```
+INGEST COMPLETE
+New records added  : 12
+Existing updated   : 148
+TV shows processed : 60
+Movies processed   : 60
+Anime processed    : 50
+Elapsed            : 89s
+```
 
 ---
 
@@ -1211,6 +1467,22 @@ npm run seed:indian       # Bollywood + South Indian
 npm run seed:networks     # Netflix + Prime
 npm run seed:mega         # ALL profiles (full 100K run)
 
+# ── Database Maintenance ──
+npm run heal:anime:dry    # Preview AniList ID healer
+npm run heal:anime        # Run AniList ID healer (~3-4 hrs for 9K records)
+npm run cleanup:anime:dry # Preview orphaned anime cleanup
+npm run cleanup:anime     # Delete orphaned anime (asks "YES" confirm)
+
+# ── Regional AniList Import ──
+npm run import:anime      # All regions: JP → CN → KR → IN
+npm run import:anime:jp   # Japan only
+npm run import:anime:cn   # China (Donghua) only
+npm run import:anime:kr   # Korea only
+npm run import:anime:in   # India only
+
+# ── Auto-Ingest (one-shot) ──
+npm run ingest            # Run auto-ingest pipeline locally
+
 # Sync TMDB via API (requires admin auth, 20 records)
 curl -X POST http://localhost:5001/api/sync \
   -H "Authorization: Bearer YOUR_JWT"
@@ -1227,6 +1499,6 @@ vercel deploy --prod
 
 *Last Updated: May 16, 2026*
 *Platform: CinePulse (formerly CineStream)*
-*Database: 107,810 documents (Live on Atlas)*
-*Status: Ghost Profile Personalization - LIVE*
+*Database: 107,810+ documents (Live on Atlas)*
+*Status: Direct Embed Architecture (Consumet deprecated) - LIVE*
 *Maintained by: Nitin Mishra & AI Coding Assistant*
