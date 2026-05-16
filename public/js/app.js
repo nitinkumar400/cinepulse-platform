@@ -881,12 +881,14 @@ function isPublicRoute(pathname = window.location.pathname) {
   const normalizedPath = pathname.replace(/\.html$/, '');
   const publicPaths = [
     '/', '/index', '/pages/index',
+    '/browse', '/pages/browse',
     '/pages/movie-details', '/pages/search',
     '/pages/episode', '/pages/player',
     '/pages/admin',
     '/login', '/pages/login',
     '/offline', '/pages/offline',
   ];
+  if (normalizedPath.startsWith('/browse/')) return true;
   return publicPaths.some(p => normalizedPath === p || normalizedPath.endsWith(p));
 }
 

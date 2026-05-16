@@ -28,7 +28,7 @@ const VALID_CATEGORIES = Object.keys(CATEGORY_FILTERS);
 
 // ── sortBy → MongoDB sort spec ──
 const SORT_OPTIONS = {
-  newest:  { createdAt: -1 },
+  newest:  { releaseYear: -1, createdAt: -1 },
   oldest:  { createdAt:  1 },
   rating:  { averageRating: -1 },
   popular: { views: -1 },
@@ -110,6 +110,7 @@ router.get('/:category', asyncHandler(async (req, res) => {
 
   // ── Build filter starting from category mapping ──
   const filter = { ...baseFilter };
+  const currentYear = new Date().getFullYear();
 
   // Genre — comma-separated, case-insensitive regex match
   const genres = splitCsv(req.query.genre);
@@ -124,6 +125,9 @@ router.get('/:category', asyncHandler(async (req, res) => {
     filter.releaseYear = {};
     if (yearMin !== null) filter.releaseYear.$gte = yearMin;
     if (yearMax !== null) filter.releaseYear.$lte = yearMax;
+  } else {
+    // Default freshness window for browse pages: current year + previous year.
+    filter.releaseYear = { $gte: currentYear - 1 };
   }
 
   // Rating range
@@ -182,12 +186,21 @@ router.get('/:category', asyncHandler(async (req, res) => {
         .select(BROWSE_PROJECTION)
         .maxTimeMS(QUERY_TIMEOUT_MS),
     ]);
+    const cleanedItems = (items || []).filter((item) => {
+      if (!item) return false;
+      if (!item.tmdbId && !item.tmdb_id && !item.anilistId && !item.anilist_id && !String(item.videoUrl || '').trim()) {
+        return false;
+      }
+      const thumb = String(item.thumbnailUrl || '').trim();
+      if (!thumb) return false;
+      return !/placeholder|undefined|null/i.test(thumb);
+    });
 
     const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
     const hasMore    = page < totalPages;
 
     return sendSuccess(res, {
-      items,
+      items: cleanedItems,
       total,
       page,
       totalPages,

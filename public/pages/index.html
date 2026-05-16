@@ -992,6 +992,28 @@ function _isPlayableItem(item) {
   return !!(item.tmdbId || item.tmdb_id || item.anilistId || item.anilist_id || (item.videoUrl && String(item.videoUrl).trim()));
 }
 
+function _hasRenderablePoster(item) {
+  const url = String(item?.thumbnailUrl || '').trim();
+  if (!url) return false;
+  return !/placeholder|undefined|null/i.test(url);
+}
+
+function _isFreshTitle(item, options = {}) {
+  const currentYear = new Date().getFullYear();
+  const minYear = Number.isFinite(options.minYear) ? options.minYear : (currentYear - 1);
+  const releaseYear = Number(item?.releaseYear || 0);
+  const isOngoing = String(item?.status || '').toLowerCase() === 'ongoing';
+  if (releaseYear >= minYear) return true;
+  return !!options.allowOngoing && isOngoing;
+}
+
+function _sanitizeCatalog(items, options = {}) {
+  return (Array.isArray(items) ? items : [])
+    .filter(_isPlayableItem)
+    .filter(_hasRenderablePoster)
+    .filter((item) => _isFreshTitle(item, options));
+}
+
 function renderRail(containerId, items, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -1000,8 +1022,7 @@ function renderRail(containerId, items, options = {}) {
   // Hide items with no tmdb_id and no anilist_id from rails — they will never
   // play with any embed server. Per user request: "if any anime/movies/series
   // or any content not playing it should not play [show] on my frontend".
-  const playable = (Array.isArray(items) ? items : []).filter(_isPlayableItem);
-  const list = playable.length ? playable : items || [];
+  const list = _sanitizeCatalog(items, { allowOngoing: true });
 
   // ── RAIL VISIBILITY ──
   // Hide the entire <section class="rail-section"> wrapper when there is
@@ -1413,8 +1434,8 @@ async function loadHeroAndTrending() {
     } else {
       const filterParams = buildSidebarQueryParams(activeCategory);
       endpoint = filterParams
-        ? `/movies?${filterParams}&sort=highest_rated&limit=20`
-        : '/movies/trending?limit=20';
+      ? `/movies?${filterParams}&sort=highest_rated&limit=40`
+      : '/movies/trending?limit=20';
     }
   }
 
@@ -1424,7 +1445,7 @@ async function loadHeroAndTrending() {
     const trending = payload.trending || payload.movies || [];
 
     // Filter rail to playable items only (must have tmdb_id or anilist_id)
-    const playableTrending = trending.filter(it => (it && (it.tmdbId || it.tmdb_id || it.anilistId || it.anilist_id)));
+    const playableTrending = _sanitizeCatalog(trending, { allowOngoing: true });
 
     renderRail('trendingRail', playableTrending.length ? playableTrending : trending, {
       withRank: true,
@@ -1468,7 +1489,7 @@ async function loadHeroAndTrending() {
     // If the trending API fails entirely, try a generic /movies fetch as a last resort.
     try {
       const fallbackPayload = await fetchMovieList('/movies?limit=10&sort=newest');
-      const fallback = (fallbackPayload.movies || []).filter(it => (it.tmdbId || it.tmdb_id || it.anilistId || it.anilist_id));
+      const fallback = _sanitizeCatalog(fallbackPayload.movies || [], { allowOngoing: true });
       if (fallback.length) {
         startBillboardRotation(fallback.slice(0, 5));
         return;
@@ -1482,8 +1503,8 @@ async function loadCategoryRail(category, containerId, emptyText) {
   renderRailLoading(containerId, `Loading ${category} picks...`);
 
   try {
-    const payload = await fetchMovieList(`/movies?category=${encodeURIComponent(category)}&limit=12&sort=highest_rated`);
-    renderRail(containerId, payload.movies || [], { emptyText });
+    const payload = await fetchMovieList(`/movies?category=${encodeURIComponent(category)}&limit=40&sort=highest_rated`);
+    renderRail(containerId, _sanitizeCatalog(payload.movies || [], { allowOngoing: true }), { emptyText });
   } catch (error) {
     renderRail(containerId, [], { emptyText });
   }
@@ -1492,9 +1513,9 @@ async function loadCategoryRail(category, containerId, emptyText) {
 async function loadRecommendedRail() {
   const requestId = ++sectionRequestState.recommended;
   const filterParams = buildSidebarQueryParams(activeCategory);
-  const endpoint = filterParams
-    ? `/movies?${filterParams}&limit=12&sort=highest_rated`
-    : '/movies?limit=12&sort=highest_rated';
+    const endpoint = filterParams
+    ? `/movies?${filterParams}&limit=40&sort=highest_rated`
+    : '/movies?limit=40&sort=highest_rated';
 
   renderRailLoading('recommendedRail', 'Refreshing recommendations...');
 
@@ -1502,7 +1523,7 @@ async function loadRecommendedRail() {
     const payload = await fetchMovieList(endpoint);
     if (requestId !== sectionRequestState.recommended) return;
 
-    renderRail('recommendedRail', payload.movies || [], {
+    renderRail('recommendedRail', _sanitizeCatalog(payload.movies || [], { allowOngoing: true }), {
       emptyText: 'Recommended titles will appear here once content is available.',
     });
     injectHomepageJsonLd(payload.movies || []);
@@ -1519,8 +1540,8 @@ async function loadSpotlightGrid() {
   const requestId = ++sectionRequestState.spotlight;
   const filterParams = buildSidebarQueryParams(activeCategory);
   const endpoint = filterParams
-    ? `/movies?${filterParams}&limit=12&sort=newest`
-    : '/movies?limit=12&sort=newest';
+    ? `/movies?${filterParams}&limit=40&sort=newest`
+    : '/movies?limit=40&sort=newest';
 
   renderSpotlightLoading('Refreshing live catalog...');
 
@@ -1528,7 +1549,7 @@ async function loadSpotlightGrid() {
     const payload = await fetchMovieList(endpoint);
     if (requestId !== sectionRequestState.spotlight) return;
 
-    const movies = (payload.movies || []).filter(_isPlayableItem);
+    const movies = _sanitizeCatalog(payload.movies || [], { allowOngoing: true });
     const grid = document.getElementById('spotlightGrid');
     if (!grid) return;
 
@@ -1550,8 +1571,8 @@ async function loadHomepagePosterGrid() {
   const requestId = ++sectionRequestState.homepagePosterGrid || 0;
   const filterParams = buildSidebarQueryParams(activeCategory);
   const endpoint = filterParams
-    ? `/movies?${filterParams}&limit=12&sort=newest`
-    : '/movies?limit=12&sort=newest';
+    ? `/movies?${filterParams}&limit=40&sort=newest`
+    : '/movies?limit=40&sort=newest';
 
   const grid = document.getElementById('homepagePosterGrid');
   if (!grid) return;
@@ -1560,7 +1581,7 @@ async function loadHomepagePosterGrid() {
   try {
     const payload = await fetchMovieList(endpoint);
     if (sectionRequestState.homepagePosterGrid !== requestId) return;
-    const movies = (payload.movies || []).filter(_isPlayableItem);
+    const movies = _sanitizeCatalog(payload.movies || [], { allowOngoing: true });
 
     if (!movies.length) {
       grid.innerHTML = '<div class="home-empty" style="grid-column:1/-1;">No posters available.</div>';
@@ -1578,8 +1599,8 @@ async function loadHomepagePosterGrid() {
 async function loadTopRatedMoviesRail() {
   renderRailLoading('topRatedMoviesRail', 'Loading top rated movies...');
   try {
-    const payload = await fetchMovieList('/movies?category=movie&limit=15&sort=highest_rated');
-    renderRail('topRatedMoviesRail', payload.movies || [], { emptyText: 'Top rated movies will appear here.' });
+    const payload = await fetchMovieList('/movies?category=movie&limit=40&sort=highest_rated');
+    renderRail('topRatedMoviesRail', _sanitizeCatalog(payload.movies || [], { allowOngoing: false }), { emptyText: 'Top rated movies will appear here.' });
   } catch (error) {
     renderRail('topRatedMoviesRail', [], { emptyText: 'Could not load top rated movies.' });
   }
@@ -1588,8 +1609,8 @@ async function loadTopRatedMoviesRail() {
 async function loadNewReleasesRail() {
   renderRailLoading('newReleasesRail', 'Loading new releases...');
   try {
-    const payload = await fetchMovieList('/movies?limit=15&sort=newest');
-    renderRail('newReleasesRail', payload.movies || [], { emptyText: 'New releases will appear here.' });
+    const payload = await fetchMovieList('/movies?limit=60&sort=newest');
+    renderRail('newReleasesRail', _sanitizeCatalog(payload.movies || [], { allowOngoing: false }), { emptyText: 'New releases will appear here.' });
   } catch (error) {
     renderRail('newReleasesRail', [], { emptyText: 'Could not load new releases.' });
   }
@@ -1615,8 +1636,8 @@ async function loadMostPopularRail() {
 async function loadHollywoodRail() {
   renderRailLoading('hollywoodRail', 'Loading Hollywood titles...');
   try {
-    const payload = await fetchMovieList('/movies?original_language=en&limit=15&sort=highest_rated');
-    renderRail('hollywoodRail', payload.movies || [], { emptyText: 'Hollywood titles will appear here.' });
+    const payload = await fetchMovieList('/movies?original_language=en&limit=40&sort=highest_rated');
+    renderRail('hollywoodRail', _sanitizeCatalog(payload.movies || [], { allowOngoing: true }), { emptyText: 'Hollywood titles will appear here.' });
   } catch (error) {
     renderRail('hollywoodRail', [], { emptyText: 'Could not load Hollywood titles.' });
   }
@@ -1625,8 +1646,8 @@ async function loadHollywoodRail() {
 async function loadKDramaRail() {
   renderRailLoading('kdramaRail', 'Loading K-Drama titles...');
   try {
-    const payload = await fetchMovieList('/movies?original_language=ko&limit=15&sort=highest_rated');
-    renderRail('kdramaRail', payload.movies || [], { emptyText: 'K-Drama titles will appear here.' });
+    const payload = await fetchMovieList('/movies?original_language=ko&limit=40&sort=highest_rated');
+    renderRail('kdramaRail', _sanitizeCatalog(payload.movies || [], { allowOngoing: true }), { emptyText: 'K-Drama titles will appear here.' });
   } catch (error) {
     renderRail('kdramaRail', [], { emptyText: 'Could not load K-Drama titles.' });
   }
@@ -1635,8 +1656,8 @@ async function loadKDramaRail() {
 async function loadChineseRail() {
   renderRailLoading('chineseRail', 'Loading Chinese (Donghua) titles...');
   try {
-    const payload = await fetchMovieList('/movies?original_language=zh&limit=15&sort=highest_rated');
-    renderRail('chineseRail', payload.movies || [], { emptyText: 'Chinese (Donghua) titles will appear here.' });
+    const payload = await fetchMovieList('/movies?original_language=zh&limit=40&sort=highest_rated');
+    renderRail('chineseRail', _sanitizeCatalog(payload.movies || [], { allowOngoing: true }), { emptyText: 'Chinese (Donghua) titles will appear here.' });
   } catch (error) {
     renderRail('chineseRail', [], { emptyText: 'Could not load Chinese (Donghua) titles.' });
   }
@@ -1645,8 +1666,8 @@ async function loadChineseRail() {
 async function loadHindiRail() {
   renderRailLoading('hindiRail', 'Loading Hindi Dubbed titles...');
   try {
-    const payload = await fetchMovieList('/movies?original_language=hi&limit=15&sort=highest_rated');
-    renderRail('hindiRail', payload.movies || [], { emptyText: 'Hindi Dubbed titles will appear here.' });
+    const payload = await fetchMovieList('/movies?original_language=hi&limit=40&sort=highest_rated');
+    renderRail('hindiRail', _sanitizeCatalog(payload.movies || [], { allowOngoing: true }), { emptyText: 'Hindi Dubbed titles will appear here.' });
   } catch (error) {
     renderRail('hindiRail', [], { emptyText: 'Could not load Hindi Dubbed titles.' });
   }

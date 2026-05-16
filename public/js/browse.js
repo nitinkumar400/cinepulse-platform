@@ -270,8 +270,7 @@
     // actually load (Requirement 11.8 / 13.x). When the upstream feed is
     // sparse we keep whatever came back so the page never looks empty
     // mid-pagination.
-    const playable = items.filter(_isPlayableItem);
-    const list = playable.length ? playable : items;
+    const list = items.filter((item) => _isPlayableItem(item) && _hasPoster(item));
 
     if (!list.length) {
       if (!append && _items.length === 0) {
@@ -320,6 +319,11 @@
       item.anilist_id ||
       (item.videoUrl && String(item.videoUrl).trim())
     );
+  }
+
+  function _hasPoster(item) {
+    const poster = String(item?.thumbnailUrl || '').trim();
+    return !!poster && !/placeholder|undefined|null/i.test(poster);
   }
 
   function showLoading() {

@@ -249,14 +249,8 @@ const VideoEngine = (() => {
     iframe.referrerPolicy = 'no-referrer';
     iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:none;';
 
-    // Step 5: Dynamically resolve sandbox policy
-    if (sandboxPolicy === 'none') {
-      // DO NOT append sandbox attribute
-    } else {
-      iframe.setAttribute('sandbox',
-        'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation'
-      );
-    }
+    // Step 5: Providers detect sandbox and block playback. Never set it.
+    iframe.removeAttribute('sandbox');
 
     // Attach native event listener for Hybrid Handshake Mechanism
     iframe.dataset.onloadFired = "false";
@@ -958,6 +952,7 @@ const MultiEmbedPlayer = (() => {
     currentFrame.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:none;opacity:0;transition:opacity 0.3s;';
     currentFrame.src = source.embedUrl || source.url;
     currentFrame.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
+    currentFrame.removeAttribute('sandbox');
     currentFrame.referrerPolicy = 'no-referrer';
     currentFrame.setAttribute('allowfullscreen', 'true');
 
