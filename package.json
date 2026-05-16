@@ -37,7 +37,9 @@
     "import:anime:kr": "node scripts/importAniListRegional.js --region=KR",
     "import:anime:in": "node scripts/importAniListRegional.js --region=IN",
     "import:anime:dry": "node scripts/importAniListRegional.js --dry-run",
-    "import:anime:reset": "node scripts/importAniListRegional.js --reset"
+    "import:anime:reset": "node scripts/importAniListRegional.js --reset",
+
+    "ingest": "node scripts/autoIngest.js"
   },
   "dependencies": {
     "axios": "^1.13.6",

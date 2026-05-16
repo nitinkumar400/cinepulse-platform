@@ -1,0 +1,55 @@
+name: Auto-Ingest Pipeline
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TRIGGERS
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  # Run every 6 hours automatically
+  schedule:
+    - cron: '0 */6 * * *'
+
+  # Allow manual trigger from GitHub UI (Actions tab → Run workflow)
+  workflow_dispatch:
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PREVENT CONCURRENT RUNS
+# If a run is already in progress, cancel it and start fresh
+# ─────────────────────────────────────────────────────────────────────────────
+concurrency:
+  group: auto-ingest
+  cancel-in-progress: true
+
+jobs:
+  ingest:
+    name: Ingest New Content
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # ── 1. Checkout code ──
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Node.js ──
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # ── 3. Install dependencies ──
+      - name: Install dependencies
+        run: npm ci --omit=dev
+
+      # ── 4. Run the ingest script ──
+      - name: Run Auto-Ingest Pipeline
+        run: node scripts/autoIngest.js
+        env:
+          MONGODB_URI:   ${{ secrets.MONGODB_URI }}
+          MONGO_URI:     ${{ secrets.MONGO_URI }}
+          TMDB_API_KEY:  ${{ secrets.TMDB_API_KEY }}
+          NODE_ENV:      production
+
+      # ── 5. Log completion ──
+      - name: Done
+        run: echo "✅ Auto-ingest completed at $(date -u)"
