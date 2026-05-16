@@ -12,20 +12,15 @@ jobs:
     steps:
       - name: Trigger health check endpoint
         env:
-          HEALTH_CHECK_URL: ${{ secrets.HEALTH_CHECK_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          if [ -z "$HEALTH_CHECK_URL" ]; then
-            echo "Missing HEALTH_CHECK_URL secret"
-            exit 1
-          fi
-
           if [ -z "$CRON_SECRET" ]; then
             echo "Missing CRON_SECRET secret"
             exit 1
           fi
 
+          HEALTH_CHECK_URL="https://cinepulse-platform.vercel.app/api/admin/servers/health/run"
+
           curl --fail --show-error --silent \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             "${HEALTH_CHECK_URL}"
-
