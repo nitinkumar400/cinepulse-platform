@@ -1,13 +1,15 @@
 // ══════════════════════════════════════════
 // CINE STREAM — Watch History Routes
 // ══════════════════════════════════════════
-const express      = require('express');
-const router       = express.Router();
-const mongoose     = require('mongoose');
-const WatchHistory = require('../models/WatchHistory');
-const Episode      = require('../models/Episode');
-const Movie        = require('../models/Movie');
-const { protect }  = require('../middleware/authMiddleware');
+const express             = require('express');
+const router              = express.Router();
+const mongoose            = require('mongoose');
+const WatchHistory        = require('../models/WatchHistory');
+const Episode             = require('../models/Episode');
+const Movie               = require('../models/Movie');
+const { protect }         = require('../middleware/authMiddleware');
+const serverConfigService = require('../services/serverConfigService');
+const { substitutePattern } = require('../services/serverHealthService');
 
 // ══════════════════════════════════════════
 // HELPER — validate MongoDB ObjectId
@@ -65,6 +67,158 @@ function getSourcePriority(type = '') {
   if (normalized === 'youtube') return 2;
   if (normalized === 'vimeo') return 3;
   return 99;
+}
+
+// ══════════════════════════════════════════
+// HELPER — detect media category for embed URL routing
+// Mirrors the frontend's EmbedServers.detectCategory() logic
+// in public/js/embedServers.js so the backend produces the
+// same routing decisions when constructing embed URLs.
+// Returns one of: 'anime' | 'tv' | 'movie'
+// ══════════════════════════════════════════
+function detectCategory(movie) {
+  const cat = String(movie?.category || '').toLowerCase();
+  if (cat === 'anime' || cat === 'anilist') return 'anime';
+  if ([
+    'series',
+    'tv',
+    'cartoon',
+    'k-drama',
+    'asian-drama',
+    'asian_drama',
+    'kdrama',
+    'chinese-drama',
+    'cdrama',
+    'c-drama',
+  ].includes(cat)) {
+    return 'tv';
+  }
+  if (Number(movie?.totalEpisodes || 0) > 1) return 'tv';
+  return 'movie';
+}
+
+// ══════════════════════════════════════════
+// HELPER — build embed sources from MongoDB-driven server config
+//
+// Walks the enabled EmbedServerConfig list (cached up to 5 minutes by
+// ServerConfigService) and produces one source descriptor per server
+// that can yield a valid URL for `movie`. Servers that lack the IDs
+// or URL pattern needed for this title are silently skipped, matching
+// the existing frontend buildHydraSources() shape.
+//
+// Routing rules (Requirement 21.1, 21.2, 21.3):
+//   • standard server → needs tmdbId on movie. Use tvUrlPattern when
+//                       category is anime/tv (multi-episode), else
+//                       movieUrlPattern. Skip if pattern is empty.
+//   • anime server   → needs anilistId on movie. Use animeUrlPattern.
+//                      Skip if pattern is empty.
+//
+// An anime title indexed on TMDB therefore receives URLs from BOTH
+// pools — tmdb-id servers run first (they are higher priority by
+// design) and anilist-id servers act as fallbacks. This mirrors the
+// "TMDB-first" anime strategy documented in embedServers.js and
+// AGENT.md.
+//
+// @param  {object} movie    Lean Movie POJO with tmdbId/anilistId/category fields.
+// @param  {number} season   1-based season number (default 1).
+// @param  {number} episode  1-based episode number (default 1).
+// @returns {Promise<object[]>} Source descriptors sorted by priority asc.
+// ══════════════════════════════════════════
+async function buildEmbedSourcesFromConfig(movie, season = 1, episode = 1) {
+  if (!movie) return [];
+
+  const tmdbId    = movie.tmdbId    ?? movie.tmdb_id    ?? null;
+  const anilistId = movie.anilistId ?? movie.anilist_id ?? null;
+  const category  = detectCategory(movie);
+
+  // Multi-episode-style media (anime / series / tv-like) uses the TV
+  // URL pattern on standard servers. A standalone movie uses the
+  // movie URL pattern. The boolean is precomputed once outside the
+  // loop for clarity.
+  const isMultiEpisode = category === 'anime' || category === 'tv';
+
+  const seasonNum  = Number.isFinite(Number(season))  ? Number(season)  : 1;
+  const episodeNum = Number.isFinite(Number(episode)) ? Number(episode) : 1;
+
+  let enabled;
+  try {
+    // ServerConfigService.getEnabled() honours the 5-minute cache
+    // (Requirement 21.4) and only returns docs where enabled === true
+    // (Requirement 21.3).
+    enabled = await serverConfigService.getEnabled();
+  } catch (err) {
+    // A Mongo failure here must not break the watch endpoint — the
+    // frontend already builds embed sources client-side via
+    // EmbedServers.buildHydraSources() as a fallback. We simply
+    // return no embed sources from the backend so the response stays
+    // backward-compatible.
+    return [];
+  }
+
+  if (!Array.isArray(enabled) || enabled.length === 0) return [];
+
+  const substVars = {
+    tmdbId:    tmdbId    ?? '',
+    season:    seasonNum,
+    episode:   episodeNum,
+    anilistId: anilistId ?? '',
+  };
+
+  const sources = [];
+
+  for (const server of enabled) {
+    if (!server || !server.key) continue;
+
+    let pattern = null;
+
+    if (server.type === 'anime') {
+      // Anime-id-based server: requires AniList ID + animeUrlPattern.
+      if (!anilistId) continue;
+      pattern = server.animeUrlPattern;
+      if (!pattern) continue;
+    } else {
+      // Standard server (or any unknown type — be permissive so a
+      // future schema migration cannot brick the player). Requires
+      // a TMDB ID.
+      if (!tmdbId) continue;
+      pattern = isMultiEpisode ? server.tvUrlPattern : server.movieUrlPattern;
+      if (!pattern) continue;
+    }
+
+    const url = substitutePattern(pattern, substVars);
+    if (!url) continue;
+
+    const isAnime = server.type === 'anime' || category === 'anime';
+
+    sources.push({
+      id:            `hydra-${server.type === 'anime' ? 'anime' : (isMultiEpisode ? 'tv' : 'std')}-${server.key}`,
+      server:        server.key,
+      serverName:    server.name,
+      label:         '', // assigned after sort, so labels reflect final order
+      priority:      Number(server.priority) || 0,
+      url,
+      embedUrl:      url,
+      quality:       'Auto',
+      isExternal:    true,
+      isEmbed:       true,
+      isAnime,
+      timeout:       Number(server.timeout) || 9000,
+      sandboxPolicy: server.sandboxPolicy || 'none',
+      sourceType:    server.key,
+    });
+  }
+
+  // Stable sort by priority ascending (lower priority = higher
+  // preference) so callers can stream attempts in order.
+  sources.sort((a, b) => a.priority - b.priority);
+
+  // Assign human-readable "Server N" labels after sorting so the
+  // numbering matches final attempt order.
+  sources.forEach((s, idx) => {
+    s.label = `Server ${idx + 1}`;
+  });
+
+  return sources;
 }
 
 function buildMaskedMovieSources(movie) {
@@ -445,12 +599,38 @@ router.get('/movie/:id/sources', async (req, res) => {
       return res.status(400).json({ message: 'Invalid movie id' });
     }
 
-    const movie = await Movie.findById(id).select('title videoUrl sourceType qualities sources');
+    // Pull every field needed by both source builders. The original
+    // selection covered uploaded sources only — we additionally need
+    // tmdbId / anilistId / category / totalEpisodes for the
+    // MongoDB-driven embed source builder (Requirement 21.1, 21.2).
+    const movie = await Movie
+      .findById(id)
+      .select('title videoUrl sourceType qualities sources tmdbId tmdb_id anilistId anilist_id category totalEpisodes')
+      .lean();
+
     if (!movie) {
       return res.status(404).json({ message: 'Movie not found' });
     }
 
-    const sources = buildMaskedMovieSources(movie);
+    // Optional season/episode hints for multi-episode titles. Default
+    // to 1/1 so the endpoint stays backward-compatible with existing
+    // callers that don't supply them.
+    const season  = Number.parseInt(req.query.season,  10);
+    const episode = Number.parseInt(req.query.episode, 10);
+    const seasonNum  = Number.isInteger(season)  && season  > 0 ? season  : 1;
+    const episodeNum = Number.isInteger(episode) && episode > 0 ? episode : 1;
+
+    // Run both source builders. Uploaded sources stay exactly as the
+    // existing frontend expects (Primary / Fallback N entries with
+    // type/id/path/quality fields); embed sources are purely additive
+    // and live alongside them in the response.
+    const uploadedSources = buildMaskedMovieSources(movie);
+    const embedSources    = await buildEmbedSourcesFromConfig(movie, seasonNum, episodeNum);
+
+    // Uploaded sources first (highest preference), then embed
+    // sources sorted by priority ascending (handled by the helper).
+    const sources = [...uploadedSources, ...embedSources];
+
     return res.json({
       title: movie.title,
       sources,

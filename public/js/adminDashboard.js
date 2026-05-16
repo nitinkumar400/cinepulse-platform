@@ -1290,12 +1290,17 @@ async function handleDeleteModalSource(button) {
 function toggleAdminPanel(panel) {
   const opsPanel = document.getElementById('contentOpsPanel');
   const healthPanel = document.getElementById('contentHealthPanel');
+  const serverHealthPanel = document.getElementById('serverHealthPanel');
 
   if (!opsPanel || !healthPanel) return;
 
   const isHealth = panel === 'contentHealth';
-  opsPanel.style.display = isHealth ? 'none' : '';
+  const isServerHealth = panel === 'serverHealth';
+  const isOps = !isHealth && !isServerHealth;
+
+  opsPanel.style.display = isOps ? '' : 'none';
   healthPanel.style.display = isHealth ? '' : 'none';
+  if (serverHealthPanel) serverHealthPanel.style.display = isServerHealth ? '' : 'none';
 
   document.querySelectorAll('[data-admin-panel-btn]').forEach((button) => {
     const active = button.dataset.adminPanelBtn === panel;
@@ -1305,6 +1310,17 @@ function toggleAdminPanel(panel) {
 
   if (isHealth) {
     loadBrokenSources();
+  }
+
+  if (isServerHealth && window.ServerHealthDashboard && typeof window.ServerHealthDashboard.init === 'function') {
+    // Lazy-load the dashboard on first activation; subsequent activations
+    // re-render via refresh() so polling/state is preserved.
+    if (!window.__serverHealthDashboardInitialized) {
+      window.__serverHealthDashboardInitialized = true;
+      window.ServerHealthDashboard.init('serverHealthDashboard');
+    } else if (typeof window.ServerHealthDashboard.refresh === 'function') {
+      window.ServerHealthDashboard.refresh();
+    }
   }
 }
 

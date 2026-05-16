@@ -136,23 +136,34 @@
         min-height: 70vh;
         align-items: flex-end;
         padding-bottom: 50px;
+        /* Hint to the browser that horizontal swipes are app-handled gestures
+           (Req 9.5) so the OS doesn't trigger back/forward navigation. */
+        touch-action: pan-y;
       }
       .hero-backdrop::after {
+        /* Vertical gradient overlay — dark at bottom, semi-transparent at top
+           so copy stays legible over any backdrop (Req 9.2). */
         background: linear-gradient(0deg, rgba(0,0,0,1) 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.8) 100%);
       }
       .hero-layout {
+        /* Center-align title, meta row, genre pills and action buttons (Req 9.3). */
         text-align: center;
         margin-top: 0;
       }
       .hero-meta-row {
         justify-content: center;
         margin-bottom: 1.5rem;
+        flex-wrap: wrap;
       }
       .hero-actions {
         justify-content: center;
+        flex-wrap: wrap;
       }
       .hero-actions .btn {
-        padding: 8px 20px;
+        /* Minimum 44×44px touch target for "Play Now" / "More Info" (Req 9.4). */
+        min-width: 44px;
+        min-height: 44px;
+        padding: 12px 24px;
         font-size: 15px;
       }
     }
@@ -315,6 +326,26 @@
       max-width: 58ch;
     }
 
+    /* "See All" link rendered at the right end of every rail header.
+       Spec: cinepulse-platform-overhaul, Requirement 10.4 */
+    .rail-see-all {
+      margin-left: auto;
+      align-self: flex-end;
+      flex-shrink: 0;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 200ms ease, transform 200ms ease;
+      white-space: nowrap;
+    }
+
+    .rail-see-all:hover {
+      color: var(--accent);
+      transform: translateX(2px);
+    }
+
     .stream-rail,
     .movie-rail {
       display: grid;
@@ -433,19 +464,51 @@
 
     @media (max-width: 768px) {
       .hero-spotlight {
-        min-height: auto;
+        /* Note: min-height/align-items/padding-bottom are set in the earlier
+           media query above per Req 9.1–9.3. Only viewport-specific tweaks
+           that do NOT contradict those rules belong here. */
         padding-top: calc(var(--nav-height) + 40px);
-        padding-bottom: 44px;
       }
 
       .control-strip {
         margin-top: -18px;
         border-radius: 22px;
+        /* Allow the inner filter cluster to escape the flex-wrap and scroll
+           horizontally on mobile (Req 12.8). */
+        flex-wrap: nowrap;
+        align-items: stretch;
+      }
+
+      /* ── Mobile Category Filter Bar — Spec Req 12.8 ──
+         Below 768px the pills must remain accessible without wrapping to a
+         second line. Switch the cluster to a single horizontally-scrollable
+         row, hide the scrollbar (matches the rail aesthetic), and let each
+         pill keep its natural width. */
+      .filter-cluster {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        gap: 8px;
+        padding-bottom: 4px;
+        /* Allow the row itself to shrink inside the flex parent so overflow
+           kicks in instead of pushing the .control-hint off-screen. */
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      .filter-cluster::-webkit-scrollbar {
+        display: none;
       }
 
       .home-filter-btn {
-        min-width: 0;
-        flex: 1 1 calc(50% - 8px);
+        /* Override the desktop "fill 50% of the row" behaviour so pills sit
+           on a single non-wrapping row that the user can scroll. */
+        flex: 0 0 auto;
+        min-width: auto;
+        white-space: nowrap;
+        padding: 12px 18px;
       }
 
       .stream-rail {
@@ -504,8 +567,12 @@
   </section>
 
   <section class="control-strip">
+    <!-- Category Filter Bar — Spec: cinepulse-platform-overhaul, Requirement 12.1
+         Pills: All, Hollywood, Anime, Chinese (Donghua), K-Drama, Hindi Dubbed.
+         The "All" pill keeps data-category="" so the rest of the JS (which
+         keys off the empty string for the unfiltered case) keeps working. -->
     <div class="filter-cluster" id="homeCategoryFilters">
-      <button type="button" class="home-filter-btn" data-category="">Recommended</button>
+      <button type="button" class="home-filter-btn" data-category="">All</button>
       <button type="button" class="home-filter-btn" data-category="hollywood">Hollywood</button>
       <button type="button" class="home-filter-btn" data-category="anime">Anime</button>
       <button type="button" class="home-filter-btn" data-category="chinese">Chinese (Donghua)</button>
@@ -514,6 +581,29 @@
     </div>
     <div class="control-hint" id="filterHint">All curated categories are visible right now.</div>
   </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Horizontal scroll rails — rendered in spec order.
+       Spec: cinepulse-platform-overhaul, Requirement 10.1
+
+       Order:
+         1. Continue Watching       (hidden unless localStorage has items)
+         2. Trending This Week
+         3. New Releases
+         4. Top Rated
+         5. Premium Series
+         6. Elite Anime
+         7. Hollywood
+         8. K-Drama
+         9. Chinese (Donghua)
+        10. Hindi Dubbed
+        11. Recommended For You
+
+       Each rail's parent <section class="rail-section"> is hidden by
+       renderRail() when its content array is empty (Req 10.6). The
+       Continue Watching section is hidden by default and only shown
+       when the localStorage history is non-empty (Req 10.2, 10.3).
+       ═══════════════════════════════════════════════════════════════════════ -->
 
   <section class="rail-section" id="continueWatchingSection" style="display:none;">
     <div class="rail-head">
@@ -525,24 +615,13 @@
     <div class="stream-rail" id="continueWatchingRail"></div>
   </section>
 
-  <section class="rail-section" id="recommendedRailSection">
-    <div class="rail-head">
-      <div>
-        <h2 class="rail-title" id="recommendedRailTitle">Recommended Tonight</h2>
-        <div class="rail-subtitle">Your full catalog, tuned to the current URL state and refreshed without reloading the page.</div>
-      </div>
-    </div>
-    <div class="stream-rail" id="recommendedRail">
-      <div class="home-empty">Loading recommendations...</div>
-    </div>
-  </section>
-
   <section class="rail-section">
     <div class="rail-head">
       <div>
-        <h2 class="rail-title">THIS WEEK TRENDING</h2>
+        <h2 class="rail-title">TRENDING THIS WEEK</h2>
         <div class="rail-subtitle">Top-rated, high-velocity titles from the last seven days, with a clean rank overlay for the leaders.</div>
       </div>
+      <a class="rail-see-all" href="/browse/movies">See All →</a>
     </div>
     <div class="stream-rail" id="trendingRail">
       <div class="home-empty">Loading trending titles...</div>
@@ -552,9 +631,36 @@
   <section class="rail-section">
     <div class="rail-head">
       <div>
+        <h2 class="rail-title">NEW RELEASES</h2>
+        <div class="rail-subtitle">Fresh titles just added to the platform.</div>
+      </div>
+      <a class="rail-see-all" href="/browse/movies">See All →</a>
+    </div>
+    <div class="stream-rail" id="newReleasesRail">
+      <div class="home-empty">Loading new releases...</div>
+    </div>
+  </section>
+
+  <section class="rail-section">
+    <div class="rail-head">
+      <div>
+        <h2 class="rail-title">TOP RATED</h2>
+        <div class="rail-subtitle">The highest rated titles in the catalog, curated by audience scores.</div>
+      </div>
+      <a class="rail-see-all" href="/browse/movies">See All →</a>
+    </div>
+    <div class="stream-rail" id="topRatedMoviesRail">
+      <div class="home-empty">Loading top rated titles...</div>
+    </div>
+  </section>
+
+  <section class="rail-section">
+    <div class="rail-head">
+      <div>
         <h2 class="rail-title">PREMIUM SERIES</h2>
         <div class="rail-subtitle">Binge-worthy series elevated into a dedicated premium rail.</div>
       </div>
+      <a class="rail-see-all" href="/browse/series">See All →</a>
     </div>
     <div class="stream-rail" id="seriesRail">
       <div class="home-empty">Loading series lineup...</div>
@@ -567,6 +673,7 @@
         <h2 class="rail-title">ELITE ANIME</h2>
         <div class="rail-subtitle">Curated anime picks surfaced with the same card language as the rest of the app.</div>
       </div>
+      <a class="rail-see-all" href="/browse/anime">See All →</a>
     </div>
     <div class="stream-rail" id="animeRail">
       <div class="home-empty">Loading anime lineup...</div>
@@ -576,36 +683,65 @@
   <section class="rail-section">
     <div class="rail-head">
       <div>
-        <h2 class="rail-title">TOP RATED MOVIES</h2>
-        <div class="rail-subtitle">The highest rated movies in the catalog, curated by audience scores.</div>
+        <h2 class="rail-title">HOLLYWOOD</h2>
+        <div class="rail-subtitle">English-language movies and series from across the globe.</div>
       </div>
+      <a class="rail-see-all" href="/browse/movies">See All →</a>
     </div>
-    <div class="stream-rail" id="topRatedMoviesRail">
-      <div class="home-empty">Loading top rated movies...</div>
+    <div class="stream-rail" id="hollywoodRail">
+      <div class="home-empty">Loading Hollywood titles...</div>
     </div>
   </section>
 
   <section class="rail-section">
     <div class="rail-head">
       <div>
-        <h2 class="rail-title">NEW RELEASES</h2>
-        <div class="rail-subtitle">Fresh titles just added to the platform.</div>
+        <h2 class="rail-title">K-DRAMA</h2>
+        <div class="rail-subtitle">Romance, thrillers, and slice-of-life stories straight from Korea.</div>
       </div>
+      <a class="rail-see-all" href="/browse/kdrama">See All →</a>
     </div>
-    <div class="stream-rail" id="newReleasesRail">
-      <div class="home-empty">Loading new releases...</div>
+    <div class="stream-rail" id="kdramaRail">
+      <div class="home-empty">Loading K-Drama titles...</div>
     </div>
   </section>
 
   <section class="rail-section">
     <div class="rail-head">
       <div>
-        <h2 class="rail-title">MOST POPULAR</h2>
-        <div class="rail-subtitle">The most watched titles across all categories.</div>
+        <h2 class="rail-title">CHINESE (DONGHUA)</h2>
+        <div class="rail-subtitle">Animated epics and live-action favourites from China.</div>
       </div>
+      <a class="rail-see-all" href="/browse/chinese">See All →</a>
     </div>
-    <div class="stream-rail" id="mostPopularRail">
-      <div class="home-empty">Loading popular titles...</div>
+    <div class="stream-rail" id="chineseRail">
+      <div class="home-empty">Loading Chinese (Donghua) titles...</div>
+    </div>
+  </section>
+
+  <section class="rail-section">
+    <div class="rail-head">
+      <div>
+        <h2 class="rail-title">HINDI DUBBED</h2>
+        <div class="rail-subtitle">Bollywood and global hits available with Hindi audio.</div>
+      </div>
+      <a class="rail-see-all" href="/browse/hindi">See All →</a>
+    </div>
+    <div class="stream-rail" id="hindiRail">
+      <div class="home-empty">Loading Hindi Dubbed titles...</div>
+    </div>
+  </section>
+
+  <section class="rail-section" id="recommendedRailSection">
+    <div class="rail-head">
+      <div>
+        <h2 class="rail-title" id="recommendedRailTitle">Recommended For You</h2>
+        <div class="rail-subtitle">Your full catalog, tuned to the current URL state and refreshed without reloading the page.</div>
+      </div>
+      <a class="rail-see-all" href="/browse/movies">See All →</a>
+    </div>
+    <div class="stream-rail" id="recommendedRail">
+      <div class="home-empty">Loading recommendations...</div>
     </div>
   </section>
 
@@ -682,7 +818,7 @@ const SIDEBAR_FILTERS = {
 const CATEGORY_COPY = {
   '': {
     title: 'Recommended Collection',
-    rail: 'Recommended Tonight',
+    rail: 'Recommended For You',
     subtitle: 'No category filter selected, so this panel is showing the strongest mix across the platform.',
     hint: 'All curated categories are visible right now.',
   },
@@ -867,7 +1003,23 @@ function renderRail(containerId, items, options = {}) {
   const playable = (Array.isArray(items) ? items : []).filter(_isPlayableItem);
   const list = playable.length ? playable : items || [];
 
-  if (!list.length) {
+  // ── RAIL VISIBILITY ──
+  // Hide the entire <section class="rail-section"> wrapper when there is
+  // nothing to render (Spec: cinepulse-platform-overhaul, Requirement 10.6).
+  // The Continue Watching rail manages its own visibility via the dedicated
+  // #continueWatchingSection wrapper, so we leave that case to the caller.
+  const section = container.closest('.rail-section');
+  const isEmpty = !list.length;
+
+  if (section && section.id !== 'continueWatchingSection') {
+    if (isEmpty && options.hideWhenEmpty !== false) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = '';
+  }
+
+  if (isEmpty) {
     container.innerHTML = `<div class="home-empty">${escapeHtml(options.emptyText || 'Nothing to show yet.')}</div>`;
     return;
   }
@@ -906,11 +1058,45 @@ function renderHero(movie) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// NETFLIX-STYLE HERO BILLBOARD CAROUSEL (5 rotating items)
+// NETFLIX-STYLE HERO BILLBOARD CAROUSEL (up to 5 rotating items)
+// Spec: cinepulse-platform-overhaul, Requirement 8 (Billboard Hero)
+//   - Auto-advance every 6 seconds (Req 8.3)
+//   - Cross-fade ≤ 600ms (Req 8.4)
+//   - Progress dots with click-to-jump + timer reset (Req 8.5, 8.6)
+//   - Pause auto-advance on hover, resume on mouse-leave (Req 8.7, 8.8)
+//   - Deterministic match score 92–99 derived from _id (Req 8.9)
 // ═══════════════════════════════════════════════════════════════════════════
+const BILLBOARD_ROTATE_MS = 6000;
 let billboardItems = [];
 let billboardIndex = 0;
 let billboardTimer = null;
+
+// Deterministic match score derived from a movie's _id, in the range [92, 99].
+// Same _id always yields the same score — required by Req 8.9.
+function _matchScoreFromId(id) {
+  const s = String(id || '');
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) {
+    hash = ((hash << 5) - hash) + s.charCodeAt(i);
+    hash |= 0; // force 32-bit
+  }
+  return 92 + (Math.abs(hash) % 8); // 92..99 inclusive
+}
+
+function _startBillboardTimer() {
+  if (billboardTimer) clearInterval(billboardTimer);
+  billboardTimer = setInterval(() => {
+    billboardIndex = (billboardIndex + 1) % billboardItems.length;
+    renderBillboardItem(billboardItems[billboardIndex], billboardIndex);
+  }, BILLBOARD_ROTATE_MS);
+}
+
+function _stopBillboardTimer() {
+  if (billboardTimer) {
+    clearInterval(billboardTimer);
+    billboardTimer = null;
+  }
+}
 
 function renderBillboardItem(movie, index) {
   const heroCopy = document.getElementById('heroCopy');
@@ -937,11 +1123,24 @@ function renderBillboardItem(movie, index) {
 
   const backdropUrl = getImageUrl(movie.bannerUrl || movie.thumbnailUrl || '', 'original');
   if (backdropEl) {
-    backdropEl.style.backgroundImage = backdropUrl ? `url('${backdropUrl}')` : 'none';
-    backdropEl.style.transition = 'opacity 0.6s ease';
+    backdropEl.style.transition = 'opacity 0.4s ease';
+    if (backdropUrl) {
+      // Probe the image first — on load failure we keep the dark gradient
+      // background so text/buttons remain legible (Req 8.10).
+      const probe = new Image();
+      probe.onload = () => {
+        backdropEl.style.backgroundImage = `url('${backdropUrl}')`;
+      };
+      probe.onerror = () => {
+        backdropEl.style.backgroundImage = 'none';
+      };
+      probe.src = backdropUrl;
+    } else {
+      backdropEl.style.backgroundImage = 'none';
+    }
   }
 
-  const matchScore = Math.floor(Math.random() * (99 - 92 + 1)) + 92;
+  const matchScore = _matchScoreFromId(movie._id);
   const genres = (movie.genre || []).slice(0, 3).join(' • ');
   const categoryLabel = movie.category === 'anime' ? 'Elite Anime' : (movie.category === 'series' ? 'Premium Series' : 'Movie');
   
@@ -1032,27 +1231,84 @@ function renderBillboardItem(movie, index) {
 }
 
 function startBillboardRotation(items) {
-  billboardItems = items.slice(0, 5);
+  billboardItems = (items || []).slice(0, 5);
   billboardIndex = 0;
   if (billboardItems.length === 0) return;
-  
+
   renderBillboardItem(billboardItems[0], 0);
-  
+
   if (billboardItems.length > 1) {
-    billboardTimer = setInterval(() => {
-      billboardIndex = (billboardIndex + 1) % billboardItems.length;
-      renderBillboardItem(billboardItems[billboardIndex], billboardIndex);
-    }, 8000); // Rotate every 8 seconds
+    _startBillboardTimer();
   }
+
+  // Pause auto-advance on hover (non-touch); resume on mouse-leave (Req 8.7, 8.8).
+  // Bind once per page load — guarded by a data attribute so re-entry is safe.
+  const heroSection = document.querySelector('.hero-spotlight');
+  if (heroSection && heroSection.dataset.billboardHoverBound !== 'true') {
+    heroSection.dataset.billboardHoverBound = 'true';
+    heroSection.addEventListener('mouseenter', () => {
+      if (billboardTimer) _stopBillboardTimer();
+    });
+    heroSection.addEventListener('mouseleave', () => {
+      if (!billboardTimer && billboardItems.length > 1) {
+        _startBillboardTimer();
+      }
+    });
+  }
+
+  // Wire mobile swipe gestures (Req 9.5). Idempotent — guarded by data attribute.
+  _wireBillboardSwipe();
+}
+
+// ── Billboard Swipe Gestures (Req 9.5) ───────────────────────────────────
+// On mobile (touch) devices, swipe-left advances to the next Billboard_Item
+// and swipe-right goes to the previous one. The auto-advance timer resets on
+// every successful swipe so the next rotation is a clean 6-second window.
+//
+// Heuristic — only treat a touch as a horizontal swipe if:
+//   * |dx| > 50px  (ignore taps and tiny smudges)
+//   * |dy| < 30px  (ignore vertical scrolls / diagonal flicks)
+//
+// touchstart events are not dispatched on desktop, so this is a no-op there.
+function _wireBillboardSwipe() {
+  const heroSection = document.querySelector('.hero-spotlight');
+  if (!heroSection || heroSection.dataset.swipeBound === 'true') return;
+  heroSection.dataset.swipeBound = 'true';
+
+  let touchStartX = 0;
+  let touchStartY = 0;
+
+  heroSection.addEventListener('touchstart', (e) => {
+    if (!e.touches || e.touches.length === 0) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  heroSection.addEventListener('touchend', (e) => {
+    if (!e.changedTouches || e.changedTouches.length === 0) return;
+    if (billboardItems.length < 2) return;
+
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+
+    if (dy > 30) return;             // mostly vertical → user is scrolling
+    if (Math.abs(dx) < 50) return;   // tap or tiny swipe — ignore
+
+    if (dx < 0) {
+      // swipe left → next item
+      billboardIndex = (billboardIndex + 1) % billboardItems.length;
+    } else {
+      // swipe right → previous item
+      billboardIndex = (billboardIndex - 1 + billboardItems.length) % billboardItems.length;
+    }
+    renderBillboardItem(billboardItems[billboardIndex], billboardIndex);
+    resetBillboardTimer();
+  }, { passive: true });
 }
 
 function resetBillboardTimer() {
-  if (billboardTimer) clearInterval(billboardTimer);
   if (billboardItems.length > 1) {
-    billboardTimer = setInterval(() => {
-      billboardIndex = (billboardIndex + 1) % billboardItems.length;
-      renderBillboardItem(billboardItems[billboardIndex], billboardIndex);
-    }, 8000);
+    _startBillboardTimer();
   }
 }
 
@@ -1140,9 +1396,32 @@ async function fetchMovieList(endpoint, options = {}) {
 async function loadHeroAndTrending() {
   renderRailLoading('trendingRail', 'Loading trending titles...');
 
+  // ── BILLBOARD + TRENDING CATEGORY FILTER ──
+  // Spec: cinepulse-platform-overhaul, Requirement 12.5
+  //
+  // When a category pill is active, narrow the trending pool (and therefore
+  // the Billboard) to that category. The /movies/trending endpoint only
+  // accepts a single `category` query param (movie/anime/series), so for
+  // language-based filters (hollywood/kdrama/chinese/hindi) we fall back to
+  // /movies with the appropriate language filter sorted by rating — which
+  // is the same shape the trending endpoint itself uses internally when
+  // there is no fresh content in the last 7 days.
+  let endpoint = '/movies/trending?limit=20';
+  if (activeCategory) {
+    if (activeCategory === 'anime') {
+      endpoint = '/movies/trending?category=anime&limit=20';
+    } else {
+      const filterParams = buildSidebarQueryParams(activeCategory);
+      endpoint = filterParams
+        ? `/movies?${filterParams}&sort=highest_rated&limit=20`
+        : '/movies/trending?limit=20';
+    }
+  }
+
   try {
-    const payload = await fetchMovieList('/movies/trending?limit=20');
-    const trending = payload.trending || [];
+    const payload = await fetchMovieList(endpoint);
+    // The two endpoints return different shapes — normalize.
+    const trending = payload.trending || payload.movies || [];
 
     // Filter rail to playable items only (must have tmdb_id or anilist_id)
     const playableTrending = trending.filter(it => (it && (it.tmdbId || it.tmdb_id || it.anilistId || it.anilist_id)));
@@ -1317,12 +1596,59 @@ async function loadNewReleasesRail() {
 }
 
 async function loadMostPopularRail() {
-  renderRailLoading('mostPopularRail', 'Loading popular titles...');
+  // Legacy loader — the "Most Popular" rail was removed from the home page
+  // when the rails were re-ordered to match the spec (Req 10.1). Kept as a
+  // no-op so any external caller (or stale Promise.all entry) won't throw.
+  return;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Region/language rails — Hollywood, K-Drama, Chinese (Donghua), Hindi.
+// Spec: cinepulse-platform-overhaul, Requirement 10.1
+//
+// Each rail filters the catalog by `original_language` so the See All link
+// (which targets /browse/<key>) lands on a result set with the same shape.
+// `renderRail()` automatically hides the parent <section> when the result
+// set is empty (Req 10.6), so we don't need extra hide logic here.
+// ─────────────────────────────────────────────────────────────────────────
+
+async function loadHollywoodRail() {
+  renderRailLoading('hollywoodRail', 'Loading Hollywood titles...');
   try {
-    const payload = await fetchMovieList('/movies?limit=15&sort=most_viewed');
-    renderRail('mostPopularRail', payload.movies || [], { emptyText: 'Popular titles will appear here.' });
+    const payload = await fetchMovieList('/movies?original_language=en&limit=15&sort=highest_rated');
+    renderRail('hollywoodRail', payload.movies || [], { emptyText: 'Hollywood titles will appear here.' });
   } catch (error) {
-    renderRail('mostPopularRail', [], { emptyText: 'Could not load popular titles.' });
+    renderRail('hollywoodRail', [], { emptyText: 'Could not load Hollywood titles.' });
+  }
+}
+
+async function loadKDramaRail() {
+  renderRailLoading('kdramaRail', 'Loading K-Drama titles...');
+  try {
+    const payload = await fetchMovieList('/movies?original_language=ko&limit=15&sort=highest_rated');
+    renderRail('kdramaRail', payload.movies || [], { emptyText: 'K-Drama titles will appear here.' });
+  } catch (error) {
+    renderRail('kdramaRail', [], { emptyText: 'Could not load K-Drama titles.' });
+  }
+}
+
+async function loadChineseRail() {
+  renderRailLoading('chineseRail', 'Loading Chinese (Donghua) titles...');
+  try {
+    const payload = await fetchMovieList('/movies?original_language=zh&limit=15&sort=highest_rated');
+    renderRail('chineseRail', payload.movies || [], { emptyText: 'Chinese (Donghua) titles will appear here.' });
+  } catch (error) {
+    renderRail('chineseRail', [], { emptyText: 'Could not load Chinese (Donghua) titles.' });
+  }
+}
+
+async function loadHindiRail() {
+  renderRailLoading('hindiRail', 'Loading Hindi Dubbed titles...');
+  try {
+    const payload = await fetchMovieList('/movies?original_language=hi&limit=15&sort=highest_rated');
+    renderRail('hindiRail', payload.movies || [], { emptyText: 'Hindi Dubbed titles will appear here.' });
+  } catch (error) {
+    renderRail('hindiRail', [], { emptyText: 'Could not load Hindi Dubbed titles.' });
   }
 }
 
@@ -1331,10 +1657,27 @@ function refreshCategorySections() {
     clearTimeout(categoryRefreshTimer);
   }
 
+  // ── CATEGORY FILTER REFRESH ──
+  // Spec: cinepulse-platform-overhaul, Requirement 12.4 + 12.5
+  //
+  // When the user picks a category pill we re-fetch the sections that are
+  // *driven* by `activeCategory`:
+  //   * Recommended rail   → narrowed by buildSidebarQueryParams()
+  //   * Spotlight grid     → narrowed by buildSidebarQueryParams()
+  //   * Featured posters   → narrowed by buildSidebarQueryParams()
+  //   * Hero + Trending    → narrowed via loadHeroAndTrending() so the
+  //                           Billboard updates per Req 12.5
+  //
+  // The static-language rails (Hollywood=en, K-Drama=ko, Chinese=zh,
+  // Hindi=hi, Elite Anime, Premium Series, Top Rated, New Releases) are
+  // intentionally left as-is — they already represent their own slice of
+  // the catalog and don't need to be re-narrowed when the user toggles a
+  // different category pill.
   categoryRefreshTimer = setTimeout(() => {
     loadRecommendedRail();
     loadSpotlightGrid();
     loadHomepagePosterGrid();
+    loadHeroAndTrending();
   }, 120);
 }
 
@@ -1350,11 +1693,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   await Promise.all([
     loadHeroAndTrending(),
     loadRecommendedRail(),
+    loadNewReleasesRail(),
+    loadTopRatedMoviesRail(),
     loadCategoryRail('series', 'seriesRail', 'Premium series will appear here once titles are available.'),
     loadCategoryRail('anime', 'animeRail', 'Elite anime will appear here once titles are available.'),
-    loadTopRatedMoviesRail(),
-    loadNewReleasesRail(),
-    loadMostPopularRail(),
+    loadHollywoodRail(),
+    loadKDramaRail(),
+    loadChineseRail(),
+    loadHindiRail(),
     loadSpotlightGrid(),
     loadHomepagePosterGrid(),
   ]);

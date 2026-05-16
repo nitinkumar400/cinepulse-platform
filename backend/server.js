@@ -37,6 +37,9 @@ const userRoutes = require('./routes/users');
 const { aiRouter } = require('./routes/aiRoutes');
 const mcpRoutes = require('./routes/mcp');
 const syncRoutes = require('./routes/sync');
+const adminServersRoutes = require('./routes/adminServers');
+const browseRoutes = require('./routes/browse');
+const serverConfigService = require('./services/serverConfigService');
 const Movie = require('./models/Movie');
 
 const app = express();
@@ -302,6 +305,11 @@ app.use('/api/mcp', mcpRoutes);
 // WARN A-3 fix: dedicated tight limiter for sync — prevents TMDB quota exhaustion
 // from a compromised admin token or accidental hammering.
 app.use('/api/sync', syncLimiter, syncRoutes);
+// CinePulse overhaul: admin embed-server management + public Netflix-style browse.
+// adminServers requires admin JWT (or Vercel Cron header for the health/run endpoint);
+// browse is public and read-only.
+app.use('/api/admin/servers', adminServersRoutes);
+app.use('/api/browse', browseRoutes);
 
 if (app._router && Array.isArray(app._router.stack)) {
   wrapLayerHandlers(app._router.stack);
@@ -353,6 +361,19 @@ async function startServer() {
   await connectDB();
   await ensureAdminAccount();
 
+  // CinePulse overhaul: seed embed_server_configs on first run.
+  // Wrapped so a seeding failure (e.g. transient DB hiccup) does not
+  // prevent the HTTP server from coming up — the player falls back to
+  // the legacy hardcoded embedServers.js list in that case.
+  try {
+    await serverConfigService.seedIfEmpty();
+  } catch (error) {
+    logger.error('ServerConfigService.seedIfEmpty failed during startup', {
+      error: error.message,
+      stack: error.stack,
+    });
+  }
+
   app.listen(PORT, HOST, () => {
     const networkIp = getLocalIp();
     logger.info('CINE STREAM server started', {
@@ -391,9 +412,18 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
   });
 } else {
   // On Vercel / production serverless, connect to DB and ensure admin account
-  connectDB().then(() => ensureAdminAccount()).catch(err => {
-    logger.error('Vercel DB initialization failed', { error: err.message });
-  });
+  connectDB()
+    .then(() => ensureAdminAccount())
+    .then(() => serverConfigService.seedIfEmpty().catch((error) => {
+      // Seeding failures are logged but never block the cold start —
+      // the player falls back to the hardcoded embed server list.
+      logger.error('ServerConfigService.seedIfEmpty failed on Vercel cold start', {
+        error: error.message,
+      });
+    }))
+    .catch(err => {
+      logger.error('Vercel DB initialization failed', { error: err.message });
+    });
 }
 
 // Export for Vercel serverless deployment

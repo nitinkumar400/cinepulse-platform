@@ -25,13 +25,15 @@
     { "source": "/watch/documentary/:id", "destination": "/pages/movie-details.html?id=:id" },
     { "source": "/watch/cartoon/:id",     "destination": "/pages/movie-details.html?id=:id" },
     { "source": "/watch/:id",             "destination": "/pages/movie-details.html?id=:id" },
+    { "source": "/browse/:category",      "destination": "/pages/browse.html" },
     { "source": "/api/(.*)",              "destination": "/api/server.js" },
     { "source": "/health",                "destination": "/api/server.js" },
     { "source": "/sitemap.xml",           "destination": "/api/server.js" }
   ],
   "crons": [
-    { "path": "/api/sync",       "schedule": "0 3 * * *" },
-    { "path": "/api/sync/anime", "schedule": "30 3 * * *" }
+    { "path": "/api/sync",                       "schedule": "0 3 * * *" },
+    { "path": "/api/sync/anime",                 "schedule": "30 3 * * *" },
+    { "path": "/api/admin/servers/health/run",   "schedule": "*/30 * * * *" }
   ],
   "headers": [
     {

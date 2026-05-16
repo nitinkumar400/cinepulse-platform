@@ -147,6 +147,212 @@ const EmbedServers = (() => {
   // ═══════════════════════════════════════════════════════════════════════════
   let serverStatus = {};
 
+  // MongoDB-fetch mode (Task 10.1, Requirement 21).
+  //
+  // `loadFromMongoDB()` is opt-in: pages that want admin-controlled
+  // server config call `EmbedServers.loadFromMongoDB()` early in their
+  // boot. On success, the STANDARD_SERVERS / ANIME_SERVERS objects are
+  // mutated in place to reflect the MongoDB-stored documents, so every
+  // existing call site (`buildHydraSources`, `canPlay`, `getServerList`,
+  // etc.) automatically picks up the new list with NO source changes.
+  //
+  // On failure (network error, non-2xx, empty list) we log a warning
+  // and continue with the hardcoded list silently — the player must
+  // never break because of a config-fetch failure (Requirement 21.5
+  // graceful-fallback intent).
+  //
+  // `_mongoLoadPromise` deduplicates concurrent calls so multiple
+  // initialisers in the same page don't fire multiple HTTP requests.
+  let _isLoadedFromMongo = false;
+  let _mongoLoadPromise  = null;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // URL PATTERN SUBSTITUTION
+  // Mirrors backend/services/serverHealthService.js so the same `{tmdbId}`,
+  // `{season}`, `{episode}`, `{anilistId}` placeholders work both server-
+  // side (health probes) and client-side (player URLs). Missing variables
+  // substitute as the empty string rather than throwing — keeps the player
+  // resilient when a partially populated movie record reaches this layer.
+  // ═══════════════════════════════════════════════════════════════════════════
+  function substitutePattern(pattern, vars) {
+    if (typeof pattern !== 'string') return '';
+    const v = vars || {};
+    return pattern
+      .split('{tmdbId}').join(String(v.tmdbId    != null ? v.tmdbId    : ''))
+      .split('{season}').join(String(v.season    != null ? v.season    : ''))
+      .split('{episode}').join(String(v.episode  != null ? v.episode   : ''))
+      .split('{anilistId}').join(String(v.anilistId != null ? v.anilistId : ''));
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LOAD FROM MONGODB (opt-in MongoDB-driven config — Requirement 21.1–21.3)
+  // ───────────────────────────────────────────────────────────────────────────
+  // Fetches the enabled server list from `GET /api/admin/servers/public`
+  // (a dedicated public endpoint that returns only safe fields) and rebuilds
+  // STANDARD_SERVERS and ANIME_SERVERS in place. Idempotent and dedupe-safe.
+  //
+  // Why mutate in place instead of replacing the references?
+  //   The two collection objects are captured by closure inside this IIFE
+  //   AND exported on the public API surface (`EmbedServers.STANDARD_SERVERS`).
+  //   Reassigning the locals would leave the exported reference dangling.
+  //   Clearing keys + assigning new ones keeps every existing reference live.
+  //
+  // Returns: Promise<boolean> — true on successful load, false on any
+  //          fallback path (so callers can branch UI if they care).
+  // ═══════════════════════════════════════════════════════════════════════════
+  async function loadFromMongoDB() {
+    // Dedupe concurrent calls — first caller wins, every later caller
+    // awaits the same promise. After resolution the cached promise is
+    // kept around so subsequent calls become a cheap no-op via the
+    // `_isLoadedFromMongo` short-circuit on the next call.
+    if (_mongoLoadPromise) return _mongoLoadPromise;
+
+    _mongoLoadPromise = (async () => {
+      // Resolve API base. `API_BASE` is set globally by config.js on every
+      // page that uses this module; fall back to the relative `/api` so
+      // the function still works if loaded standalone.
+      const apiBase = (typeof window !== 'undefined' && (window.API_BASE
+        || (window.__APP_CONFIG && window.__APP_CONFIG.apiBase))) || '/api';
+
+      try {
+        const response = await fetch(`${apiBase}/admin/servers/public`, {
+          method:  'GET',
+          headers: { Accept: 'application/json' },
+          // No credentials needed — endpoint is intentionally public so
+          // anonymous viewers can load admin-controlled server configs.
+          credentials: 'omit',
+        });
+
+        if (!response.ok) {
+          console.warn(
+            '[EmbedServers] loadFromMongoDB: HTTP',
+            response.status,
+            '— continuing with hardcoded server list',
+          );
+          return false;
+        }
+
+        const payload = await response.json();
+        // sendSuccess() wraps the payload as { success, servers, ... }.
+        // Accept either the wrapped shape or a bare { servers } for
+        // forward-compat with future response shapes.
+        const servers = (payload && Array.isArray(payload.servers))
+          ? payload.servers
+          : (payload && payload.data && Array.isArray(payload.data.servers))
+            ? payload.data.servers
+            : null;
+
+        if (!Array.isArray(servers) || servers.length === 0) {
+          console.warn(
+            '[EmbedServers] loadFromMongoDB: empty server list — continuing with hardcoded server list',
+          );
+          return false;
+        }
+
+        // ----- Build the new pools off to the side first -------------
+        // We deliberately do NOT mutate STANDARD_SERVERS / ANIME_SERVERS
+        // until we've confirmed the response actually produces at least
+        // one usable entry. Otherwise a malformed response (entries
+        // present but every one missing a `key` or `type`) would leave
+        // the player with empty pools — worse than the hardcoded fallback.
+        const nextStandard = {};
+        const nextAnime    = {};
+
+        for (const s of servers) {
+          if (!s || typeof s.key !== 'string' || !s.key.trim()) continue;
+
+          // Each entry mirrors the legacy hardcoded shape so downstream
+          // builders (`buildHydraSources`, etc.) need no changes.
+          const entry = {
+            name:          String(s.name || s.key),
+            key:           s.key,
+            priority:      Number.isFinite(s.priority) ? s.priority : 999,
+            sandboxPolicy: s.sandboxPolicy || 'none',
+            timeout:       Number.isFinite(s.timeout) ? s.timeout : 9000,
+          };
+
+          if (s.type === 'standard') {
+            // Closure captures the pattern strings — substitution is
+            // deferred until the URL is actually requested.
+            if (typeof s.movieUrlPattern === 'string' && s.movieUrlPattern) {
+              const movieP = s.movieUrlPattern;
+              entry.movieUrl = (tmdbId) => substitutePattern(movieP, { tmdbId });
+            } else {
+              // Always provide the function so call sites that don't
+              // bother with category detection don't crash.
+              entry.movieUrl = () => null;
+            }
+            if (typeof s.tvUrlPattern === 'string' && s.tvUrlPattern) {
+              const tvP = s.tvUrlPattern;
+              entry.tvUrl = (tmdbId, season, episode) =>
+                substitutePattern(tvP, { tmdbId, season, episode });
+            } else {
+              entry.tvUrl = () => null;
+            }
+            nextStandard[s.key] = entry;
+          } else if (s.type === 'anime') {
+            if (typeof s.animeUrlPattern === 'string' && s.animeUrlPattern) {
+              const animeP = s.animeUrlPattern;
+              entry.animeUrl = (anilistId, episode) =>
+                substitutePattern(animeP, { anilistId, episode });
+            } else {
+              entry.animeUrl = () => null;
+            }
+            nextAnime[s.key] = entry;
+          }
+          // Unknown `type` values are silently ignored — forward-compat
+          // for any future server categories the backend may introduce.
+        }
+
+        const standardCount = Object.keys(nextStandard).length;
+        const animeCount    = Object.keys(nextAnime).length;
+
+        if (standardCount === 0 && animeCount === 0) {
+          // The response had entries but none were usable. Leave the
+          // hardcoded pools untouched so the player keeps working.
+          console.warn(
+            '[EmbedServers] loadFromMongoDB: response had no usable servers — continuing with hardcoded server list',
+          );
+          return false;
+        }
+
+        // ----- Commit: mutate the live pools in place ---------------
+        // Now that we've validated the new pools are non-empty, swap
+        // them into the exported objects. We mutate (not reassign)
+        // because the references are captured by closure throughout
+        // the rest of this module AND exposed on `EmbedServers.STANDARD_SERVERS`.
+        Object.keys(STANDARD_SERVERS).forEach((k) => { delete STANDARD_SERVERS[k]; });
+        Object.keys(ANIME_SERVERS).forEach((k)    => { delete ANIME_SERVERS[k];    });
+        Object.assign(STANDARD_SERVERS, nextStandard);
+        Object.assign(ANIME_SERVERS,    nextAnime);
+
+        _isLoadedFromMongo = true;
+        // Use info-level so admins can verify in DevTools that the
+        // MongoDB-driven config actually took effect on the page.
+        console.info(
+          '[EmbedServers] Loaded from MongoDB:',
+          standardCount, 'standard /', animeCount, 'anime servers',
+        );
+        return true;
+      } catch (error) {
+        // Network failure, CORS, JSON parse error, etc. The hardcoded
+        // STANDARD_SERVERS/ANIME_SERVERS were never touched in this
+        // path, so the player continues to work without code changes.
+        console.warn(
+          '[EmbedServers] loadFromMongoDB failed:',
+          (error && error.message) || error,
+          '— continuing with hardcoded server list',
+        );
+        // Reset the dedupe latch so a subsequent retry (e.g., user
+        // reconnects) can attempt the load again.
+        _mongoLoadPromise = null;
+        return false;
+      }
+    })();
+
+    return _mongoLoadPromise;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // DETECT MEDIA CATEGORY
   // Returns: 'anime' | 'tv' | 'movie'
@@ -604,6 +810,15 @@ const EmbedServers = (() => {
     renderServerSelector,
     renderTvControls,
     getServerList,
+    // MongoDB-driven config (Task 10.1, Requirements 21.1–21.3)
+    //   • loadFromMongoDB()    — opt-in async loader; mutates the
+    //                            STANDARD_SERVERS/ANIME_SERVERS pools
+    //                            in place on success.
+    //   • isLoadedFromMongo()  — read-only flag the caller can use to
+    //                            branch UI (e.g., "Servers managed
+    //                            via admin panel" badge).
+    loadFromMongoDB,
+    isLoadedFromMongo: () => _isLoadedFromMongo,
   };
 })();
 

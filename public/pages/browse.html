@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#e50914">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CineStream">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <!--
+    Title is set to a generic "Browse" — `browse.js` rewrites the document
+    title at runtime once it detects the active category from the URL path
+    (e.g. "Browse Anime · CINE STREAM"). Spec: cinepulse-platform-overhaul,
+    Requirement 13.2.
+  -->
+  <title>Browse - CINE STREAM</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="stylesheet" href="../css/theme.css">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+  <style>
+    /* ═══════════════════════════════════════════════════════════════════════
+       Browse Page — Shared Template Styles
+       Spec: cinepulse-platform-overhaul, Requirements 13.x, 14.x, 16–18
+
+       This single HTML file serves all six browse routes:
+         /browse/movies, /browse/anime, /browse/series,
+         /browse/kdrama, /browse/chinese, /browse/hindi
+       Vercel rewrites each path to /pages/browse.html. browse.js detects the
+       active category at runtime via window.location.pathname and rewrites
+       the dynamic text/IDs (breadcrumb, hero title, search placeholder, etc.).
+       ═══════════════════════════════════════════════════════════════════════ */
+
+    .browse-shell {
+      padding-top: calc(var(--nav-height) + 24px);
+      padding-bottom: 80px;
+    }
+
+    /* Breadcrumb — Req 13.2 ──────────────────────────────────────────────── */
+    .browse-breadcrumb {
+      padding: 12px 4% 0;
+      font-size: 13px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .browse-breadcrumb a {
+      color: var(--text-muted);
+      transition: color 0.2s ease;
+    }
+    .browse-breadcrumb a:hover {
+      color: var(--text-primary);
+    }
+    .browse-breadcrumb [aria-current="page"] {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    .browse-breadcrumb .breadcrumb-sep {
+      color: var(--text-muted);
+      opacity: 0.6;
+    }
+
+    /* Category Hero Banner — Req 13.3 ────────────────────────────────────── */
+    .browse-hero {
+      position: relative;
+      margin: 16px 4% 24px;
+      min-height: 220px;
+      border-radius: 22px;
+      overflow: hidden;
+      display: flex;
+      align-items: flex-end;
+      padding: 28px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+    }
+    .browse-hero-bg {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center 35%;
+      z-index: 1;
+      transition: opacity 0.4s ease;
+    }
+    .browse-hero-bg::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.85) 100%);
+    }
+    .browse-hero-content {
+      position: relative;
+      z-index: 2;
+      max-width: 720px;
+    }
+    .browse-hero-title {
+      font-family: var(--font-display);
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      text-shadow: 2px 2px 8px rgba(0,0,0,0.6);
+    }
+    .browse-hero-subtitle {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      max-width: 56ch;
+    }
+
+    /* Search + Filters Toggle Row — Req 17, 14.6 ─────────────────────────── */
+    .browse-search-wrap {
+      position: relative;
+      margin: 0 4% 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .browse-search-wrap .ri-search-line {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 16px;
+      pointer-events: none;
+    }
+    .browse-search {
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 12px 16px 12px 42px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 14px;
+      transition: var(--transition);
+    }
+    .browse-search:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: rgba(255,255,255,0.04);
+    }
+    .browse-filters-toggle {
+      display: none; /* desktop hides toggle; only visible <1024px (Req 14.6) */
+      align-items: center;
+      gap: 8px;
+      padding: 12px 18px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      white-space: nowrap;
+    }
+    .browse-filters-toggle:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Subbed/Dubbed toggle (anime only) — Req 16 ─────────────────────────── */
+    .browse-subdub-toggle {
+      margin: 0 4% 14px;
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+    }
+    .browse-subdub-toggle .subdub-btn {
+      padding: 8px 18px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .browse-subdub-toggle .subdub-btn.active {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(229, 9, 20, 0.3);
+    }
+
+    /* Active filter pills row — Req 14.3, 14.4, 14.5 ─────────────────────── */
+    .browse-active-pills {
+      margin: 0 4% 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .browse-active-pills:empty {
+      display: none;
+    }
+    .browse-active-pills .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .browse-active-pills .pill button {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+      transition: color 0.2s ease;
+    }
+    .browse-active-pills .pill button:hover {
+      color: var(--accent);
+    }
+    .browse-active-pills .clear-all-btn {
+      margin-left: auto;
+      padding: 6px 14px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .browse-active-pills .clear-all-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Layout: sidebar + content — Req 14.6, 14.7 ─────────────────────────── */
+    .browse-layout {
+      padding: 0 4%;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    /* Filter Sidebar — Req 14.1 ──────────────────────────────────────────── */
+    .browse-sidebar {
+      position: sticky;
+      top: calc(var(--nav-height) + 16px);
+      max-height: calc(100vh - var(--nav-height) - 32px);
+      overflow-y: auto;
+      padding: 20px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .browse-sidebar h3 {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+      margin: 0;
+    }
+    .browse-sidebar .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .browse-sidebar .filter-group h4 {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin: 0 0 4px;
+    }
+    .browse-sidebar .filter-checkboxes {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .browse-sidebar .filter-checkboxes label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 4px 0;
+    }
+    .browse-sidebar .filter-checkboxes input[type="checkbox"] {
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .browse-sidebar .filter-range {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .browse-sidebar .filter-range input {
+      flex: 1 1 0;
+      min-width: 0;
+      padding: 8px 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 13px;
+      transition: var(--transition);
+    }
+    .browse-sidebar .filter-range input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .browse-sidebar .filter-range span {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .browse-sidebar .filter-select {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .browse-sidebar .filter-select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .browse-sidebar .apply-filters-btn,
+    .browse-sidebar .clear-filters-btn {
+      margin-top: 4px;
+    }
+    .browse-sidebar .sidebar-close {
+      align-self: flex-end;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .browse-sidebar .sidebar-close:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Main content + grid — Req 13.4, 13.5 ───────────────────────────────── */
+    .browse-content {
+      min-width: 0;
+    }
+    .browse-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 18px;
+    }
+    .browse-grid:empty + .browse-grid-sentinel + .browse-loading + .browse-end {
+      /* No items yet — keep sentinel visible so the observer wires up */
+    }
+    .browse-grid-sentinel {
+      height: 1px;
+      width: 100%;
+    }
+
+    /* Loading spinner — Req 13.8 ─────────────────────────────────────────── */
+    .browse-loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 40px 0;
+    }
+    .browse-loading .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: browse-spin 0.9s linear infinite;
+    }
+    @keyframes browse-spin {
+      to { transform: rotate(360deg); }
+    }
+    .browse-end {
+      text-align: center;
+      padding: 30px 0;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    /* Empty / error states */
+    .browse-empty,
+    .browse-error {
+      grid-column: 1 / -1;
+      padding: 36px 20px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px dashed rgba(255, 255, 255, 0.12);
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    /* ── Mobile (<1024px) — Sidebar becomes a slide-in drawer (Req 14.6) ── */
+    @media (max-width: 1023.98px) {
+      .browse-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .browse-filters-toggle {
+        display: inline-flex;
+      }
+
+      /* Sidebar starts off-screen as a drawer; .open class slides it in */
+      .browse-sidebar {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100vh;
+        max-height: 100vh;
+        width: min(85vw, 340px);
+        border-radius: 0;
+        border-left: 1px solid var(--border);
+        z-index: 1100;
+        transform: translateX(100%);
+        transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: -10px 0 36px rgba(0, 0, 0, 0.5);
+      }
+      .browse-sidebar.open {
+        transform: translateX(0);
+      }
+      .browse-sidebar .sidebar-close {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* Backdrop (toggled by browse.js) */
+      .browse-sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 1099;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+      }
+      .browse-sidebar-backdrop.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+    }
+
+    /* ≥1024px: hide the close button — sidebar is a permanent left panel */
+    @media (min-width: 1024px) {
+      .browse-sidebar .sidebar-close {
+        display: none !important;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .browse-hero {
+        margin: 12px 4% 18px;
+        min-height: 160px;
+        padding: 20px;
+      }
+      .browse-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ──────────────────────────────────────────────────────────────────────────
+     Navbar — reuses the same markup as index.html (Req 13.1, navigation
+     consistency). app.js wires up the search dropdown and active-link state.
+     ────────────────────────────────────────────────────────────────────── -->
+<nav class="navbar" id="navbar">
+  <a href="/" class="nav-logo">CINE<span>STREAM</span></a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/browse/movies">Movies</a>
+    <a href="/browse/anime">Anime</a>
+    <a href="/browse/series">Series</a>
+    <a href="/browse/kdrama">K-Drama</a>
+    <a href="/browse/chinese">Chinese</a>
+    <a href="/browse/hindi">Hindi</a>
+  </div>
+  <div class="nav-right">
+    <div class="nav-search" style="position:relative;">
+      <i class="ri-search-line search-icon"></i>
+      <input type="text" id="searchInput" placeholder="Search movies, anime, series...">
+    </div>
+    <div id="userSection"></div>
+  </div>
+</nav>
+
+<div class="browse-shell">
+
+  <!-- Breadcrumb — Req 13.2
+       Format: "Home › {Category Name}". The final segment carries
+       aria-current="page" so screen readers identify it as the current
+       location, and the surrounding <nav> uses aria-label="breadcrumb". -->
+  <nav class="browse-breadcrumb" aria-label="breadcrumb">
+    <a href="/">Home</a>
+    <span class="breadcrumb-sep" aria-hidden="true">›</span>
+    <span aria-current="page" id="breadcrumbCategory">Browse</span>
+  </nav>
+
+  <!-- Category Hero Banner — Req 13.3
+       browse.js sets the background-image, heading text and subtitle based
+       on the detected category. -->
+  <section class="browse-hero" id="browseHero">
+    <div class="browse-hero-bg" id="browseHeroBg" aria-hidden="true"></div>
+    <div class="browse-hero-content">
+      <h1 class="browse-hero-title" id="browseHeroTitle">Browse</h1>
+      <p class="browse-hero-subtitle" id="browseHeroSubtitle">Loading category…</p>
+    </div>
+  </section>
+
+  <!-- In-category search + mobile "Filters" trigger — Req 17, 14.6
+       Placeholder is updated at runtime to "Search within {Category}…". -->
+  <div class="browse-search-wrap">
+    <i class="ri-search-line" aria-hidden="true"></i>
+    <input
+      type="text"
+      class="browse-search"
+      id="browseSearch"
+      placeholder="Search within Browse…"
+      aria-label="Search within category"
+      autocomplete="off"
+    />
+    <button
+      type="button"
+      class="browse-filters-toggle"
+      id="browseFiltersToggle"
+      aria-controls="browseSidebar"
+      aria-expanded="false"
+    >
+      <i class="ri-filter-3-line" aria-hidden="true"></i>
+      <span>Filters</span>
+    </button>
+  </div>
+
+  <!-- Subbed/Dubbed toggle — Req 16
+       Hidden by default; browse.js reveals this only on the anime category. -->
+  <div class="browse-subdub-toggle" id="browseSubDubToggle" style="display:none;" role="group" aria-label="Subbed or Dubbed">
+    <button type="button" class="subdub-btn active" data-subdub="subbed">Subbed</button>
+    <button type="button" class="subdub-btn" data-subdub="dubbed">Dubbed</button>
+  </div>
+
+  <!-- Active filter pills — Req 14.3, 14.4, 14.5
+       Populated dynamically by browse.js. The "Clear All Filters" button is
+       appended only when ≥1 filter is active. The :empty selector hides the
+       row entirely when no filters are present. -->
+  <div class="browse-active-pills" id="browseActivePills" aria-live="polite"></div>
+
+  <div class="browse-layout">
+
+    <!-- Filter Sidebar — Req 14.1 -->
+    <aside class="browse-sidebar" id="browseSidebar" aria-label="Filters">
+      <button
+        type="button"
+        class="sidebar-close"
+        id="sidebarClose"
+        aria-label="Close filters"
+      >×</button>
+      <h3>Filters</h3>
+
+      <!-- Genre — multi-select checkboxes (populated by browse.js) -->
+      <div class="filter-group">
+        <h4>Genre</h4>
+        <div class="filter-checkboxes" id="filterGenreCheckboxes"></div>
+      </div>
+
+      <!-- Year — dual numeric input range -->
+      <div class="filter-group">
+        <h4>Year</h4>
+        <div class="filter-range">
+          <input
+            type="number"
+            id="filterYearMin"
+            placeholder="From"
+            min="1900"
+            max="2030"
+            aria-label="Year from"
+          />
+          <span aria-hidden="true">–</span>
+          <input
+            type="number"
+            id="filterYearMax"
+            placeholder="To"
+            min="1900"
+            max="2030"
+            aria-label="Year to"
+          />
+        </div>
+      </div>
+
+      <!-- Rating — 0.0 to 10.0, step 0.5 -->
+      <div class="filter-group">
+        <h4>Rating</h4>
+        <div class="filter-range">
+          <input
+            type="number"
+            id="filterRatingMin"
+            placeholder="Min"
+            min="0"
+            max="10"
+            step="0.5"
+            aria-label="Minimum rating"
+          />
+          <span aria-hidden="true">–</span>
+          <input
+            type="number"
+            id="filterRatingMax"
+            placeholder="Max"
+            min="0"
+            max="10"
+            step="0.5"
+            aria-label="Maximum rating"
+          />
+        </div>
+      </div>
+
+      <!-- Language — multi-select checkboxes -->
+      <div class="filter-group">
+        <h4>Language</h4>
+        <div class="filter-checkboxes" id="filterLanguageCheckboxes">
+          <label><input type="checkbox" value="en"> English</label>
+          <label><input type="checkbox" value="hi"> Hindi</label>
+          <label><input type="checkbox" value="ja"> Japanese</label>
+          <label><input type="checkbox" value="ko"> Korean</label>
+          <label><input type="checkbox" value="zh"> Chinese</label>
+        </div>
+      </div>
+
+      <!-- Status — checkboxes -->
+      <div class="filter-group">
+        <h4>Status</h4>
+        <div class="filter-checkboxes" id="filterStatusCheckboxes">
+          <label><input type="checkbox" value="Ongoing"> Ongoing</label>
+          <label><input type="checkbox" value="Completed"> Completed</label>
+          <label><input type="checkbox" value="Upcoming"> Upcoming</label>
+          <label><input type="checkbox" value="Cancelled"> Cancelled</label>
+        </div>
+      </div>
+
+      <!-- Sort By — single select -->
+      <div class="filter-group">
+        <h4>Sort By</h4>
+        <select id="filterSortBy" class="filter-select" aria-label="Sort order">
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="rating">Highest Rated</option>
+          <option value="popular">Most Popular</option>
+          <option value="az">A → Z</option>
+          <option value="za">Z → A</option>
+        </select>
+      </div>
+
+      <button
+        type="button"
+        class="btn btn-primary btn-full apply-filters-btn"
+        id="applyFiltersBtn"
+      >Apply Filters</button>
+      <button
+        type="button"
+        class="btn btn-outline btn-full clear-filters-btn"
+        id="clearFiltersBtn"
+      >Clear All</button>
+    </aside>
+
+    <!-- Main content: card grid + infinite scroll sentinel — Req 13.4–13.8 -->
+    <main class="browse-content">
+      <div class="browse-grid" id="browseGrid" aria-live="polite"></div>
+      <!-- IntersectionObserver sentinel (Req 13.6) -->
+      <div class="browse-grid-sentinel" id="browseGridSentinel" aria-hidden="true"></div>
+      <!-- Loading spinner shown while fetching the next page (Req 13.8) -->
+      <div class="browse-loading" id="browseLoading" style="display:none;" aria-hidden="true">
+        <div class="spinner"></div>
+      </div>
+      <!-- "End of results" message — shown when hasMore === false (Req 13.7) -->
+      <div class="browse-end" id="browseEnd" style="display:none;">You've reached the end.</div>
+    </main>
+
+  </div>
+
+  <!-- Backdrop for the mobile sidebar drawer — toggled by browse.js -->
+  <div class="browse-sidebar-backdrop" id="browseSidebarBackdrop" aria-hidden="true"></div>
+</div>
+
+<footer class="footer">
+  <div class="footer-grid">
+    <div>
+      <div class="footer-logo">CINE<span style="color:white;">STREAM</span></div>
+      <p class="footer-tagline">Your destination for movies, anime, and elevated streaming design.</p>
+    </div>
+    <div class="footer-col">
+      <h4>Browse</h4>
+      <ul>
+        <li><a href="/browse/movies">Movies</a></li>
+        <li><a href="/browse/anime">Anime</a></li>
+        <li><a href="/browse/series">Series</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>More</h4>
+      <ul>
+        <li><a href="/browse/kdrama">K-Drama</a></li>
+        <li><a href="/browse/chinese">Chinese (Donghua)</a></li>
+        <li><a href="/browse/hindi">Hindi Dubbed</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">© 2024 CINE STREAM. All rights reserved.</div>
+</footer>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="../js/config.js"></script>
+<script src="../js/app.js"></script>
+<script src="../js/api.js"></script>
+<script src="../js/pwa.js"></script>
+<script src="../js/browse.js"></script>
+</body>
+</html>

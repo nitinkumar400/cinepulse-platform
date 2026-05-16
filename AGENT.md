@@ -1497,8 +1497,156 @@ vercel deploy --prod
 
 ---
 
+## 27. CinePulse Platform Overhaul (May 2026)
+
+A three-feature overhaul that transforms CinePulse into a Netflix-calibre streaming experience with zero-code server management, a premium home page, and dedicated browse pages.
+
+### Feature 1: Server Health Monitor & No-Code Server Management
+
+Embed server configuration migrated from the static `public/js/embedServers.js` into MongoDB (`embed_server_configs` collection). Admins can now manage servers entirely from the admin panel without touching code or redeploying.
+
+**New Backend Files:**
+| File | Purpose |
+|------|---------|
+| `backend/models/EmbedServerConfig.js` | Mongoose schema — one doc per embed server (key, name, type, priority, enabled, URL patterns, timeout, health stats) |
+| `backend/models/EmbedServerHealth.js` | Probe results with 30-day TTL index |
+| `backend/services/serverConfigService.js` | CRUD + seeding + 5-min cache + priority sequence invariant |
+| `backend/services/serverHealthService.js` | Probing, classification (Working/Degraded/Down), rolling stats, notifications |
+| `backend/routes/adminServers.js` | 7 admin endpoints + 1 public read-only endpoint |
+
+**Admin Dashboard:**
+- Live status cards (green/amber/red badges) with success rate %, avg load time, last-checked timestamp
+- Enable/disable toggle per server (instant, no deploy)
+- Drag-and-drop + arrow reordering
+- "Add Server" modal with full validation
+- 60-second auto-refresh polling
+- In-app notifications on status transitions (Down/Degraded/Recovered)
+
+**Automated Health Checks:**
+- Vercel Cron every 30 minutes (`*/30 * * * *` → `POST /api/admin/servers/health/run`)
+- Parallel probing via `Promise.allSettled()`
+- 30-day rolling stats (success rate, avg load time)
+- Explicit cleanup pass + TTL index backstop
+
+**API Endpoints:**
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/admin/servers/public` | None | Public server list for frontend |
+| GET | `/api/admin/servers` | Admin | Full server list with health stats |
+| POST | `/api/admin/servers` | Admin | Create new server |
+| PUT | `/api/admin/servers/reorder` | Admin | Reorder by key array |
+| GET | `/api/admin/servers/health` | Admin | Latest health per server |
+| POST/GET | `/api/admin/servers/health/run` | Admin/Cron | Trigger health cycle |
+| PUT | `/api/admin/servers/:key` | Admin | Update server fields |
+| DELETE | `/api/admin/servers/:key` | Admin | Delete server |
+
+### Feature 2: Netflix-Style Home Page Redesign
+
+Complete overhaul of `/pages/index.html` with a premium streaming UI.
+
+**Billboard Carousel:**
+- 5 items, auto-rotates every 6 seconds
+- Cross-fade transition (≤ 600ms)
+- Progress dots with click-to-jump
+- Pause on hover (desktop), swipe gestures (mobile)
+- Deterministic match score (92–99) derived from `_id`
+- Backdrop image probe with dark gradient fallback
+
+**Horizontal Scroll Rails (11 total, in order):**
+1. Continue Watching (localStorage-driven)
+2. Trending This Week
+3. New Releases
+4. Top Rated
+5. Premium Series
+6. Elite Anime
+7. Hollywood
+8. K-Drama
+9. Chinese (Donghua)
+10. Hindi Dubbed
+11. Recommended For You
+
+Each rail has a "See All →" link to the corresponding browse page. Empty rails auto-hide.
+
+**Category Filter Bar:**
+- Pills: All, Hollywood, Anime, Chinese (Donghua), K-Drama, Hindi Dubbed
+- Filters billboard + recommended/spotlight/poster grids simultaneously
+- URL query param sync without page reload
+- Mobile: horizontal scroll (no wrapping)
+
+**Card Design:**
+- 2:3 poster aspect ratio at all viewport sizes
+- Hover-expand (1.08×) gated to `@media (hover: hover) and (pointer: fine)`
+- Overlay with title, rating, genre tags, Play button
+- Dark placeholder on image load failure
+- Only playable items rendered (`canPlay()` filter)
+
+### Feature 3: Netflix-Style Browse Pages
+
+Six dedicated pages at `/browse/movies`, `/browse/anime`, `/browse/series`, `/browse/kdrama`, `/browse/chinese`, `/browse/hindi`.
+
+**New Files:**
+| File | Purpose |
+|------|---------|
+| `public/pages/browse.html` | Shared template for all 6 routes |
+| `public/js/browse.js` | Category detection, hero, breadcrumb, infinite scroll, filter sidebar, search, subbed/dubbed toggle |
+| `backend/routes/browse.js` | `GET /api/browse/:category` with 11 filter params |
+
+**Features:**
+- Breadcrumb navigation (`Home › {Category}`) with `aria-label` accessibility
+- Category hero banner with per-category gradient
+- Infinite scroll via `IntersectionObserver` (200px rootMargin, 24 items/page)
+- Advanced filter sidebar: Genre (20 options), Year range, Rating range, Language, Status, Sort By
+- Active filter pills with × remove + "Clear All"
+- In-category search (300ms debounce, 2-char minimum)
+- Subbed/Dubbed toggle (anime only)
+- Mobile: sidebar as slide-in drawer with sessionStorage persistence
+- Tap-to-retry on mid-pagination failures
+- "You've reached the end" message when all items loaded
+
+**Browse API:**
+```
+GET /api/browse/:category?page=1&limit=24&genre=Action,Drama&yearMin=2020&yearMax=2026&ratingMin=7&language=en,ja&status=Ongoing&sortBy=rating&q=naruto&subDub=subbed
+```
+Returns: `{ items, total, page, totalPages, hasMore }`
+
+### Frontend MongoDB-Fetch Mode
+
+`public/js/embedServers.js` now supports an opt-in `EmbedServers.loadFromMongoDB()` that fetches the live server list from `GET /api/admin/servers/public` and rebuilds `STANDARD_SERVERS` / `ANIME_SERVERS` in place. Falls back silently to the hardcoded list on any failure.
+
+### Updated vercel.json
+
+```json
+{
+  "rewrites": [
+    { "source": "/browse/:category", "destination": "/pages/browse.html" },
+    // ... existing rewrites
+  ],
+  "crons": [
+    { "path": "/api/sync",                     "schedule": "0 3 * * *" },
+    { "path": "/api/sync/anime",               "schedule": "30 3 * * *" },
+    { "path": "/api/admin/servers/health/run", "schedule": "*/30 * * * *" }
+  ]
+}
+```
+
+### New MongoDB Collections
+
+| Collection | Purpose | TTL |
+|------------|---------|-----|
+| `embed_server_configs` | Server configuration (12 docs seeded on first run) | None |
+| `embed_server_health` | Probe results | 30 days (TTL index on `checkedAt`) |
+
+### Environment Variables (New)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HEALTH_CHECK_PROBE_TMDB_ID` | `577922` (Tenet) | TMDB ID used for health probes |
+| `HEALTH_CHECK_PROBE_ANILIST_ID` | `1` (Cowboy Bebop) | AniList ID used for health probes |
+
+---
+
 *Last Updated: May 16, 2026*
 *Platform: CinePulse (formerly CineStream)*
 *Database: 107,810+ documents (Live on Atlas)*
-*Status: Direct Embed Architecture (Consumet deprecated) - LIVE*
+*Status: Netflix-Style Overhaul + Server Health Monitor - LIVE*
 *Maintained by: Nitin Mishra & AI Coding Assistant*
