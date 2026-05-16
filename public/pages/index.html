@@ -183,12 +183,12 @@
     }
 
     .hero-side-list {
-      display: grid;
+      display: flex;
       gap: 12px;
     }
 
     .hero-side-item {
-      display: grid;
+      display: flex;
       grid-template-columns: 58px minmax(0, 1fr);
       gap: 12px;
       align-items: center;
@@ -348,9 +348,8 @@
 
     .stream-rail,
     .movie-rail {
-      display: grid;
-      grid-auto-flow: column;
-      grid-auto-columns: minmax(190px, 220px);
+      display: flex;
+      flex-wrap: nowrap;
       gap: 18px;
       overflow-x: auto;
       padding-bottom: 8px;
@@ -437,7 +436,7 @@
     }
 
     .spotlight-grid {
-      display: grid;
+      display: flex;
       grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
       gap: 18px;
       margin-top: 22px;

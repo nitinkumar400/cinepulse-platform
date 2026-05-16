@@ -129,6 +129,17 @@ const VideoEngine = (() => {
       // Defensive: ignore messages from self
       if (event.source === window) return;
 
+      // VidLink progress tracking
+      if (event.origin === 'https://vidlink.pro') {
+        if (event.data?.type === 'MEDIA_DATA') {
+          const mediaData = event.data.data;
+          localStorage.setItem('vidLinkProgress', JSON.stringify(mediaData));
+        } else if (event.data?.type === 'PLAYER_EVENT') {
+          const { event: eventType, currentTime, duration } = event.data.data;
+          console.log(`[VidLink] Player ${eventType} at ${currentTime}s of ${duration}s`);
+        }
+      }
+
       let payload = null;
       try {
         payload = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;

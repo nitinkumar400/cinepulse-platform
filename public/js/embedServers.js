@@ -19,18 +19,8 @@ const EmbedServers = (() => {
       key: 'vidlink',
       priority: 1,
       sandboxPolicy: 'none',  // VidLink rejects any sandbox attribute
-      movieUrl: (tmdbId) => `https://vidlink.pro/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}`,
-      timeout: 9000,
-    },
-    // Priority 2 — Videasy (vidsrc.cc): VERIFIED ALIVE — returns full player
-    videasy: {
-      name: 'Videasy',
-      key: 'videasy',
-      priority: 2,
-      sandboxPolicy: 'none',
-      movieUrl: (tmdbId) => `https://vidsrc.cc/v2/embed/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidsrc.cc/v2/embed/tv/${tmdbId}/${season}/${episode}`,
+      movieUrl: (tmdbId) => `https://vidlink.pro/movie/${tmdbId}?primaryColor=e50914&secondaryColor=170000&iconColor=e50914&icons=vid&player=default&title=true&poster=true&autoplay=false&nextbutton=true`,
+      tvUrl: (tmdbId, season, episode) => `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}?primaryColor=e50914&secondaryColor=170000&iconColor=e50914&icons=vid&player=default&title=true&poster=true&autoplay=false&nextbutton=true`,
       timeout: 9000,
     },
     // Priority 3 — VidSrc.io: VERIFIED ALIVE — returns correct movie title, supports tmdb param

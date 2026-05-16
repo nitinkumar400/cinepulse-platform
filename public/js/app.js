@@ -424,11 +424,11 @@ function createMovieCard(movie, opts = {}) {
     if (movie.bannerUrl) {
       thumb = getImageUrl(movie.bannerUrl);
     } else {
-      thumb = getImageUrl(movie.thumbnailUrl) || CARD_PLACEHOLDER;
+      thumb = getImageUrl(movie.thumbnailUrl) || getImageUrl(movie.posterUrl) || CARD_PLACEHOLDER;
       isMissingBanner = true;
     }
   } else {
-    thumb = getImageUrl(movie.thumbnailUrl) || CARD_PLACEHOLDER;
+    thumb = getImageUrl(movie.posterUrl) || getImageUrl(movie.thumbnailUrl) || CARD_PLACEHOLDER;
   }
 
   const badgeMap = {
