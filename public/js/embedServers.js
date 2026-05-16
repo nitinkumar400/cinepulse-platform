@@ -73,34 +73,69 @@ const EmbedServers = (() => {
       tvUrl: (tmdbId, season, episode) => `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}`,
       timeout: 9000,
     },
+    // Priority 7 — VidNest: VERIFIED WORKING (May 2026) — supports movies, TV, AND anime via TMDB
+    vidnest: {
+      name: 'VidNest',
+      key: 'vidnest_std',
+      priority: 7,
+      sandboxPolicy: 'none',
+      movieUrl: (tmdbId) => `https://vidnest.fun/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidnest.fun/tv/${tmdbId}/${season}/${episode}`,
+      timeout: 10000,
+    },
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ANIME SPECIALIST SERVERS — For Anime (requires anilist_id)
-  // Updated May 2026: Replaced dead domains (autoembed.cc, player.smashy.stream)
-  // with verified working anime embed providers
+  // ⚠️ DEMOTED (May 2026): These anilist-id-based endpoints have become unstable.
+  // The TMDB-id-based STANDARD_SERVERS work reliably for anime that have a tmdbId.
+  // We keep these as last-resort fallback (priority 100+) for anime that lack
+  // a tmdbId, but for the vast majority of anime, STANDARD_SERVERS render first.
   // ═══════════════════════════════════════════════════════════════════════════
   const ANIME_SERVERS = {
+    // Priority 100 — VidNest: VERIFIED WORKING (May 2026) — dedicated anime embed
+    // with AnimePahe backend. Accepts anilist_id + episode + sub/dub.
+    vidnest: {
+      name: 'VidNest Anime',
+      key: 'vidnest',
+      priority: 100,
+      sandboxPolicy: 'none',
+      animeUrl: (anilistId, episodeNumber) => `https://vidnest.fun/anime/${anilistId}/${episodeNumber}/sub`,
+      timeout: 10000,
+    },
+    // Priority 101 — VidNest AnimePahe: alternate backend for broader coverage
+    vidnestpahe: {
+      name: 'VidNest Pahe',
+      key: 'vidnestpahe',
+      priority: 101,
+      sandboxPolicy: 'none',
+      animeUrl: (anilistId, episodeNumber) => `https://vidnest.fun/animepahe/${anilistId}/${episodeNumber}/sub`,
+      timeout: 10000,
+    },
+    // Priority 102 — Anime VidSrc (vidsrc.cc): UNRELIABLE — vidsrc.cc states
+    // "Currently we do not support anime" on their homepage. Kept as last resort.
     animevidsrc: {
       name: 'Anime VidSrc',
       key: 'animevidsrc',
-      priority: 1,
+      priority: 102,
       sandboxPolicy: 'none',
       animeUrl: (anilistId, episodeNumber) => `https://vidsrc.cc/v2/embed/tv/${anilistId}/${1}/${episodeNumber}?anilist=true`,
       timeout: 9000,
     },
+    // Priority 103 — Anime 2Embed: HiAnime backend is dead post-Crunchyroll takedown
     anime2embed: {
       name: 'Anime 2Embed',
       key: 'anime2embed',
-      priority: 2,
+      priority: 103,
       sandboxPolicy: 'none',
       animeUrl: (anilistId, episodeNumber) => `https://www.2embed.cc/embedanime/anilist-${anilistId}&ep=${episodeNumber}`,
       timeout: 9000,
     },
+    // Priority 104 — Anime VidSrc.to: Occasionally works but inconsistent
     animevidsrcto: {
       name: 'Anime VidSrc.to',
       key: 'animevidsrcto',
-      priority: 3,
+      priority: 104,
       sandboxPolicy: 'none',
       animeUrl: (anilistId, episodeNumber) => `https://vidsrc.to/embed/anime/anilist/${anilistId}/${episodeNumber}`,
       timeout: 9000,
@@ -169,55 +204,60 @@ const EmbedServers = (() => {
     const sources = [];
 
     if (mediaCategory === 'anime') {
-      // Use anime specialist servers
+      // Anime routing strategy (May 2026 verified):
+      //   1. STANDARD_SERVERS first (tmdb_id-based) — these work reliably for anime
+      //      because TMDB indexes most anime as TV shows.
+      //   2. ANIME_SERVERS as fallback (anilist_id-based) — last resort.
+      const tmdbId = movieData?.tmdbId || movieData?.tmdb_id || null;
       const anilistId = movieData?.anilistId || movieData?.anilist_id || movieData?.providerId || null;
 
-      Object.values(ANIME_SERVERS).forEach((server, idx) => {
-        if (!anilistId) return; // Silently skip entire pool
-        const url = server.animeUrl(anilistId, Number(episode || 1));
-        if (!url) return;
-
-        sources.push({
-          id: `hydra-anime-${server.key}`,
-          server: server.key,
-          serverName: server.name,
-          label: `Server ${sources.length + 1}`,
-          priority: server.priority,
-          url,
-          embedUrl: url,
-          playUrl: '',
-          quality: 'Auto',
-          isExternal: true,
-          isEmbed: true,
-          isAnime: true,
-          timeout: server.timeout,
-          sandboxPolicy: server.sandboxPolicy || 'balanced',
-          status: serverStatus[server.key] || 'unknown',
-          statusLabel: `Server ${sources.length + 1} • ${server.name}`,
-          sourceType: server.key,
-        });
-      });
-
-      // Anime fallback: ALWAYS add standard TV servers if tmdb_id exists
-      // (both when anilist_id is missing AND as additional fallback when it exists)
-      const tmdbId = movieData?.tmdbId || movieData?.tmdb_id || null;
+      // Pass 1: TMDB-id-based standard TV servers
       if (tmdbId) {
         Object.values(STANDARD_SERVERS).forEach((server) => {
           const url = server.tvUrl(tmdbId, Number(season || 1), Number(episode || 1));
           if (!url) return;
 
           sources.push({
-            id: `hydra-std-${server.key}`,
+            id: `hydra-anime-tv-${server.key}`,
             server: server.key,
             serverName: server.name,
             label: `Server ${sources.length + 1}`,
-            priority: server.priority + 10,
+            priority: server.priority,
             url,
             embedUrl: url,
             playUrl: '',
             quality: 'Auto',
             isExternal: true,
             isEmbed: true,
+            isAnime: true,
+            timeout: server.timeout,
+            sandboxPolicy: server.sandboxPolicy || 'balanced',
+            status: serverStatus[server.key] || 'unknown',
+            statusLabel: `Server ${sources.length + 1} • ${server.name}`,
+            sourceType: server.key,
+          });
+        });
+      }
+
+      // Pass 2: Anime-specialist anilist-id servers (fallback only)
+      if (anilistId) {
+        Object.values(ANIME_SERVERS).forEach((server) => {
+          const url = server.animeUrl(anilistId, Number(episode || 1));
+          if (!url) return;
+
+          sources.push({
+            id: `hydra-anime-${server.key}`,
+            server: server.key,
+            serverName: server.name,
+            label: `Server ${sources.length + 1}`,
+            priority: server.priority,
+            url,
+            embedUrl: url,
+            playUrl: '',
+            quality: 'Auto',
+            isExternal: true,
+            isEmbed: true,
+            isAnime: true,
             timeout: server.timeout,
             sandboxPolicy: server.sandboxPolicy || 'balanced',
             status: serverStatus[server.key] || 'unknown',
@@ -509,6 +549,22 @@ const EmbedServers = (() => {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // CAN PLAY — quick check used by listings to filter out unplayable items
+  // Returns true if the item has at least one valid embed source path:
+  //   - a tmdb_id (works with all 6 STANDARD_SERVERS), OR
+  //   - an anilist_id (works with all 3 ANIME_SERVERS), OR
+  //   - a videoUrl/uploaded sources array (covered upstream by the player).
+  // ═══════════════════════════════════════════════════════════════════════════
+  function canPlay(movieData) {
+    if (!movieData) return false;
+    const hasTmdb = !!(movieData.tmdbId || movieData.tmdb_id);
+    const hasAnilist = !!(movieData.anilistId || movieData.anilist_id || movieData.providerId);
+    const hasVideoUrl = !!String(movieData.videoUrl || '').trim();
+    const hasUploadedSources = Array.isArray(movieData.sources) && movieData.sources.some(s => String(s?.url || '').trim());
+    return hasTmdb || hasAnilist || hasVideoUrl || hasUploadedSources;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // GET SERVER LIST (for display)
   // ═══════════════════════════════════════════════════════════════════════════
   function getServerList() {
@@ -533,6 +589,7 @@ const EmbedServers = (() => {
     // Core routing
     generateEmbedUrl,
     detectCategory,
+    canPlay,
     // Source builders
     buildHydraSources,
     buildAllSources,      // legacy compat for VideoEngine

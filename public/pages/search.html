@@ -619,9 +619,17 @@ async function performSearch(q) {
 }
 
 // ── RENDER RESULTS ──
+function _isPlayableSearchItem(item) {
+  if (!item) return false;
+  return !!(item.tmdbId || item.tmdb_id || item.anilistId || item.anilist_id || (item.videoUrl && String(item.videoUrl).trim()));
+}
+
 function renderResults(movies, pagination, append) {
   const grid  = document.getElementById('resultsGrid');
-  const cards = movies.map(m => buildSearchCard(m)).join('');
+  // Hide unplayable items so users never click into a dead detail page
+  const filtered = (movies || []).filter(_isPlayableSearchItem);
+  const list = filtered.length ? filtered : movies || [];
+  const cards = list.map(m => buildSearchCard(m)).join('');
 
   if (append) {
     grid.insertAdjacentHTML('beforeend', cards);

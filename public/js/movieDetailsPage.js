@@ -258,6 +258,12 @@ function ensureUpcomingEpisodeFallback(movie) {
 const urlParams = new URLSearchParams(window.location.search);
 const movieId   = urlParams.get('id');
 const startTime = parseInt(urlParams.get('t') || '0');
+// ── Continue-Watching resume hints (from /pages/index.html row) ──
+// URL pattern when launched from "Continue Watching" rail:
+//   movie-details.html?id=<id>&resume=true&s=<season>&e=<episode>
+const resumeRequested = urlParams.get('resume') === 'true';
+const resumeSeason = parseInt(urlParams.get('s') || '0', 10);
+const resumeEpisode = parseInt(urlParams.get('e') || '0', 10);
 
 // Placeholder images
 const POSTER_PH = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQwIiBoZWlnaHQ9IjM2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';
@@ -319,7 +325,8 @@ function buildAnimeEpisodeEmbedUrl(tmdbId, seasonNumber, episodeNumber) {
   const season = Number(seasonNumber || 1);
   const episode = Number(episodeNumber || 1);
   if (!id || !episode) return '';
-  return `https://vidsrc.me/embed/tv?tmdb=${id}&season=${season}&episode=${episode}`;
+  // Use VidLink (verified working May 2026). vidsrc.me is dead per AGENT.md.
+  return `https://vidlink.pro/tv/${id}/${season}/${episode}`;
 }
 
 function getAnimeSeasonNumber(movie = {}) {
@@ -1272,6 +1279,26 @@ function renderMovie(m) {
   loadRecommendations(m._id, m.title);
   loadOtherSeasons(m._id, m.title);
   showState('content');
+
+  // ── CONTINUE WATCHING: auto-resume the requested episode/movie ──
+  // Triggered when the user clicks a Continue Watching card on /pages/index.html.
+  // For series/anime/cdrama/kdrama we re-mount the requested S/E in-place
+  // (the episode grid handles loading server fallbacks). For movies we just
+  // scroll to the player — `setupPlayback` already started the stream.
+  try {
+    if (resumeRequested) {
+      if (isMultiEpisode && resumeSeason > 0 && resumeEpisode > 0 && typeof window.playEpisodeInPlace === 'function') {
+        // Wait a beat for the episode grid to mount before triggering playback
+        setTimeout(() => {
+          try { window.playEpisodeInPlace(resumeSeason, resumeEpisode); } catch (e) {}
+        }, 600);
+      } else {
+        setTimeout(() => { try { scrollToPlayer(); } catch (e) {} }, 400);
+      }
+    }
+  } catch (err) {
+    console.warn('[ContinueWatching] resume failed:', err && err.message);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────

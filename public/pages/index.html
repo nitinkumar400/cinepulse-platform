@@ -851,16 +851,28 @@ function buildCardMarkup(movie, options = {}) {
     </div>`;
 }
 
+function _isPlayableItem(item) {
+  if (!item) return false;
+  return !!(item.tmdbId || item.tmdb_id || item.anilistId || item.anilist_id || (item.videoUrl && String(item.videoUrl).trim()));
+}
+
 function renderRail(containerId, items, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  if (!items.length) {
+  // ── PLAYABILITY FILTER ──
+  // Hide items with no tmdb_id and no anilist_id from rails — they will never
+  // play with any embed server. Per user request: "if any anime/movies/series
+  // or any content not playing it should not play [show] on my frontend".
+  const playable = (Array.isArray(items) ? items : []).filter(_isPlayableItem);
+  const list = playable.length ? playable : items || [];
+
+  if (!list.length) {
     container.innerHTML = `<div class="home-empty">${escapeHtml(options.emptyText || 'Nothing to show yet.')}</div>`;
     return;
   }
 
-  container.innerHTML = items.map((item, index) => buildCardMarkup(item, {
+  container.innerHTML = list.map((item, index) => buildCardMarkup(item, {
     rank: options.withRank && index < 5 ? item.trendingRank || index + 1 : '',
   })).join('');
   bindIndexImageFallback(container);
@@ -901,8 +913,28 @@ let billboardIndex = 0;
 let billboardTimer = null;
 
 function renderBillboardItem(movie, index) {
-  if (!movie) return;
+  const heroCopy = document.getElementById('heroCopy');
   const backdropEl = document.getElementById('heroBackdrop');
+
+  // ── Defensive fallback: if no movie data, render a neutral hero so the
+  //    section never appears empty/black. This was the root cause of the
+  //    "blank billboard" bug — opacity stayed at 0 when data was missing.
+  if (!movie) {
+    if (backdropEl) backdropEl.style.backgroundImage = 'none';
+    if (heroCopy) {
+      heroCopy.style.opacity = '1';
+      heroCopy.innerHTML = `
+        <h1 class="hero-headline">Welcome to CinePulse</h1>
+        <p class="hero-subcopy">Movies, anime, and premium series — all in one place.</p>
+        <div class="hero-actions">
+          <a href="#recommendedRailSection" class="btn btn-primary" style="background:#fff;color:#000;border-radius:4px;padding:12px 32px;">
+            <i class="ri-compass-line"></i> Browse Catalog
+          </a>
+        </div>`;
+    }
+    return;
+  }
+
   const backdropUrl = getImageUrl(movie.bannerUrl || movie.thumbnailUrl || '', 'original');
   if (backdropEl) {
     backdropEl.style.backgroundImage = backdropUrl ? `url('${backdropUrl}')` : 'none';
@@ -921,59 +953,81 @@ function renderBillboardItem(movie, index) {
     ? (movie.description.length > 150 ? movie.description.substring(0, 150) + '...' : movie.description)
     : '';
 
-  const heroCopy = document.getElementById('heroCopy');
   if (heroCopy) {
+    // Use a fade transition that ALWAYS resolves back to opacity:1, even if
+    // the inner render throws. Previous bug: setTimeout content build could
+    // throw synchronously and leave opacity stuck at 0.
     heroCopy.style.opacity = '0';
     heroCopy.style.transition = 'opacity 0.4s ease';
-    setTimeout(() => {
-      heroCopy.innerHTML = `
-        ${titleHtml}
-        <div class="hero-meta-row" style="margin-bottom:0.8rem;">
-          <span style="color:#46d369; font-weight:800;">${matchScore}% Match</span>
-          <span class="hero-pill">${movie.releaseYear || 'New'}</span>
-          <span class="hero-pill">${categoryLabel}</span>
-          ${movie.averageRating ? `<span class="hero-pill rating">⭐ ${Number(movie.averageRating).toFixed(1)}</span>` : ''}
-        </div>
-        <div style="font-size:15px; font-weight:600; color:rgba(255,255,255,0.9); margin-bottom:1rem; letter-spacing:0.4px;">
-          ${escapeHtml(genres)}
-        </div>
-        ${description ? `<p class="hero-subcopy" style="margin-bottom:1.5rem;">${escapeHtml(description)}</p>` : ''}
-        <div class="hero-actions">
-          <a href="movie-details.html?id=${movie._id}" class="btn btn-primary" style="background:#fff; color:#000; border-radius:4px; padding:12px 32px;">
-            <i class="ri-play-fill"></i> Play Now
-          </a>
-          <a href="movie-details.html?id=${movie._id}" class="btn btn-secondary" style="border-radius:4px; padding:12px 32px;">
-            <i class="ri-information-line"></i> More Info
-          </a>
-        </div>
-        <div class="billboard-dots" style="display:flex; gap:8px; margin-top:24px; align-items:center;">
-          ${billboardItems.map((_, i) => `
-            <button class="billboard-dot" data-index="${i}" style="
-              width:${i === index ? '28px' : '10px'}; 
-              height:10px; 
-              border-radius:5px; 
-              border:none; 
-              background:${i === index ? '#e50914' : 'rgba(255,255,255,0.4)'}; 
-              cursor:pointer; 
-              transition:all 0.3s ease;
-              padding:0;
-            "></button>
-          `).join('')}
-        </div>`;
-      heroCopy.style.opacity = '1';
-      
-      // Bind dot clicks
-      heroCopy.querySelectorAll('.billboard-dot').forEach(dot => {
-        dot.addEventListener('click', () => {
-          const idx = parseInt(dot.dataset.index);
-          if (idx !== billboardIndex) {
-            billboardIndex = idx;
-            renderBillboardItem(billboardItems[billboardIndex], billboardIndex);
-            resetBillboardTimer();
-          }
+
+    const renderInner = () => {
+      try {
+        heroCopy.innerHTML = `
+          ${titleHtml}
+          <div class="hero-meta-row" style="margin-bottom:0.8rem;">
+            <span style="color:#46d369; font-weight:800;">${matchScore}% Match</span>
+            <span class="hero-pill">${movie.releaseYear || 'New'}</span>
+            <span class="hero-pill">${categoryLabel}</span>
+            ${movie.averageRating ? `<span class="hero-pill rating">⭐ ${Number(movie.averageRating).toFixed(1)}</span>` : ''}
+          </div>
+          <div style="font-size:15px; font-weight:600; color:rgba(255,255,255,0.9); margin-bottom:1rem; letter-spacing:0.4px;">
+            ${escapeHtml(genres)}
+          </div>
+          ${description ? `<p class="hero-subcopy" style="margin-bottom:1.5rem;">${escapeHtml(description)}</p>` : ''}
+          <div class="hero-actions">
+            <a href="movie-details.html?id=${movie._id}" class="btn btn-primary" style="background:#fff; color:#000; border-radius:4px; padding:12px 32px;">
+              <i class="ri-play-fill"></i> Play Now
+            </a>
+            <a href="movie-details.html?id=${movie._id}" class="btn btn-secondary" style="border-radius:4px; padding:12px 32px;">
+              <i class="ri-information-line"></i> More Info
+            </a>
+          </div>
+          <div class="billboard-dots" style="display:flex; gap:8px; margin-top:24px; align-items:center;">
+            ${billboardItems.map((_, i) => `
+              <button class="billboard-dot" data-index="${i}" style="
+                width:${i === index ? '28px' : '10px'};
+                height:10px;
+                border-radius:5px;
+                border:none;
+                background:${i === index ? '#e50914' : 'rgba(255,255,255,0.4)'};
+                cursor:pointer;
+                transition:all 0.3s ease;
+                padding:0;
+              "></button>
+            `).join('')}
+          </div>`;
+
+        // Bind dot clicks
+        heroCopy.querySelectorAll('.billboard-dot').forEach(dot => {
+          dot.addEventListener('click', () => {
+            const idx = parseInt(dot.dataset.index);
+            if (idx !== billboardIndex) {
+              billboardIndex = idx;
+              renderBillboardItem(billboardItems[billboardIndex], billboardIndex);
+              resetBillboardTimer();
+            }
+          });
         });
-      });
-    }, 200);
+      } catch (e) {
+        // Render failed — fall back to a neutral but visible hero
+        console.warn('[Billboard] inner render failed:', e && e.message);
+        heroCopy.innerHTML = `
+          <h1 class="hero-headline">${escapeHtml(movie.title || 'CinePulse')}</h1>
+          <div class="hero-actions">
+            <a href="movie-details.html?id=${movie._id || ''}" class="btn btn-primary" style="background:#fff;color:#000;border-radius:4px;padding:12px 32px;">
+              <i class="ri-play-fill"></i> Play Now
+            </a>
+          </div>`;
+      } finally {
+        // GUARANTEE the hero is visible no matter what.
+        heroCopy.style.opacity = '1';
+      }
+    };
+
+    setTimeout(renderInner, 200);
+    // Hard safety: if for any reason the timeout never fires (tab throttle,
+    // browser bug), force visibility back after 1.5s.
+    setTimeout(() => { if (heroCopy) heroCopy.style.opacity = '1'; }, 1500);
   }
 }
 
@@ -1089,42 +1143,58 @@ async function loadHeroAndTrending() {
   try {
     const payload = await fetchMovieList('/movies/trending?limit=20');
     const trending = payload.trending || [];
-    renderRail('trendingRail', trending, {
+
+    // Filter rail to playable items only (must have tmdb_id or anilist_id)
+    const playableTrending = trending.filter(it => (it && (it.tmdbId || it.tmdb_id || it.anilistId || it.anilist_id)));
+
+    renderRail('trendingRail', playableTrending.length ? playableTrending : trending, {
       withRank: true,
       emptyText: 'Trending titles will appear here as soon as content lands.',
     });
 
     // ── Billboard Selection: Pick 5 diverse items for the hero carousel ──
+    // Only consider PLAYABLE items so the hero never points at a dead title.
+    const billboardSourcePool = playableTrending.length ? playableTrending : trending;
     let billboardCandidates = [];
     try {
       const affinityStr = localStorage.getItem('user_affinity');
-      if (affinityStr && trending.length >= 5) {
+      if (affinityStr && billboardSourcePool.length >= 5) {
         const affinity = JSON.parse(affinityStr);
         // Sort genres by score descending
         const sortedGenres = Object.entries(affinity).sort((a, b) => b[1] - a[1]).map(e => e[0]);
-        
+
         // Pick personalized items: one per top genre, then fill with trending
         const used = new Set();
         for (const genre of sortedGenres.slice(0, 3)) {
-          const match = trending.find(item => !used.has(item._id) && (item.genre || []).includes(genre));
+          const match = billboardSourcePool.find(item => !used.has(item._id) && (item.genre || []).includes(genre));
           if (match) { billboardCandidates.push(match); used.add(match._id); }
         }
         // Fill remaining slots from trending
-        for (const item of trending) {
+        for (const item of billboardSourcePool) {
           if (billboardCandidates.length >= 5) break;
           if (!used.has(item._id)) { billboardCandidates.push(item); used.add(item._id); }
         }
       }
     } catch (e) { console.warn('[GhostProfile] Billboard personalization failed:', e); }
 
-    // Fallback: just use top 5 trending if personalization didn't produce enough
+    // Fallback: just use top 5 from the playable pool if personalization didn't produce enough
     if (billboardCandidates.length < 5) {
-      billboardCandidates = trending.slice(0, 5);
+      billboardCandidates = billboardSourcePool.slice(0, 5);
     }
 
     startBillboardRotation(billboardCandidates);
   } catch (error) {
     renderRail('trendingRail', [], { emptyText: 'Trending titles could not be loaded.' });
+    // ── Critical: fallback hero so the page never appears empty ──
+    // If the trending API fails entirely, try a generic /movies fetch as a last resort.
+    try {
+      const fallbackPayload = await fetchMovieList('/movies?limit=10&sort=newest');
+      const fallback = (fallbackPayload.movies || []).filter(it => (it.tmdbId || it.tmdb_id || it.anilistId || it.anilist_id));
+      if (fallback.length) {
+        startBillboardRotation(fallback.slice(0, 5));
+        return;
+      }
+    } catch {}
     renderBillboardItem(null, 0);
   }
 }
@@ -1179,7 +1249,7 @@ async function loadSpotlightGrid() {
     const payload = await fetchMovieList(endpoint);
     if (requestId !== sectionRequestState.spotlight) return;
 
-    const movies = payload.movies || [];
+    const movies = (payload.movies || []).filter(_isPlayableItem);
     const grid = document.getElementById('spotlightGrid');
     if (!grid) return;
 
@@ -1211,7 +1281,7 @@ async function loadHomepagePosterGrid() {
   try {
     const payload = await fetchMovieList(endpoint);
     if (sectionRequestState.homepagePosterGrid !== requestId) return;
-    const movies = payload.movies || [];
+    const movies = (payload.movies || []).filter(_isPlayableItem);
 
     if (!movies.length) {
       grid.innerHTML = '<div class="home-empty" style="grid-column:1/-1;">No posters available.</div>';
