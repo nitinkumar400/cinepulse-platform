@@ -416,7 +416,21 @@ function _getSubDubBadge(movie) {
 function createMovieCard(movie, opts = {}) {
   if (!movie) return '';
 
-  const thumb    = getImageUrl(movie.thumbnailUrl) || CARD_PLACEHOLDER;
+  const isWide = opts.wide === true;
+  let thumb;
+  let isMissingBanner = false;
+
+  if (isWide) {
+    if (movie.bannerUrl) {
+      thumb = getImageUrl(movie.bannerUrl);
+    } else {
+      thumb = getImageUrl(movie.thumbnailUrl) || CARD_PLACEHOLDER;
+      isMissingBanner = true;
+    }
+  } else {
+    thumb = getImageUrl(movie.thumbnailUrl) || CARD_PLACEHOLDER;
+  }
+
   const badgeMap = {
     anime:'badge-anime', movie:'badge-movie',
     series:'badge-series', cartoon:'badge-cartoon',
@@ -463,13 +477,14 @@ function createMovieCard(movie, opts = {}) {
       : '';
 
   return `
-    <div class="movie-card" data-id="${movie._id}">
+    <div class="movie-card ${isWide ? 'wide-card' : ''} ${isMissingBanner ? 'missing-banner' : ''}" data-id="${movie._id}">
       <div class="card-thumbnail">
         <img src="${thumb}"
              alt="${escapeHtml(movie.title)}"
              loading="lazy"
              referrerpolicy="no-referrer"
              onerror="this.src='${CARD_PLACEHOLDER}'">
+        ${isMissingBanner ? `<div class="fallback-title">${escapeHtml(movie.title)}</div>` : ''}
         <div class="card-overlay">
           <div class="card-play-btn"><i class="ri-play-fill"></i></div>
         </div>

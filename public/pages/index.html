@@ -983,7 +983,7 @@ function setupCategoryFilters() {
 }
 
 function buildCardMarkup(movie, options = {}) {
-  const base = createMovieCard(movie);
+  const base = createMovieCard(movie, { wide: options.wide });
   if (!options.rank) return `<div class="rail-card">${base}</div>`;
   return `
     <div class="rail-card">
@@ -1051,7 +1051,8 @@ function renderRail(containerId, items, options = {}) {
   }
 
   container.innerHTML = list.map((item, index) => buildCardMarkup(item, {
-    rank: options.withRank && index < 5 ? item.trendingRank || index + 1 : '',
+    rank: options.withRank && index < 10 ? item.trendingRank || index + 1 : '',
+    wide: options.withRank ? false : true
   })).join('');
   bindIndexImageFallback(container);
 }
@@ -1609,7 +1610,7 @@ async function loadTopRatedMoviesRail() {
   renderRailLoading('topRatedMoviesRail', 'Loading top rated movies...');
   try {
     const payload = await fetchMovieList(`/movies?category=movie&${getFreshContentQuery()}&limit=40&sort=highest_rated`);
-    renderRail('topRatedMoviesRail', _sanitizeCatalog(payload.movies || [], { allowOngoing: false }), { emptyText: 'Top rated movies will appear here.' });
+    renderRail('topRatedMoviesRail', _sanitizeCatalog(payload.movies || [], { allowOngoing: false }), { withRank: true, emptyText: 'Top rated movies will appear here.' });
   } catch (error) {
     renderRail('topRatedMoviesRail', [], { emptyText: 'Could not load top rated movies.' });
   }
