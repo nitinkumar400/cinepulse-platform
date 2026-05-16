@@ -27,15 +27,24 @@ const VideoEngine = (() => {
   // Legacy priority map (kept for backward compat with upload/native sources)
   const SERVER_PRIORITY = {
     upload: 0,
-    embed2: 1,
-    superembed: 2,
-    autoembed: 3,
-    vidsrc: 4,
-    vidlink: 5,
+    videasy: 1,
+    vidsrc: 2,
+    vidsrcicu: 3,
+    vidnest_std: 4,
+    embed2: 95,
+    vidsrcio: 90,
+    vidlink: 99,
+    superembed: 100,
+    autoembed: 101,
     dailymotion: 6,
     youtube: 7,
     vimeo: 8,
   };
+
+  function getServerPriority(server) {
+    const key = String(server?.key || server?.server || '').trim().toLowerCase();
+    return SERVER_PRIORITY[key] ?? Number(server?.priority || 999);
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // FAILOVER STATE
@@ -79,7 +88,7 @@ const VideoEngine = (() => {
     // Convert object to sorted array by priority
     const sorted = Object.values(servers)
       .slice()
-      .sort((a, b) => (a.priority || 99) - (b.priority || 99));
+      .sort((a, b) => getServerPriority(a) - getServerPriority(b));
 
     return sorted.map((srv, idx) => {
       const url = isTv
@@ -621,7 +630,7 @@ const VideoEngine = (() => {
     }
 
     return sources.sort((a, b) => {
-      const priorityDiff = (SERVER_PRIORITY[a.server] ?? 99) - (SERVER_PRIORITY[b.server] ?? 99);
+      const priorityDiff = getServerPriority(a) - getServerPriority(b);
       if (priorityDiff !== 0) return priorityDiff;
       return (a.label || '').localeCompare(b.label || '');
     });

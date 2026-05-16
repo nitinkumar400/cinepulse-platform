@@ -18,6 +18,26 @@ const { substitutePattern } = require('../services/serverHealthService');
 // ══════════════════════════════════════════
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 
+const PROVIDER_PRIORITY_OVERRIDES = {
+  videasy: 1,
+  vidsrc: 2,
+  vidsrcicu: 3,
+  vidnest_std: 4,
+  vidnest: 5,
+  vidnestpahe: 6,
+  animevidsrc: 7,
+  animevidsrcto: 8,
+  vidsrcio: 90,
+  embed2: 95,
+  anime2embed: 96,
+  vidlink: 99,
+};
+
+function getEffectiveProviderPriority(server) {
+  const key = String(server?.key || server?.server || '').trim().toLowerCase();
+  return PROVIDER_PRIORITY_OVERRIDES[key] || Number(server?.priority || 999);
+}
+
 function normalizeWatchSource(url = '', fallbackType = '') {
   const raw = String(url || '').trim();
   const explicitType = String(fallbackType || '').trim().toLowerCase();
@@ -195,7 +215,7 @@ async function buildEmbedSourcesFromConfig(movie, season = 1, episode = 1) {
       server:        server.key,
       serverName:    server.name,
       label:         '', // assigned after sort, so labels reflect final order
-      priority:      Number(server.priority) || 0,
+      priority:      getEffectiveProviderPriority(server),
       url,
       embedUrl:      url,
       quality:       'Auto',
@@ -210,7 +230,7 @@ async function buildEmbedSourcesFromConfig(movie, season = 1, episode = 1) {
 
   // Stable sort by priority ascending (lower priority = higher
   // preference) so callers can stream attempts in order.
-  sources.sort((a, b) => a.priority - b.priority);
+  sources.sort((a, b) => getEffectiveProviderPriority(a) - getEffectiveProviderPriority(b));
 
   // Assign human-readable "Server N" labels after sorting so the
   // numbering matches final attempt order.

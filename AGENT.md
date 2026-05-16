@@ -736,7 +736,7 @@ newserver: {
   name: 'NewServer',
   key: 'newserver',
   priority: 8,                    // lower = higher priority
-  sandboxPolicy: 'balanced',      // or 'none' if server rejects sandbox
+  sandboxPolicy: 'none',          // required: providers reject sandboxed iframes
   movieUrl: (tmdbId) => `https://newserver.com/embed/movie/${tmdbId}`,
   tvUrl: (tmdbId, season, episode) => `https://newserver.com/embed/tv/${tmdbId}/${season}/${episode}`,
   timeout: 8000,
@@ -746,12 +746,13 @@ newserver: {
 **Current working embed servers (as of May 2026 Live Testing):**
 | # | Server | Domain | Sandbox | Status |
 |---|--------|--------|---------|--------|
-| 1 | VidLink | `vidlink.pro` | **none** | ✅ Confirmed Working |
-| 2 | Videasy | `vidsrc.cc` | **none** | ✅ Verified Alive |
-| 3 | VidSrc IO | `vidsrc.io` | **none** | ✅ Verified Alive |
-| 4 | VidSrc ICU | `vidsrc.icu` | **none** | ✅ Verified Alive |
-| 5 | 2Embed | `2embed.cc` | **none** | ⚠️ Sandbox Fixed |
-| 6 | VidSrc | `vidsrc.to` | **none** | ✅ Verified Alive |
+| 1 | Videasy / VidSrc CC | `vidsrc.cc` | **none** | ✅ Primary |
+| 2 | VidSrc | `vidsrc.to` | **none** | ✅ Backup |
+| 3 | VidSrc ICU | `vidsrc.icu` | **none** | ✅ Backup |
+| 4 | VidNest | `vidnest.fun` | **none** | ✅ Backup |
+| 90 | VidSrc IO | `vidsrc.io` | **none** | ⚠️ Demoted: sandbox/provider issues |
+| 95 | 2Embed | `2embed.cc` | **none** | ⚠️ Demoted: sandbox-provider issues |
+| 99 | VidLink | `vidlink.pro` | **none** | ⚠️ Demoted to last per production testing |
 
 **Anime Specialist Servers (anilist_id based):**
 | # | Server | Domain | Status |
@@ -1098,10 +1099,15 @@ To solve the "Infinite Loading" and "Iframe Sandbox Detected" issues, the follow
 - **Global Policy**: All providers now use `sandboxPolicy: 'none'` to avoid security detections from modern embed players (2Embed, etc.).
 
 ### 3. Verified Provider Re-ranking
-The server list was re-ordered based on real-time HTTP probes and user feedback:
-1. **VidLink**: Most stable.
-2. **Videasy / VidSrc IO**: Reliable alternatives.
-3. **VidSrc.to**: Robust backup.
+The server list now applies runtime priority overrides in both frontend and backend:
+1. **Videasy / VidSrc CC** first.
+2. **VidSrc.to / VidSrc ICU / VidNest** as backups.
+3. **VidSrc IO / 2Embed / VidLink** demoted because production showed sandbox or reliability issues.
+
+### 4. Fresh Homepage/Billboard Policy
+- Homepage rails request `yearMin = currentYear - 1` from `/api/movies`.
+- Billboard uses only playable, poster-valid, recent titles.
+- If no recent title exists, the billboard shows the empty/fallback hero instead of surfacing old filler.
 
 ---
 
@@ -1553,6 +1559,7 @@ Complete overhaul of `/pages/index.html` with a premium streaming UI.
 - Pause on hover (desktop), swipe gestures (mobile)
 - Deterministic match score (92–99) derived from `_id`
 - Backdrop image probe with dark gradient fallback
+- Strict freshness: no old-title fallback; only playable, poster-valid titles from current/previous year are eligible
 
 **Horizontal Scroll Rails (11 total, in order):**
 1. Continue Watching (localStorage-driven)
@@ -1659,5 +1666,5 @@ Not required anymore:
 *Last Updated: May 17, 2026*
 *Platform: CinePulse (formerly CineStream)*
 *Database: 107,810+ documents (Live on Atlas)*
-*Status: Netflix-Style Overhaul + Server Health Monitor - LIVE (Vercel daily + GitHub Actions every 30 min)*
+*Status: Netflix-Style Overhaul + Fresh Catalog + Server Health Monitor - LIVE (Vercel daily + GitHub Actions every 30 min)*
 *Maintained by: Nitin Mishra & AI Coding Assistant*

@@ -987,3 +987,31 @@ document.addEventListener('DOMContentLoaded', refreshAnimeCountdowns);
   };
   startObserver();
 })();
+
+// ══════════════════════════════════════════
+// TELEGRAM WIDGET
+// ══════════════════════════════════════════
+function initTelegramWidget() {
+  if (document.getElementById('telegramWidget')) return;
+  
+  // Hide on admin page
+  if (window.location.pathname.includes('/admin')) return;
+
+  const widget = document.createElement('div');
+  widget.id = 'telegramWidget';
+  widget.className = 'telegram-floating-widget';
+  widget.innerHTML = `
+    <button class="close-btn" aria-label="Close" onclick="this.parentElement.classList.add('hidden')">&times;</button>
+    <div class="telegram-icon">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 24C18.6274 24 24 18.6274 24 12C24 5.37258 18.6274 0 12 0C5.37258 0 0 5.37258 0 12C0 18.6274 5.37258 24 12 24Z" fill="#0088CC"/>
+        <path d="M5.44025 11.6601L16.2625 7.48785C16.7645 7.30235 17.2036 7.60805 17.027 8.23938L14.9757 17.8863C14.8315 18.5283 14.4443 18.6946 13.9118 18.397L10.9723 16.2307L9.55404 17.595C9.39712 17.7519 9.26767 17.8814 8.95383 17.8814L9.16568 14.8872L14.6148 9.96781C14.8517 9.75677 14.5637 9.63914 14.2483 9.85159L7.51862 14.0887L4.61907 13.1812C3.98901 12.9842 3.97825 12.5511 4.75051 12.2497L5.44025 11.6601Z" fill="white"/>
+      </svg>
+    </div>
+    <div class="telegram-text">t.me/cinepulse_platform</div>
+    <a href="https://t.me/cinepulse_platform" target="_blank" class="join-btn">Join our Telegram.</a>
+  `;
+  document.body.appendChild(widget);
+}
+
+document.addEventListener('DOMContentLoaded', initTelegramWidget);

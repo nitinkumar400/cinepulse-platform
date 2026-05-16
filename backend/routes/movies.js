@@ -217,6 +217,8 @@ router.get('/', async (req, res) => {
       original_language = '',
       tmdb_genre_id = '',
       year      = '',
+      yearMin   = '',
+      yearMax   = '',
       minRating = '',
       featured  = '',
       sort      = 'newest',
@@ -247,7 +249,13 @@ router.get('/', async (req, res) => {
         filter.tmdb_genre_ids = parsedGenreId;
       }
     }
-    if (year)                filter.releaseYear   = parseInt(year);
+    if (year) {
+      filter.releaseYear = parseInt(year);
+    } else if (yearMin || yearMax) {
+      filter.releaseYear = {};
+      if (yearMin) filter.releaseYear.$gte = parseInt(yearMin, 10);
+      if (yearMax) filter.releaseYear.$lte = parseInt(yearMax, 10);
+    }
     if (minRating)           filter.averageRating = { $gte: parseFloat(minRating) };
     if (featured === 'true') filter.isFeatured    = true;
 
@@ -393,8 +401,10 @@ router.get('/trending', asyncHandler(async (req, res) => {
   const category = String(req.query.category || '').trim();
   const limit = Math.min(20, Math.max(1, parseInt(req.query.limit, 10) || 10));
   const sevenDaysAgo = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000));
+  const currentYear = new Date().getFullYear();
   const filter = {
     createdAt: { $gte: sevenDaysAgo },
+    releaseYear: { $gte: currentYear - 1 },
     ...(category ? { category } : {}),
   };
 
@@ -405,7 +415,10 @@ router.get('/trending', asyncHandler(async (req, res) => {
     .lean();
 
   if (!trending.length) {
-    trending = await Movie.find(category ? { category } : {})
+    trending = await Movie.find({
+      ...(category ? { category } : {}),
+      releaseYear: { $gte: currentYear - 1 },
+    })
       .sort({ averageRating: -1, views: -1, createdAt: -1 })
       .limit(limit)
       .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average views createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes')

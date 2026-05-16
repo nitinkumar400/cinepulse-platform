@@ -147,6 +147,26 @@ const EmbedServers = (() => {
   // ═══════════════════════════════════════════════════════════════════════════
   let serverStatus = {};
 
+  const PROVIDER_PRIORITY_OVERRIDES = {
+    videasy: 1,
+    vidsrc: 2,
+    vidsrcicu: 3,
+    vidnest_std: 4,
+    vidnest: 5,
+    vidnestpahe: 6,
+    animevidsrc: 7,
+    animevidsrcto: 8,
+    vidsrcio: 90,
+    embed2: 95,
+    anime2embed: 96,
+    vidlink: 99,
+  };
+
+  function effectivePriority(server) {
+    const key = String(server?.key || server?.server || '').trim().toLowerCase();
+    return PROVIDER_PRIORITY_OVERRIDES[key] || Number(server?.priority || 999);
+  }
+
   // MongoDB-fetch mode (Task 10.1, Requirement 21).
   //
   // `loadFromMongoDB()` is opt-in: pages that want admin-controlled
@@ -266,7 +286,7 @@ const EmbedServers = (() => {
           const entry = {
             name:          String(s.name || s.key),
             key:           s.key,
-            priority:      Number.isFinite(s.priority) ? s.priority : 999,
+            priority:      effectivePriority(s),
             sandboxPolicy: s.sandboxPolicy || 'none',
             timeout:       Number.isFinite(s.timeout) ? s.timeout : 9000,
           };
@@ -428,7 +448,7 @@ const EmbedServers = (() => {
             server: server.key,
             serverName: server.name,
             label: `Server ${sources.length + 1}`,
-            priority: server.priority,
+            priority: effectivePriority(server),
             url,
             embedUrl: url,
             playUrl: '',
@@ -456,7 +476,7 @@ const EmbedServers = (() => {
             server: server.key,
             serverName: server.name,
             label: `Server ${sources.length + 1}`,
-            priority: server.priority,
+            priority: effectivePriority(server),
             url,
             embedUrl: url,
             playUrl: '',
@@ -492,7 +512,7 @@ const EmbedServers = (() => {
           server: server.key,
           serverName: server.name,
           label: `Server ${sources.length + 1}`,
-          priority: server.priority,
+          priority: effectivePriority(server),
           url,
           embedUrl: url,
           playUrl: '',
@@ -508,8 +528,9 @@ const EmbedServers = (() => {
       });
     }
 
-    // Sort by priority (lower = higher priority)
-    return sources.sort((a, b) => a.priority - b.priority);
+    // Sort by effective priority so the player avoids known fragile providers
+    // even if MongoDB still has an older priority order.
+    return sources.sort((a, b) => effectivePriority(a) - effectivePriority(b));
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -575,15 +596,12 @@ const EmbedServers = (() => {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // IFRAME SANDBOX ATTRIBUTES — Balanced security
-  // ALLOWS: scripts, same-origin, forms, popups (embed player UIs need this),
-  //         popups-to-escape-sandbox, presentation (fullscreen)
-  // BLOCKS: allow-top-navigation (forced page redirect — the real threat)
-  //         allow-downloads (drive-by download prevention)
+  // IFRAME ATTRIBUTES — no sandbox. Current embed providers reject sandboxed
+  // parents and show "Please Disable Sandbox" even when the permissions list
+  // looks permissive.
   // ═══════════════════════════════════════════════════════════════════════════
   function getIframeAttributes() {
     return {
-      sandbox: 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation',
       allow: 'autoplay; fullscreen; encrypted-media; picture-in-picture; gyroscope; accelerometer',
       referrerPolicy: 'no-referrer',
       loading: 'eager',
