@@ -1523,7 +1523,9 @@ Embed server configuration migrated from the static `public/js/embedServers.js` 
 - In-app notifications on status transitions (Down/Degraded/Recovered)
 
 **Automated Health Checks:**
-- Vercel Cron every 30 minutes (`*/30 * * * *` → `POST /api/admin/servers/health/run`)
+- Vercel Cron once daily on Hobby plan (`0 4 * * *` → `POST /api/admin/servers/health/run`)
+- GitHub Actions workflow `/.github/workflows/server-health-check.yml` triggers the same endpoint every 30 minutes
+- GitHub workflow auth uses `Authorization: Bearer <CRON_SECRET>` (same secret value in GitHub and Vercel)
 - Parallel probing via `Promise.allSettled()`
 - 30-day rolling stats (success rate, avg load time)
 - Explicit cleanup pass + TTL index backstop
@@ -1624,7 +1626,7 @@ Returns: `{ items, total, page, totalPages, hasMore }`
   "crons": [
     { "path": "/api/sync",                     "schedule": "0 3 * * *" },
     { "path": "/api/sync/anime",               "schedule": "30 3 * * *" },
-    { "path": "/api/admin/servers/health/run", "schedule": "*/30 * * * *" }
+    { "path": "/api/admin/servers/health/run", "schedule": "0 4 * * *" }
   ]
 }
 ```
@@ -1642,11 +1644,20 @@ Returns: `{ items, total, page, totalPages, hasMore }`
 |----------|---------|-------------|
 | `HEALTH_CHECK_PROBE_TMDB_ID` | `577922` (Tenet) | TMDB ID used for health probes |
 | `HEALTH_CHECK_PROBE_ANILIST_ID` | `1` (Cowboy Bebop) | AniList ID used for health probes |
+| `CRON_SECRET` | _(set manually)_ | Shared secret for cron auth (required for Vercel cron + GitHub 30-min health workflow) |
+
+### GitHub Actions Secrets (Server Health Check)
+
+Required repository secret:
+- `CRON_SECRET` — must exactly match Vercel `CRON_SECRET`
+
+Not required anymore:
+- `HEALTH_CHECK_URL` (workflow now hardcodes the production endpoint to avoid malformed secret input)
 
 ---
 
-*Last Updated: May 16, 2026*
+*Last Updated: May 17, 2026*
 *Platform: CinePulse (formerly CineStream)*
 *Database: 107,810+ documents (Live on Atlas)*
-*Status: Netflix-Style Overhaul + Server Health Monitor - LIVE*
+*Status: Netflix-Style Overhaul + Server Health Monitor - LIVE (Vercel daily + GitHub Actions every 30 min)*
 *Maintained by: Nitin Mishra & AI Coding Assistant*
