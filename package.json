@@ -21,7 +21,23 @@
     "seed:asian-drama": "node scripts/mass_seed.js --mode=matrix --profile=asian-drama",
     "seed:indian": "node scripts/mass_seed.js --mode=matrix --profile=indian",
     "seed:networks": "node scripts/mass_seed.js --mode=matrix --profile=networks",
-    "seed:mega": "node scripts/mass_seed.js --mode=matrix --profile=hollywood & node scripts/mass_seed.js --mode=matrix --profile=anime & node scripts/mass_seed.js --mode=matrix --profile=asian-drama & node scripts/mass_seed.js --mode=matrix --profile=indian & node scripts/mass_seed.js --mode=matrix --profile=networks"
+    "seed:mega": "node scripts/mass_seed.js --mode=matrix --profile=hollywood & node scripts/mass_seed.js --mode=matrix --profile=anime & node scripts/mass_seed.js --mode=matrix --profile=asian-drama & node scripts/mass_seed.js --mode=matrix --profile=indian & node scripts/mass_seed.js --mode=matrix --profile=networks",
+
+    "heal:anime": "node scripts/healAnimeIds.js",
+    "heal:anime:dry": "node scripts/healAnimeIds.js --dry-run",
+    "heal:anime:limit": "node scripts/healAnimeIds.js --limit=50",
+
+    "cleanup:anime": "node scripts/cleanupOrphanedAnime.js",
+    "cleanup:anime:dry": "node scripts/cleanupOrphanedAnime.js --dry-run",
+    "cleanup:anime:list": "node scripts/cleanupOrphanedAnime.js --list --dry-run",
+
+    "import:anime": "node scripts/importAniListRegional.js",
+    "import:anime:jp": "node scripts/importAniListRegional.js --region=JP",
+    "import:anime:cn": "node scripts/importAniListRegional.js --region=CN",
+    "import:anime:kr": "node scripts/importAniListRegional.js --region=KR",
+    "import:anime:in": "node scripts/importAniListRegional.js --region=IN",
+    "import:anime:dry": "node scripts/importAniListRegional.js --dry-run",
+    "import:anime:reset": "node scripts/importAniListRegional.js --reset"
   },
   "dependencies": {
     "axios": "^1.13.6",
