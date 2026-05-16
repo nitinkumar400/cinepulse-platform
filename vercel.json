@@ -33,7 +33,7 @@
   "crons": [
     { "path": "/api/sync",                       "schedule": "0 3 * * *" },
     { "path": "/api/sync/anime",                 "schedule": "30 3 * * *" },
-    { "path": "/api/admin/servers/health/run",   "schedule": "*/30 * * * *" }
+    { "path": "/api/admin/servers/health/run",   "schedule": "0 4 * * *" }
   ],
   "headers": [
     {
