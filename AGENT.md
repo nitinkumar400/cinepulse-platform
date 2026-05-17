@@ -31,6 +31,7 @@
 28. [Elite Netflix-Style UI & Dark Catalog Overhaul (May 2026)](#28-elite-netflix-style-ui--dark-catalog-overhaul-may-2026)
 29. [CinePro Microservice Integration & Native Bridge (May 2026)](#29-cinepro-microservice-integration--native-bridge-may-2026)
 30. [Production Cloud Deployment & Keep-Alive Synchronization (May 2026)](#30-production-cloud-deployment--keep-alive-synchronization-may-2026)
+31. [Elite Stream Synchronization, Secure Sandboxing & Database Re-Seeding (May 2026)](#31-elite-stream-synchronization-secure-sandboxing--database-re-seeding-may-2026)
 
 
 ---
@@ -1791,3 +1792,34 @@ Successfully deployed the entire decoupled streaming architecture into productio
 - **Environment Handshake:** Linked our live frontend presentation storefront on Vercel with our live background scraping worker by adding the secure cloud production string to Vercel's configuration panel:
   `CINEPRO_URL=https://cine-pro-org.onrender.com`
 - **Compilation Rebuild:** Triggered a full production redeployment of the main platform web storefront to bind the environmental variables, unlocking multi-source, native, ad-free streaming playback live on the web.
+
+---
+
+## 31. Elite Stream Synchronization, Secure Sandboxing & Database Re-Seeding (May 2026)
+
+Perfected the decoupled streaming architecture by implementing a hybrid stream co-existence model, locking down iframe redirection scripts with conditional sandboxing, and re-seeding the platform with pristine high-definition movie sets.
+
+### 1. Hybrid Unified Playback & Co-Existence Model
+- **Direct & Embed Merging:** Refactored the core player handshake engine inside `public/js/movieDetailsPage.js` to build both native resolved direct stream lists and fallback embed server lists simultaneously.
+- **Visual Selector Indexing:** Engineered a dynamic relabeling phase inside `public/js/embedServers.js` to sort standard embed servers by priority first, then assign sequential `Server 1` through `Server N` button titles.
+- **Server Priority Hierarchy:** Realigned the backend priority weights (`backend/routes/watch.js`) to mirror the frontend perfectly:
+  1. **Server 1 (Primary / Direct HLS):** Live scrapers from CinePro (`https://cine-pro-org.onrender.com`) load natively in our HTML5 player with ad-free controls.
+  2. **Server 2 (VidLink Fallback):** Safe standard iframe player (`https://vidlink.pro`).
+  3. **Server 3 (VidNest Fallback):** Backup provider (`https://vidnest.fun`).
+  4. **Server 4 to N (Lower-tier Embeds):** Sandbox-isolated fallback engines (`vidsrcio`, `embed2`, `videasy`, etc.).
+
+### 2. High-Fidelity Smart Sandboxing Architecture
+- **Tab-Redirection Protection:** Isolated low-quality, redirect-heavy embed servers (like `vidsrcio`, `vidsrcicu`, `videasy`) by forcing a robust browser iframe sandbox:
+  `sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation"`
+- **Parent Isolation:** This lets players execute their inner playback scripts while strictly blocking frame-busting top-level redirects to external ads/spam search pages.
+- **Clean Bypass:** Kept premium servers like `vidlink` and `vidnest` sandbox-free to avoid playback blocks, achieving absolute security with zero functional loss.
+
+### 3. Pristine Premium Ingestion Engine
+- **Destructive Metadata Seed:** Configured `scripts/seedPremium.js` to execute a complete MongoDB metadata cleanup pass to eliminate old key conflicts.
+- **Proxy Caching & Ingestion:** Upserted hundreds of modern movies across Trending, Top Rated, and Discover categories. Automatically mapped and routed all images (`posterUrl`, `thumbnailUrl`, `bannerUrl`) through our global cache proxy (`https://wsrv.nl/?url=...`) to ensure posters load instantly on home rails without ISP/DNS blocking.
+
+---
+
+*Last Updated: May 17, 2026*
+*Platform Status: 100% Operational & Production-Hardened*
+*Maintained by: Nitin Mishra & AI Coding Assistant*
