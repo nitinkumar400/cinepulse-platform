@@ -29,6 +29,9 @@
 26. [Auto-Ingest Pipeline (GitHub Actions)](#26-auto-ingest-pipeline-github-actions-may-2026)
 27. [CinePulse Platform Overhaul (May 2026)](#27-cinepulse-platform-overhaul-may-2026)
 28. [Elite Netflix-Style UI & Dark Catalog Overhaul (May 2026)](#28-elite-netflix-style-ui--dark-catalog-overhaul-may-2026)
+29. [CinePro Microservice Integration & Native Bridge (May 2026)](#29-cinepro-microservice-integration--native-bridge-may-2026)
+30. [Production Cloud Deployment & Keep-Alive Synchronization (May 2026)](#30-production-cloud-deployment--keep-alive-synchronization-may-2026)
+
 
 ---
 
@@ -1762,3 +1765,29 @@ When running tests or verifying playback, both servers must run concurrently:
 *Database: 107,810+ documents (Live on Atlas)*
 *Status: Netflix-Style Overhaul + CinePro Integration + Native Bridge - 100% Operational*
 *Maintained by: Nitin Mishra & AI Coding Assistant*
+
+---
+
+## 30. Production Cloud Deployment & Keep-Alive Synchronization (May 2026)
+
+Successfully deployed the entire decoupled streaming architecture into production, bridging the storefront on Vercel with a persistent scraping engine on Render, while enforcing strict high-definition database normalization and automated sleep defense.
+
+### 1. Persistent Scraping Engine Cloud Launch (Render Platform)
+- **Deployment Topology:** Uploaded and deployed the `cine-pro-org` microservice as an isolated Docker container instance on Render.
+- **Latency Optimization:** Targeted the Singapore (Southeast Asia) region to guarantee the absolute lowest latency, fastest network responses, and zero-throttling lookup times for users streaming from regional ISPs.
+- **Variable Injection:** Secured the engine by injecting required production environment configurations directly into the cloud container registry dashboard (`TMDB_API_KEY`, `NODE_ENV=production`).
+
+### 2. High-Density Master Database Reset & Re-Seed
+- **Destructive Purge Pass:** Automated a clean wipe command (`await Movie.deleteMany({});`) inside `scripts/seedPremium.js` to clear out older conflicting record sets and ensure absolute structural consistency.
+- **Key-Unification & Anti-Block Proxy:** Re-executed the premium ingestion loop across Trending, Top Rated, and Modern Releases, explicitly saving fields (`posterUrl`, `thumbnailUrl`, `bannerUrl`) to align perfectly with client rendering functions. 
+- **Asset Resolution:** Upgraded poster layers to crisp `/w780` HD quality while wrapping all URLs in our global caching proxy shield (`https://wsrv.nl/?url=...`) to prevent regional domain blocks.
+
+### 3. Automated Container Keep-Alive Drones (Cron-Job.org)
+- **Custom Crontab Interceptor:** Bypassed UI configuration limitations on `cron-job.org` by injecting a custom shorthand crontab expression:
+  `*/12 * * * *` (or explicit intervals: `0,12,24,36,48 * * * *`).
+- **Cold Start Elimination:** Configured a lightweight `GET` request pinging our base Render service root URL every 12 minutes. This resets Render's 15-minute inactivity countdown sleep clock safely, keeping the container perpetually loaded in memory for instantaneous user playback while maintaining absolute safety beneath Render's 750 free workspace hour threshold.
+
+### 4. Cross-Cloud Infrastructure Bridging (Vercel Integration)
+- **Environment Handshake:** Linked our live frontend presentation storefront on Vercel with our live background scraping worker by adding the secure cloud production string to Vercel's configuration panel:
+  `CINEPRO_URL=https://cine-pro-org.onrender.com`
+- **Compilation Rebuild:** Triggered a full production redeployment of the main platform web storefront to bind the environmental variables, unlocking multi-source, native, ad-free streaming playback live on the web.
