@@ -118,6 +118,7 @@ const MovieSchema = new mongoose.Schema({
   },
   videoUrl:     { type: String, default: '' },  // original / highest quality
   thumbnailUrl: { type: String, default: '' },
+  posterUrl:    { type: String, default: '' },
   bannerUrl:    { type: String, default: '' },
   logoUrl:      { type: String, default: '' },
   trailerUrl:   { type: String, default: '' },

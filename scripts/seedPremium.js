@@ -38,16 +38,21 @@ async function processMovies(moviesArray, category = 'movie') {
     const releaseYear = movie.release_date ? parseInt(movie.release_date.split('-')[0], 10) : null;
     const views = (movie.vote_count || 0) * 10;
 
+    const rawPosterUrl = `https://image.tmdb.org/t/p/w780${movie.poster_path}`;
+    const rawBannerUrl = `https://image.tmdb.org/t/p/original${movie.backdrop_path}`;
+
     const mappedData = {
       title: movie.title,
       tmdbId: movie.id,
       releaseYear: releaseYear,
       averageRating: movie.vote_average,
       views: views,
-      thumbnailUrl: `https://wsrv.nl/?url=https://image.tmdb.org/t/p/w780${movie.poster_path}`,
-      bannerUrl: `https://wsrv.nl/?url=https://image.tmdb.org/t/p/original${movie.backdrop_path}`,
+      posterUrl: `https://wsrv.nl/?url=${encodeURIComponent(rawPosterUrl)}&output=webp`,
+      thumbnailUrl: `https://wsrv.nl/?url=${encodeURIComponent(rawPosterUrl)}&output=webp`,
+      bannerUrl: `https://wsrv.nl/?url=${encodeURIComponent(rawBannerUrl)}&output=webp`,
       category: category,
-      isBroadcasted: false
+      isBroadcasted: false,
+      isFeatured: true
     };
 
     try {
@@ -80,28 +85,51 @@ async function runSeed() {
     console.log('✨ Database cleared. Starting clean premium import...');
     let totalUpserted = 0;
 
-    console.log("\n📡 Fetching Endpoint 1: Trending Movies (Week)...");
-    const trendingRes = await tmdbClient.get('/trending/movie/week');
-    const trendingCount = await processMovies(trendingRes.data.results, 'movie');
-    totalUpserted += trendingCount;
-    console.log(`✅ Upserted ${trendingCount} trending movies.`);
-
-    console.log("\n📡 Fetching Endpoint 2: Top Rated Movies...");
-    const topRatedRes = await tmdbClient.get('/movie/top_rated');
-    const topRatedCount = await processMovies(topRatedRes.data.results, 'movie');
-    totalUpserted += topRatedCount;
-    console.log(`✅ Upserted ${topRatedCount} top rated movies.`);
-
-    console.log("\n📡 Fetching Endpoint 3: Modern Discover (2024)...");
-    const discoverRes = await tmdbClient.get('/discover/movie', {
-      params: {
-        primary_release_year: 2024,
-        sort_by: 'popularity.desc'
+    // 1. Trending Matrix: Pages 1 to 3
+    console.log("\n📡 Fetching Endpoint 1: Trending Movies (Week) Pages 1-3...");
+    for (let page = 1; page <= 3; page++) {
+      try {
+        const trendingRes = await tmdbClient.get('/trending/movie/week', { params: { page } });
+        const trendingCount = await processMovies(trendingRes.data.results, 'movie');
+        totalUpserted += trendingCount;
+        console.log(`   Page ${page}: Upserted ${trendingCount} trending movies.`);
+      } catch (err) {
+        console.error(`   Error fetching Trending Page ${page}:`, err.message);
       }
-    });
-    const discoverCount = await processMovies(discoverRes.data.results, 'movie');
-    totalUpserted += discoverCount;
-    console.log(`✅ Upserted ${discoverCount} modern discover movies.`);
+    }
+
+    // 2. Top Rated Matrix: Pages 1 and 2, ensuring vote_average >= 7.5
+    console.log("\n📡 Fetching Endpoint 2: Top Rated Movies Pages 1-2 (Rating >= 7.5)...");
+    for (let page = 1; page <= 2; page++) {
+      try {
+        const topRatedRes = await tmdbClient.get('/movie/top_rated', { params: { page } });
+        const filtered = (topRatedRes.data.results || []).filter(movie => movie.vote_average >= 7.5);
+        const topRatedCount = await processMovies(filtered, 'movie');
+        totalUpserted += topRatedCount;
+        console.log(`   Page ${page}: Upserted ${topRatedCount} top rated movies.`);
+      } catch (err) {
+        console.error(`   Error fetching Top Rated Page ${page}:`, err.message);
+      }
+    }
+
+    // 3. Latest Discover Matrix: Pages 1 to 3, year 2025
+    console.log("\n📡 Fetching Endpoint 3: Modern Discover (2025) Pages 1-3...");
+    for (let page = 1; page <= 3; page++) {
+      try {
+        const discoverRes = await tmdbClient.get('/discover/movie', {
+          params: {
+            primary_release_year: 2025,
+            sort_by: 'popularity.desc',
+            page
+          }
+        });
+        const discoverCount = await processMovies(discoverRes.data.results, 'movie');
+        totalUpserted += discoverCount;
+        console.log(`   Page ${page}: Upserted ${discoverCount} modern discover movies.`);
+      } catch (err) {
+        console.error(`   Error fetching Discover Page ${page}:`, err.message);
+      }
+    }
 
     console.log(`\n🎉 SEED COMPLETE! Successfully upserted ${totalUpserted} premium movies into the database.`);
     process.exit(0);

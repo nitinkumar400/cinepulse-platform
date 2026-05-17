@@ -24,40 +24,41 @@ async function runAudit() {
     console.log("Sample Movie Document Details:");
     console.log("------------------------------");
     console.log(`Title: ${sample.title}`);
+    console.log(`posterUrl: ${sample.posterUrl}`);
     console.log(`thumbnailUrl: ${sample.thumbnailUrl}`);
     console.log(`bannerUrl: ${sample.bannerUrl}`);
+    console.log(`isFeatured: ${sample.isFeatured}`);
     console.log("------------------------------\n");
 
-    // Check 1: Key Check
-    // The frontend createMovieCard uses:
-    // isWide: movie.bannerUrl (or fallback movie.thumbnailUrl / movie.posterUrl)
-    // isTall: movie.posterUrl || movie.thumbnailUrl
-    // The database model defines: thumbnailUrl, bannerUrl.
-    // So "thumbnailUrl" is the main key used for the poster.
+    const hasPosterUrl = typeof sample.posterUrl === 'string' && sample.posterUrl.trim() !== '';
     const hasThumbnailUrl = typeof sample.thumbnailUrl === 'string' && sample.thumbnailUrl.trim() !== '';
-    const frontendHasThumbnailUrl = true; // Confirmed from public/js/app.js createMovieCard
-
+    const hasBannerUrl = typeof sample.bannerUrl === 'string' && sample.bannerUrl.trim() !== '';
+    
     // Check 2: Resolution Audit
-    // Confirm if image URL uses true HD quality (contains /w780 or /original rather than /w500)
-    const isHD = sample.thumbnailUrl.includes('/w780') || sample.thumbnailUrl.includes('/original');
+    const isHD = sample.posterUrl.includes('/w780') || sample.posterUrl.includes('/original') ||
+                 sample.posterUrl.includes('%2Fw780') || sample.posterUrl.includes('%2Foriginal');
 
-    // Check 3: Proxy Audit
-    // Verify that image URL is wrapped inside our anti-ISP blocking proxy shield (https://wsrv.nl/?url=...)
-    const isProxied = sample.thumbnailUrl.startsWith('https://wsrv.nl/?url=') || 
-                      sample.thumbnailUrl.includes('wsrv.nl');
+    // Check 3: Proxy & WebP Audit
+    const isProxied = sample.posterUrl.startsWith('https://wsrv.nl/?url=') && sample.posterUrl.includes('&output=webp');
 
-    if (hasThumbnailUrl && frontendHasThumbnailUrl && isHD && isProxied) {
+    // Check 4: Homepage Visibility Flag
+    const isFeaturedTrue = sample.isFeatured === true;
+
+    if (hasPosterUrl && hasThumbnailUrl && hasBannerUrl && isHD && isProxied && isFeaturedTrue) {
       console.log("ALIGNMENT PASSED: Data keys are fully unified. Posters are guaranteed to render in HD quality with proxy protection.");
     } else {
       console.log("ALIGNMENT FAILED");
-      if (!hasThumbnailUrl) {
-        console.log("- Database document is missing the 'thumbnailUrl' field.");
+      if (!hasPosterUrl) {
+        console.log("- Database document is missing the 'posterUrl' field.");
       }
       if (!isHD) {
-        console.log(`- Poster URL is NOT HD: '${sample.thumbnailUrl}' contains standard resolution (expected '/w780' or '/original', not '/w500').`);
+        console.log(`- Poster URL is NOT HD: '${sample.posterUrl}'`);
       }
       if (!isProxied) {
-        console.log(`- Poster URL is NOT wrapped in wsrv.nl proxy shield: '${sample.thumbnailUrl}'`);
+        console.log(`- Poster URL is NOT wrapped in wsrv.nl proxy shield or is missing webp parameter: '${sample.posterUrl}'`);
+      }
+      if (!isFeaturedTrue) {
+        console.log("- Database document is missing the 'isFeatured: true' flag.");
       }
     }
 
