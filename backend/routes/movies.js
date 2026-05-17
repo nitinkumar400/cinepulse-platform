@@ -295,7 +295,7 @@ router.get('/', async (req, res) => {
       .limit(limitNumber)
       .maxTimeMS(SEARCH_QUERY_TIMEOUT_MS)
       .lean()
-      .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average numRatings views isFeatured anilistId status createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes');
+      .select('title thumbnailUrl posterUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average numRatings views isFeatured anilistId status createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes');
 
     return res.json({
       movies,
@@ -368,7 +368,7 @@ router.get('/search', async (req, res) => {
       .limit(limitNumber)
       .maxTimeMS(SEARCH_QUERY_TIMEOUT_MS)
       .lean()
-      .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average numRatings views createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes');
+      .select('title thumbnailUrl posterUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average numRatings views createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes');
 
     res.json({
       movies,
@@ -425,7 +425,7 @@ router.get('/trending', asyncHandler(async (req, res) => {
   let trending = await Movie.find(filter)
     .sort({ averageRating: -1, views: -1, createdAt: -1 })
     .limit(limit)
-    .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average views createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes')
+    .select('title thumbnailUrl posterUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average views createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes')
     .lean();
 
   if (!trending.length) {
@@ -436,7 +436,7 @@ router.get('/trending', asyncHandler(async (req, res) => {
     })
       .sort({ averageRating: -1, views: -1, createdAt: -1 })
       .limit(limit)
-      .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average views createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes')
+      .select('title thumbnailUrl posterUrl bannerUrl logoUrl category genre releaseYear duration averageRating vote_average views createdAt spoken_languages subDubTag nextAiringEpisode provider tmdbId tmdb_id totalEpisodes')
       .lean();
   }
 
@@ -493,7 +493,7 @@ router.post('/personalized', optionalProtect, asyncHandler(async (req, res) => {
   })
     .sort({ averageRating: -1, views: -1 })
     .limit(limit)
-    .select('title thumbnailUrl bannerUrl logoUrl category genre releaseYear averageRating views duration _id');
+    .select('title thumbnailUrl posterUrl bannerUrl logoUrl category genre releaseYear averageRating views duration _id');
 
   return sendSuccess(res, {
     recommendations,
@@ -1090,7 +1090,7 @@ router.get('/:id/more-like-this', asyncHandler(async (req, res) => {
     .sort({ averageRating: -1, views: -1, createdAt: -1 })
     .limit(limit)
     .lean()
-    .select('title thumbnailUrl bannerUrl category genre releaseYear duration averageRating views original_language spoken_languages');
+    .select('title thumbnailUrl posterUrl bannerUrl category genre releaseYear duration averageRating views original_language spoken_languages');
 
   return res.json({
     recommendations,
@@ -1106,7 +1106,7 @@ router.get('/:id/other-seasons', asyncHandler(async (req, res) => {
   const limit = Math.min(24, Math.max(1, parseInt(req.query.limit, 10) || 12));
   const current = await Movie.findById(req.params.id)
     .lean()
-    .select('_id title provider category franchiseKey animeSeasonNumber releaseYear averageRating thumbnailUrl');
+    .select('_id title provider category franchiseKey animeSeasonNumber releaseYear averageRating thumbnailUrl posterUrl');
 
   if (!current?._id) {
     return res.status(404).json({ message: 'Movie not found' });
@@ -1138,7 +1138,7 @@ router.get('/:id/other-seasons', asyncHandler(async (req, res) => {
     .sort({ animeSeasonNumber: 1, releaseYear: 1, createdAt: 1 })
     .limit(limit)
     .lean()
-    .select('title thumbnailUrl releaseYear averageRating animeSeasonNumber franchiseKey provider category');
+    .select('title thumbnailUrl posterUrl releaseYear averageRating animeSeasonNumber franchiseKey provider category');
 
   return res.json({ seasons });
 }));

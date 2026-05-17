@@ -82,12 +82,12 @@ async function getPersonalizedRecommendations(userId, limit = 12) {
       ].filter(Boolean),
     })
       .limit(80)
-      .select('title thumbnailUrl category genre releaseYear averageRating views duration _id');
+      .select('title thumbnailUrl posterUrl category genre releaseYear averageRating views duration _id');
   } else {
     candidates = await Movie.find(baseFilter)
       .sort({ views: -1, averageRating: -1, createdAt: -1 })
       .limit(limit)
-      .select('title thumbnailUrl category genre releaseYear averageRating views duration _id');
+      .select('title thumbnailUrl posterUrl category genre releaseYear averageRating views duration _id');
   }
 
   const ranked = candidates
@@ -153,7 +153,7 @@ async function getBecauseYouWatched(movieId, limit = 12) {
   const relatedIds = await WatchHistory.aggregate(pipeline);
   const relatedMovies = relatedIds.length
     ? await Movie.find({ _id: { $in: relatedIds.map((entry) => entry._id) } })
-      .select('title thumbnailUrl category genre releaseYear averageRating views duration _id')
+      .select('title thumbnailUrl posterUrl category genre releaseYear averageRating views duration _id')
     : [];
 
   const relatedById = new Map(relatedIds.map((entry) => [String(entry._id), entry.coWatchCount]));
@@ -183,7 +183,7 @@ async function getBecauseYouWatched(movieId, limit = 12) {
     })
       .sort({ averageRating: -1, views: -1 })
       .limit(limit - rankedRelated.length)
-      .select('title thumbnailUrl category genre releaseYear averageRating views duration _id');
+      .select('title thumbnailUrl posterUrl category genre releaseYear averageRating views duration _id');
 
     rankedRelated.push(...fill);
   }
@@ -204,7 +204,7 @@ async function getTrendingRanked(limit = 10, category = '') {
   const recentWindow = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
   const movies = await Movie.find(match)
-    .select('title thumbnailUrl category genre releaseYear averageRating views duration createdAt _id')
+    .select('title thumbnailUrl posterUrl category genre releaseYear averageRating views duration createdAt _id')
     .limit(100);
 
   const ranked = movies

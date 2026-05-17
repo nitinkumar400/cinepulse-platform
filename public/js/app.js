@@ -343,7 +343,7 @@ const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';
 const POSTER_PLACEHOLDER_URL = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+';
 
 function getImageUrl(path, size) {
-  if (!path) return POSTER_PLACEHOLDER_URL;
+  if (!path) return '';
   // Already-good URLs — pass through untouched
   if (path.includes('anilist.co')) return path;
   if (path.includes('image.tmdb.org')) return path;
@@ -351,7 +351,7 @@ function getImageUrl(path, size) {
   if (path.startsWith('data:')) return path;
   // Everything else: extract filename and route through TMDB CDN
   const filename = String(path).split('/').pop().split('?')[0];
-  if (!filename) return POSTER_PLACEHOLDER_URL;
+  if (!filename) return '';
   return `${TMDB_IMAGE_BASE}${size || 'w500'}/${filename}`;
 }
 
