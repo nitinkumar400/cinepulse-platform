@@ -10,34 +10,343 @@
   <meta name="apple-mobile-web-app-title" content="CineStream">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
-  <title>Login - CINE STREAM</title>
+  <title>Sign In - CINE STREAM</title>
   <link rel="stylesheet" href="../css/styles.css">
   <link rel="stylesheet" href="../css/theme.css">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+  
+  <style>
+    :root {
+      --primary: #e50914;
+      --primary-hover: #b81d24;
+      --bg-dark: #08080c;
+      --glass-bg: rgba(15, 15, 25, 0.45);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-highlight: rgba(255, 255, 255, 0.03);
+    }
+
+    body {
+      background: radial-gradient(circle at 50% 50%, #1c1015 0%, var(--bg-dark) 100%);
+      font-family: 'Outfit', 'Inter', -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0;
+      padding: 20px;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Ambient background glow elements */
+    .ambient-glow {
+      position: absolute;
+      width: 40vw;
+      height: 40vw;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(229, 9, 20, 0.12) 0%, rgba(229, 9, 20, 0) 70%);
+      top: -10vw;
+      left: -10vw;
+      z-index: 1;
+      pointer-events: none;
+      filter: blur(80px);
+    }
+
+    .ambient-glow-2 {
+      position: absolute;
+      width: 45vw;
+      height: 45vw;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(124, 58, 237, 0.1) 0%, rgba(124, 58, 237, 0) 70%);
+      bottom: -15vw;
+      right: -15vw;
+      z-index: 1;
+      pointer-events: none;
+      filter: blur(100px);
+    }
+
+    .auth-page {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 440px;
+    }
+
+    .auth-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+      padding: 40px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55),
+                  inset 0 1px 1px var(--glass-highlight);
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .auth-logo {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .auth-logo h1 {
+      font-size: clamp(28px, 4vw, 36px);
+      font-weight: 900;
+      color: #fff;
+      letter-spacing: -1.5px;
+      margin: 0;
+      text-transform: uppercase;
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .auth-logo h1 span {
+      color: var(--primary);
+      text-shadow: 0 0 15px rgba(229, 9, 20, 0.4);
+    }
+
+    .auth-logo p {
+      color: rgba(255, 255, 255, 0.45);
+      font-size: 13px;
+      margin: 6px 0 0 0;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .auth-tabs {
+      display: flex;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 4px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .auth-tab-btn {
+      flex: 1;
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.6);
+      padding: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+
+    .auth-tab-btn.active {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .input-with-icon {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: rgba(255, 255, 255, 0.35);
+      font-size: 18px;
+      pointer-events: none;
+      transition: color 0.3s ease;
+    }
+
+    .input-with-icon input {
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 13px 16px 13px 44px;
+      color: #fff;
+      font-size: 14px;
+      transition: all 0.3s ease;
+      outline: none;
+    }
+
+    .input-with-icon input:focus {
+      border-color: var(--primary);
+      background: rgba(255, 255, 255, 0.06);
+      box-shadow: 0 0 0 4px rgba(229, 9, 20, 0.15);
+    }
+
+    .input-with-icon input:focus + .input-icon {
+      color: var(--primary);
+    }
+
+    .password-toggle {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: rgba(255, 255, 255, 0.35);
+      font-size: 18px;
+      cursor: pointer;
+      transition: color 0.3s ease;
+    }
+
+    .password-toggle:hover {
+      color: #fff;
+    }
+
+    .btn-full {
+      width: 100%;
+      padding: 13px;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 12px;
+      border: none;
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary) 0%, #b81d24 100%);
+      box-shadow: 0 6px 20px rgba(229, 9, 20, 0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .btn-full:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(229, 9, 20, 0.45);
+    }
+
+    .btn-full:active {
+      transform: translateY(0);
+    }
+
+    .auth-alert {
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 13px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: slideIn 0.3s ease;
+    }
+
+    .auth-alert.error {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      color: #f87171;
+    }
+
+    .auth-alert.success {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #34d399;
+    }
+
+    .auth-footer-text {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .auth-footer-text a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .auth-footer-text a:hover {
+      text-decoration: underline;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateY(-10px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* Admin Panel Quick Access link when already logged in */
+    .admin-link-banner {
+      display: none;
+      background: rgba(229, 9, 20, 0.08);
+      border: 1px dashed rgba(229, 9, 20, 0.3);
+      padding: 12px;
+      border-radius: 12px;
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #fca5a5;
+    }
+
+    .admin-link-banner a {
+      color: #fff;
+      font-weight: 700;
+      text-decoration: underline;
+    }
+  </style>
 </head>
 <body>
+  <div class="ambient-glow"></div>
+  <div class="ambient-glow-2"></div>
+
   <div class="auth-page">
     <div class="auth-card">
       <div class="auth-logo">
         <h1>CINE<span>STREAM</span></h1>
-        <p>Admin control center</p>
+        <p>Premium Cinematic Lounge</p>
       </div>
 
-      <h2 class="auth-title">Admin Sign In</h2>
-      <p class="auth-subtitle">Only admin accounts can access the platform</p>
-      <div id="alertBox" style="display:none;"></div>
+      <div class="auth-tabs">
+        <button class="auth-tab-btn active" id="tabSignIn">Sign In</button>
+        <button class="auth-tab-btn" id="tabSignUp">Sign Up</button>
+      </div>
 
-      <form id="loginForm">
+      <div class="admin-link-banner" id="adminBanner">
+        <i class="ri-shield-user-line"></i> Administrator detected. <a href="admin.html">Go to Admin Panel</a>
+      </div>
+
+      <div class="auth-alert error" id="alertBox" style="display:none;"></div>
+
+      <form id="authForm">
+        <!-- Username (Register only) -->
+        <div class="form-group" id="groupUsername" style="display:none;">
+          <label for="username">Username</label>
+          <div class="input-with-icon">
+            <i class="ri-user-line input-icon"></i>
+            <input type="text" id="username" placeholder="Create a username" autocomplete="username">
+          </div>
+        </div>
+
+        <!-- Email -->
         <div class="form-group">
-          <label>Email Address</label>
+          <label for="email">Email Address</label>
           <div class="input-with-icon">
             <i class="ri-mail-line input-icon"></i>
             <input type="email" id="email" placeholder="your@email.com" autocomplete="email" required>
           </div>
         </div>
 
+        <!-- Password -->
         <div class="form-group">
-          <label>Password</label>
+          <label for="password">Password</label>
           <div class="input-with-icon">
             <i class="ri-lock-line input-icon"></i>
             <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password" required>
@@ -45,13 +354,16 @@
           </div>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-full" id="loginBtn">
+        <button type="submit" class="btn-full" id="submitBtn">
           <i class="ri-login-box-line"></i>
-          <span>Sign In</span>
+          <span id="btnText">Sign In</span>
         </button>
       </form>
 
-      <div class="auth-footer">Public signup is disabled.</div>
+      <div class="auth-footer-text">
+        <span id="footerPrompt">New to CineStream?</span>
+        <a href="#" id="toggleModeLink">Create an account</a>
+      </div>
     </div>
   </div>
 
@@ -61,18 +373,131 @@
   <script src="../js/app.js"></script>
   <script src="../js/api.js"></script>
   <script src="../js/pwa.js"></script>
+  
   <script>
-    // login.html now redirects to admin.html which has its own login gate
     (function() {
+      let isSignUpMode = false;
+
+      const tabSignIn = document.getElementById('tabSignIn');
+      const tabSignUp = document.getElementById('tabSignUp');
+      const groupUsername = document.getElementById('groupUsername');
+      const inputUsername = document.getElementById('username');
+      const inputEmail = document.getElementById('email');
+      const inputPassword = document.getElementById('password');
+      const submitBtn = document.getElementById('submitBtn');
+      const btnText = document.getElementById('btnText');
+      const footerPrompt = document.getElementById('footerPrompt');
+      const toggleModeLink = document.getElementById('toggleModeLink');
+      const alertBox = document.getElementById('alertBox');
+      const authForm = document.getElementById('authForm');
+      const adminBanner = document.getElementById('adminBanner');
+      const togglePassword = document.getElementById('togglePassword');
+
+      // Check current login status
       const token = localStorage.getItem('token');
       const user = JSON.parse(localStorage.getItem('user') || 'null');
-      // If already logged in as admin, go straight to admin panel
-      if (token && user?.role === 'admin') {
-        window.location.href = 'admin.html';
-        return;
+      if (token && user) {
+        if (user.role === 'admin') {
+          adminBanner.style.display = 'block';
+        }
       }
-      // Otherwise redirect to admin.html which has the login form
-      window.location.href = 'admin.html';
+
+      // Password visibility toggle
+      togglePassword.addEventListener('click', () => {
+        if (inputPassword.type === 'password') {
+          inputPassword.type = 'text';
+          togglePassword.className = 'ri-eye-off-line password-toggle';
+        } else {
+          inputPassword.type = 'password';
+          togglePassword.className = 'ri-eye-line password-toggle';
+        }
+      });
+
+      // Switch to Sign In
+      function setSignInMode() {
+        isSignUpMode = false;
+        tabSignIn.classList.add('active');
+        tabSignUp.classList.remove('active');
+        groupUsername.style.display = 'none';
+        inputUsername.removeAttribute('required');
+        btnText.textContent = 'Sign In';
+        footerPrompt.textContent = 'New to CineStream?';
+        toggleModeLink.textContent = 'Create an account';
+        alertBox.style.display = 'none';
+      }
+
+      // Switch to Sign Up
+      function setSignUpMode() {
+        isSignUpMode = true;
+        tabSignUp.classList.add('active');
+        tabSignIn.classList.remove('active');
+        groupUsername.style.display = 'block';
+        inputUsername.setAttribute('required', 'true');
+        btnText.textContent = 'Sign Up';
+        footerPrompt.textContent = 'Already have an account?';
+        toggleModeLink.textContent = 'Sign In here';
+        alertBox.style.display = 'none';
+      }
+
+      tabSignIn.addEventListener('click', setSignInMode);
+      tabSignUp.addEventListener('click', setSignUpMode);
+      toggleModeLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (isSignUpMode) setSignInMode();
+        else setSignUpMode();
+      });
+
+      // Handle Authentication Submission
+      authForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        alertBox.style.display = 'none';
+        
+        const email = inputEmail.value.trim();
+        const password = inputPassword.value;
+        const username = inputUsername.value.trim();
+
+        const endpoint = isSignUpMode ? '/auth/register' : '/auth/login';
+        const payload = isSignUpMode 
+          ? { username, email, password }
+          : { email, password };
+
+        submitBtn.disabled = true;
+        btnText.textContent = isSignUpMode ? 'Creating Account...' : 'Signing In...';
+
+        try {
+          // apiFetch and readJsonResponse from app.js
+          const response = await apiFetch(endpoint, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+
+          const data = await readJsonResponse(response);
+
+          if (!response.ok) {
+            throw new Error(data.message || 'Authentication failed');
+          }
+
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify(data.user));
+
+          showToast(isSignUpMode ? 'Registered successfully!' : 'Signed in successfully!', 'success');
+
+          setTimeout(() => {
+            if (data.user.role === 'admin') {
+              window.location.href = 'admin.html';
+            } else {
+              window.location.href = '../index.html';
+            }
+          }, 800);
+
+        } catch (err) {
+          alertBox.textContent = err.message;
+          alertBox.style.display = 'flex';
+          submitBtn.disabled = false;
+          btnText.textContent = isSignUpMode ? 'Sign Up' : 'Sign In';
+        }
+      });
+
     })();
   </script>
 </body>

@@ -534,12 +534,52 @@
 <nav class="navbar" id="navbar">
   <a href="index.html" class="nav-logo">CINE<span>STREAM</span></a>
   <div class="nav-links">
-    <a href="index.html" class="active">Home</a>
-    <a href="?sidebarCategory=hollywood">Hollywood</a>
-    <a href="?sidebarCategory=anime">Anime</a>
-    <a href="?sidebarCategory=chinese">Chinese (Donghua)</a>
-    <a href="?sidebarCategory=kdrama">K-Drama</a>
-    <a href="?sidebarCategory=hindi">Hindi Dubbed</a>
+    <a href="index.html" class="nav-link active">Home</a>
+    <div class="nav-item">
+      <a href="?category=movie" class="nav-link">Movies <i class="ri-arrow-down-s-line" style="margin-left:4px;font-size:12px;"></i></a>
+      <div class="mega-dropdown">
+        <div class="mega-column">
+          <h4>By Region</h4>
+          <a href="?sidebarCategory=hollywood">Hollywood</a>
+          <a href="?sidebarCategory=kdrama">K-Drama</a>
+          <a href="?sidebarCategory=chinese">Chinese (Donghua)</a>
+          <a href="?sidebarCategory=hindi">Hindi Dubbed</a>
+        </div>
+        <div class="mega-column">
+          <h4>Genres</h4>
+          <a href="?genre=Action">Action</a>
+          <a href="?genre=Sci-Fi">Sci-Fi</a>
+          <a href="?genre=Thriller">Thriller</a>
+          <a href="?genre=Romance">Romance</a>
+          <a href="?genre=Horror">Horror</a>
+        </div>
+        <div class="mega-column">
+          <h4>Quick Links</h4>
+          <a href="?sort=trending">Trending Now</a>
+          <a href="?sort=new">New Releases</a>
+          <a href="?sort=top_rated">Top Rated</a>
+        </div>
+      </div>
+    </div>
+    <div class="nav-item">
+      <a href="?category=series" class="nav-link">Series <i class="ri-arrow-down-s-line" style="margin-left:4px;font-size:12px;"></i></a>
+      <div class="mega-dropdown">
+        <div class="mega-column">
+          <h4>Trending</h4>
+          <a href="?category=series&sort=trending">Top Series</a>
+          <a href="?category=anime&sort=trending">Top Anime</a>
+        </div>
+        <div class="mega-column">
+          <h4>Elite Picks</h4>
+          <a href="?category=anime">All Anime</a>
+          <a href="?category=series">Premium Shows</a>
+        </div>
+        <div class="mega-column">
+          <h4>Continue</h4>
+          <a href="#continueWatchingSection">My Watch History</a>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="nav-right">
     <div class="nav-search" style="position:relative;">
@@ -551,16 +591,29 @@
 </nav>
 
 <div class="home-shell">
-  <section class="hero-spotlight">
-    <div class="hero-backdrop" id="heroBackdrop"></div>
-    <div class="hero-layout">
-      <div class="hero-copy" id="heroCopy">
-        <h1 class="hero-headline">Find your next obsession.</h1>
-        <p class="hero-subcopy">A sharper home surface for movies, elite anime, and premium series, refreshed from your live catalog.</p>
-        <div class="hero-actions">
-          <button class="btn btn-primary"><i class="ri-play-fill"></i> Play</button>
-          <button class="btn btn-secondary"><i class="ri-information-line"></i> More Info</button>
+  <section id="slidey">
+    <div class="slidey-left" id="slideyLeft" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMWExYTI0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjMzMzIj7wn46YIDM8L3RleHQ+PC9zdmc+');">
+      <div class="slidey-content">
+        <div class="slidey-meta" id="slideyMeta">
+          <span class="rating"><i class="ri-star-fill"></i> <span id="slideyRating">0.0</span></span>
+          <span class="dot">•</span>
+          <span id="slideyYear">2026</span>
+          <span class="dot">•</span>
+          <span id="slideyCategory">Movie</span>
         </div>
+        <h1 class="slidey-title" id="slideyTitle">Loading...</h1>
+        <p class="slidey-desc" id="slideyDesc">Finding your next obsession...</p>
+        <div class="hero-actions" style="margin-top:20px;">
+          <button class="btn btn-primary" id="slideyWatchBtn"><i class="ri-play-fill"></i> Watch Now</button>
+          <button class="btn btn-secondary" id="slideyInfoBtn"><i class="ri-information-line"></i> Details</button>
+        </div>
+      </div>
+    </div>
+    <div class="slidey-right">
+      <div class="slidey-queue-header">Up Next</div>
+      <div class="slidey-queue-list" id="slideyQueueList">
+        <!-- Rendered by slideyEngine.js -->
+        <div style="padding: 12px; color: var(--text-muted); font-size: 13px;">Loading trending titles...</div>
       </div>
     </div>
   </section>
@@ -801,6 +854,7 @@
 
 <script src="../js/config.js"></script>
 <script src="../js/app.js"></script>
+<script src="../js/slideyEngine.js"></script>
 <script src="../js/api.js"></script>
 <script src="../js/pwa.js"></script>
 <script>

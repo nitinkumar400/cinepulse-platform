@@ -2618,25 +2618,102 @@ async function switchPlaybackSource(index, options = {}) {
     const video = getVideoElement();
     if (!video) return;
 
-    ensureNativePlayer(currentMovie);
-    video.poster = mediaUrl(currentMovie?.thumbnailUrl) || '';
-    video.src = mediaUrl(source.playUrl || source.url);
-    video.currentTime = 0;
-    video.load();
-
-    const onCanPlay = () => {
-      if (switchToken !== activePlayerSwitchToken) return;
-      clearTimeout(switchPlaybackSource._staticTrustTimer);
-      showPlayerLoader(false);
-      setPlayerStatus(`Now playing • ${source.statusLabel || source.label}`);
-      if (startTime > 0 && video.currentTime < startTime) {
-        video.currentTime = startTime;
+    // Dynamically replace the player container with the clean native video tag if requested
+    // "equipped with native controls, a localized poster frame, and absolute-positioned subtitles"
+    if (source.isCinePro) {
+      const nativeShell = document.getElementById('nativePlayerShell');
+      if (nativeShell) {
+        nativeShell.innerHTML = `
+          <video id="videoPlayer" class="video-js" controls crossorigin="anonymous" playsinline style="width:100%; height:100%; background:#000; border-radius:8px; display:block;"></video>
+        `;
       }
-      video.play().catch(() => {});
-      video.removeEventListener('canplay', onCanPlay);
-    };
+    }
 
-    video.addEventListener('canplay', onCanPlay);
+    ensureNativePlayer(currentMovie);
+    
+    // Load external subtitles if returned from CinePro
+    if (source.isCinePro && source.subtitles && source.subtitles.length > 0) {
+      const mappedSubs = source.subtitles.map(sub => ({
+        label: sub.label || 'Subtitles',
+        language: sub.label || 'English',
+        url: sub.url,
+        default: sub.label?.toLowerCase() === 'english' || sub.default
+      }));
+      VideoPlayer.loadSubtitles?.(mappedSubs);
+    }
+
+    const videoSrc = source.playUrl || source.url;
+
+    // Check if it's an HLS (.m3u8) source
+    const isHlsSource = source.sourceType === 'hls' || videoSrc.includes('.m3u8');
+
+    if (isHlsSource) {
+      if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+        if (window.activeHlsInstance) {
+          window.activeHlsInstance.destroy();
+        }
+        const hlsInstance = new Hls({
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+        });
+        window.activeHlsInstance = hlsInstance;
+        hlsInstance.loadSource(videoSrc);
+        hlsInstance.attachMedia(video);
+        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (switchToken !== activePlayerSwitchToken) return;
+          clearTimeout(switchPlaybackSource._staticTrustTimer);
+          showPlayerLoader(false);
+          setPlayerStatus(`Now playing • ${source.statusLabel || source.label}`);
+          video.play().catch(() => {});
+        });
+        hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            console.warn('[VideoEngine] Native CinePro HLS fatal error:', data);
+            hlsInstance.destroy();
+            // Automatically switch to next source
+            video.dispatchEvent(new Event('error'));
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // iOS/Safari native HLS support
+        video.poster = mediaUrl(currentMovie?.thumbnailUrl) || '';
+        video.src = videoSrc;
+        video.currentTime = 0;
+        video.load();
+        
+        const onCanPlay = () => {
+          if (switchToken !== activePlayerSwitchToken) return;
+          clearTimeout(switchPlaybackSource._staticTrustTimer);
+          showPlayerLoader(false);
+          setPlayerStatus(`Now playing • ${source.statusLabel || source.label}`);
+          video.play().catch(() => {});
+          video.removeEventListener('canplay', onCanPlay);
+        };
+        video.addEventListener('canplay', onCanPlay);
+      } else {
+        console.error('[VideoEngine] HLS playback is not supported on this browser.');
+        video.dispatchEvent(new Event('error'));
+      }
+    } else {
+      // Standard Direct MP4/Direct stream
+      video.poster = mediaUrl(currentMovie?.thumbnailUrl) || '';
+      video.src = mediaUrl(videoSrc);
+      video.currentTime = 0;
+      video.load();
+
+      const onCanPlay = () => {
+        if (switchToken !== activePlayerSwitchToken) return;
+        clearTimeout(switchPlaybackSource._staticTrustTimer);
+        showPlayerLoader(false);
+        setPlayerStatus(`Now playing • ${source.statusLabel || source.label}`);
+        if (startTime > 0 && video.currentTime < startTime) {
+          video.currentTime = startTime;
+        }
+        video.play().catch(() => {});
+        video.removeEventListener('canplay', onCanPlay);
+      };
+      video.addEventListener('canplay', onCanPlay);
+    }
     return;
   }
 
@@ -2699,33 +2776,71 @@ async function setupPlayback(movie) {
     updateGhostProfile(movie, 1, 1);
   }
   try {
-    // ── Global Master Hydra: build sources from EmbedServers first ──
-    let hydraSources = [];
-    if (typeof EmbedServers !== 'undefined' && typeof EmbedServers.buildHydraSources === 'function') {
+    // ── Direct / Native Streaming Broker Handshake ──
+    const category = String(movie.category || '').toLowerCase();
+    const isTv = ['series', 'anime', 'tv', 'cartoon'].includes(category) || Number(movie.totalEpisodes) > 0;
+    const currentCategory = isTv ? 'tv' : 'movie';
+    const currentTmdbId = movie.tmdbId || movie.tmdb_id;
+    const currentSeason = currentPlayingSeason || movie.season || 1;
+    const currentEpisode = currentPlayingEpisode || movie.episode || 1;
+
+    let nativeResolvedSources = [];
+    if (currentTmdbId) {
       try {
-        hydraSources = EmbedServers.buildHydraSources(
-          movie,
-          currentPlayingSeason || movie.season || 1,
-          currentPlayingEpisode || movie.episode || 1
-        );
-      } catch (hydrErr) {
-        console.warn('[Hydra] buildHydraSources failed:', hydrErr.message);
+        const nativeRes = await fetch(`/api/watch/native/${currentCategory}/${currentTmdbId}?s=${currentSeason}&e=${currentEpisode}`);
+        if (nativeRes.ok) {
+          const payload = await nativeRes.json();
+          if (payload && Array.isArray(payload.sources) && payload.sources.length > 0) {
+            nativeResolvedSources = payload.sources.map((src, idx) => ({
+              id: `cinepro-${src.provider?.id || 'native'}-${idx}`,
+              server: 'upload', // Reuses premium native player view!
+              sourceType: src.type || 'hls',
+              url: src.url,
+              playUrl: src.url,
+              quality: src.quality || 'Auto',
+              label: src.provider?.name || `CinePro Server ${idx + 1}`,
+              statusLabel: src.quality ? `${src.provider?.name || 'CinePro'} • ${src.quality}` : (src.provider?.name || 'CinePro'),
+              subtitles: payload.subtitles || [],
+              isCinePro: true
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('[Playback] Failed to fetch native broker streams:', err.message);
       }
     }
 
-    // Also try masked/uploaded sources as primary (direct video uploads)
-    playbackSources = await loadMaskedPlaybackSources(movie._id);
+    if (nativeResolvedSources.length > 0) {
+      playbackSources = nativeResolvedSources;
+    } else {
+      // ── Global Master Hydra: build sources from EmbedServers first ──
+      let hydraSources = [];
+      if (typeof EmbedServers !== 'undefined' && typeof EmbedServers.buildHydraSources === 'function') {
+        try {
+          hydraSources = EmbedServers.buildHydraSources(
+            movie,
+            currentPlayingSeason || movie.season || 1,
+            currentPlayingEpisode || movie.episode || 1
+          );
+        } catch (hydrErr) {
+          console.warn('[Hydra] buildHydraSources failed:', hydrErr.message);
+        }
+      }
 
-    // Merge: uploaded sources first, then hydra embed servers, then VideoEngine fallback
-    if (hydraSources.length) {
-      const existingUrls = new Set(playbackSources.map(s => s.url || s.embedUrl || ''));
-      const freshHydra = hydraSources.filter(s => !existingUrls.has(s.url || s.embedUrl || ''));
-      playbackSources = [...playbackSources, ...freshHydra];
-    }
+      // Also try masked/uploaded sources as primary (direct video uploads)
+      playbackSources = await loadMaskedPlaybackSources(movie._id);
 
-    // Final fallback: VideoEngine if still empty
-    if (!playbackSources.length) {
-      playbackSources = (window.VideoEngine?.buildMovieSources?.(movie) || []);
+      // Merge: uploaded sources first, then hydra embed servers, then VideoEngine fallback
+      if (hydraSources.length) {
+        const existingUrls = new Set(playbackSources.map(s => s.url || s.embedUrl || ''));
+        const freshHydra = hydraSources.filter(s => !existingUrls.has(s.url || s.embedUrl || ''));
+        playbackSources = [...playbackSources, ...freshHydra];
+      }
+
+      // Final fallback: VideoEngine if still empty
+      if (!playbackSources.length) {
+        playbackSources = (window.VideoEngine?.buildMovieSources?.(movie) || []);
+      }
     }
 
     playbackSources = reorderSourcesBySessionHealth(playbackSources);
@@ -2750,6 +2865,7 @@ async function setupPlayback(movie) {
     wireNativeFallback();
     await switchPlaybackSource(activeSourceIndex);
     renderRatingStars();
+
   } catch (error) {
     console.warn('Playback setup failed:', error.message);
     renderNoPlaybackState();

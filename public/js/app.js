@@ -485,9 +485,7 @@ function createMovieCard(movie, opts = {}) {
              referrerpolicy="no-referrer"
              onerror="this.src='${CARD_PLACEHOLDER}'">
         ${isMissingBanner ? `<div class="fallback-title">${escapeHtml(movie.title)}</div>` : ''}
-        <div class="card-overlay">
-          <div class="card-play-btn"><i class="ri-play-fill"></i></div>
-        </div>
+        
         <span class="card-badge ${badgeCls}">${escapeHtml(movie.category)}</span>
         <div class="card-rating">
           <i class="ri-star-fill"></i> ${rating}
@@ -495,6 +493,14 @@ function createMovieCard(movie, opts = {}) {
         ${hdBadgeHtml}
         ${subDubBadgeHtml}
         ${progressBar}
+        
+        <div class="card-overlay-details">
+          <div class="overlay-play-icon"><i class="ri-play-circle-fill"></i></div>
+          <div class="overlay-meta">
+            ${movie.releaseYear ? `<span>${movie.releaseYear}</span>` : ''}
+            ${movie.duration ? `<span class="dot">·</span><span>${formatDuration(movie.duration)}</span>` : ''}
+          </div>
+        </div>
       </div>
       <div class="card-info">
         <div class="card-title">${escapeHtml(movie.title)}</div>
@@ -638,13 +644,13 @@ function clearAuthSession() {
   localStorage.removeItem('user');
 }
 
-function redirectToAdminLogin() {
+function redirectToLogin() {
   const path = window.location.pathname.replace(/\.html$/, '');
-  if (path === '/pages/admin' || path.endsWith('/admin')) {
+  if (path === '/pages/login' || path.endsWith('/login')) {
     return;
   }
 
-  window.location.href = '/pages/admin.html';
+  window.location.href = '/pages/login.html';
 }
 
 async function performApiFetchWithRetry(endpoint, options = {}) {
@@ -681,7 +687,7 @@ async function performApiFetchWithRetry(endpoint, options = {}) {
           ? 'Admin access required. Please sign in with an admin account.'
           : 'Session expired. Please sign in again.';
         showToast(fallbackMessage, 'warning');
-        setTimeout(() => { redirectToAdminLogin(); }, 300);
+        setTimeout(() => { redirectToLogin(); }, 300);
         throw new Error(data.message || fallbackMessage);
       }
 
@@ -917,7 +923,7 @@ function enforceAdminPageAccess() {
   // Backend validates role on every API call; 401/403 triggers the apiFetch
   // interceptor which handles the logout redirect safely.
   if (!getToken()) {
-    redirectToAdminLogin();
+    redirectToLogin();
     return false;
   }
 

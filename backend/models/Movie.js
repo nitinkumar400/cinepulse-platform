@@ -162,7 +162,7 @@ const MovieSchema = new mongoose.Schema({
   tags:      [String],
 
   views:      { type: Number,  default: 0 },
-  isFeatured: { type: Boolean, default: false },
+  isFeatured: { type: Boolean, default: false, index: true },
 
   isNewRelease: { type: Boolean, default: true },
 

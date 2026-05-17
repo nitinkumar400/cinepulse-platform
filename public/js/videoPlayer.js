@@ -675,17 +675,40 @@ const VideoPlayer = (() => {
 
   const toggleFullscreen = () => {
     if (!container) return;
-    if (!document.fullscreenElement)
-      (container.requestFullscreen || container.webkitRequestFullscreen).call(container).catch(() => {});
-    else
-      document.exitFullscreen();
+    if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.mozFullScreenElement && !document.msFullscreenElement) {
+      if (container.requestFullscreen) {
+        container.requestFullscreen().catch(() => {});
+      } else if (container.webkitRequestFullscreen) {
+        container.webkitRequestFullscreen();
+      } else if (container.mozRequestFullScreen) {
+        container.mozRequestFullScreen();
+      } else if (container.msRequestFullscreen) {
+        container.msRequestFullscreen();
+      }
+      container.classList.add('cinepulse-fullscreen-active');
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      } else if (document.mozCancelFullScreen) {
+        document.mozCancelFullScreen();
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen();
+      }
+      container.classList.remove('cinepulse-fullscreen-active');
+    }
   };
 
   const updateFullscreenIcon = () => {
     const btn = document.getElementById('vpFullscreenBtn'); if (!btn) return;
-    btn.innerHTML = document.fullscreenElement
+    const isFull = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+    btn.innerHTML = isFull
       ? '<i class="ri-fullscreen-exit-line"></i>'
       : '<i class="ri-fullscreen-line"></i>';
+    if (!isFull && container) {
+      container.classList.remove('cinepulse-fullscreen-active');
+    }
   };
 
   // ══════════════════════════════════════════

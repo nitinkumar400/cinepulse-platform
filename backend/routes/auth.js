@@ -86,13 +86,93 @@ router.post('/admin/login', validate(loginSchema), asyncHandler(async (req, res)
   }
 }));
 
-router.get('/me', protect, adminOnly, asyncHandler(async (req, res) => {
+router.post('/login', validate(loginSchema), asyncHandler(async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user || !(await user.matchPassword(password))) {
+      return sendError(res, new Error('Invalid email or password.'), {
+        status: 401,
+        code: 'INVALID_CREDENTIALS',
+      });
+    }
+
+    if (user.isActive === false) {
+      return sendError(res, new Error('Account is disabled.'), {
+        status: 403,
+        code: 'ACCOUNT_SUSPENDED',
+      });
+    }
+
+    user.lastLogin = new Date();
+    await user.save();
+
+    logger.info('User login successful', {
+      userId: user._id.toString(),
+      email: user.email,
+      role: user.role,
+    });
+
+    return sendSuccess(res, {
+      token: generateToken(user._id),
+      user: buildUserPayload(user),
+    }, {
+      message: 'Login successful.',
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message, stack: err.stack });
+  }
+}));
+
+router.post('/register', asyncHandler(async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+
+    if (!username || !email || !password) {
+      return sendError(res, new Error('Username, email, and password are required.'), { status: 400 });
+    }
+
+    const existingEmail = await User.findOne({ email });
+    if (existingEmail) {
+      return sendError(res, new Error('Email already registered.'), { status: 400 });
+    }
+
+    const existingUsername = await User.findOne({ username });
+    if (existingUsername) {
+      return sendError(res, new Error('Username already taken.'), { status: 400 });
+    }
+
+    const user = await User.create({
+      username,
+      email,
+      password,
+      role: 'user',
+    });
+
+    logger.info('User registered successfully', {
+      userId: user._id.toString(),
+      email: user.email,
+    });
+
+    return sendSuccess(res, {
+      token: generateToken(user._id),
+      user: buildUserPayload(user),
+    }, {
+      message: 'Registration successful.',
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message, stack: err.stack });
+  }
+}));
+
+router.get('/me', protect, asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id)
     .select('-password -verificationToken -verificationExpires -resetToken -resetExpires')
     .populate('watchlist', 'title thumbnailUrl category releaseYear averageRating');
 
   if (!user) {
-    return sendError(res, new Error('Admin user not found.'), {
+    return sendError(res, new Error('User not found.'), {
       status: 404,
       code: 'USER_NOT_FOUND',
     });
@@ -101,7 +181,7 @@ router.get('/me', protect, adminOnly, asyncHandler(async (req, res) => {
   return sendSuccess(res, { user: buildUserPayload(user) });
 }));
 
-router.put('/watchlist/:movieId', protect, adminOnly, asyncHandler(async (req, res) => {
+router.put('/watchlist/:movieId', protect, asyncHandler(async (req, res) => {
   const { movieId } = req.params;
 
   if (!isValidObjectId(movieId)) {
@@ -113,7 +193,7 @@ router.put('/watchlist/:movieId', protect, adminOnly, asyncHandler(async (req, r
 
   const user = await User.findById(req.user._id);
   if (!user) {
-    return sendError(res, new Error('Admin user not found.'), {
+    return sendError(res, new Error('User not found.'), {
       status: 404,
       code: 'USER_NOT_FOUND',
     });
@@ -148,12 +228,12 @@ router.put('/watchlist/:movieId', protect, adminOnly, asyncHandler(async (req, r
   });
 }));
 
-router.put('/profile', protect, adminOnly, validate(updateProfileSchema), asyncHandler(async (req, res) => {
+router.put('/profile', protect, validate(updateProfileSchema), asyncHandler(async (req, res) => {
   const { username, avatar, bio } = req.body;
   const user = await User.findById(req.user._id);
 
   if (!user) {
-    return sendError(res, new Error('Admin user not found.'), {
+    return sendError(res, new Error('User not found.'), {
       status: 404,
       code: 'USER_NOT_FOUND',
     });
@@ -187,7 +267,7 @@ router.put('/profile', protect, adminOnly, validate(updateProfileSchema), asyncH
   });
 }));
 
-router.put('/change-password', protect, adminOnly, validate(changePasswordSchema), asyncHandler(async (req, res) => {
+router.put('/change-password', protect, validate(changePasswordSchema), asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
   if (currentPassword === newPassword) {
@@ -199,7 +279,7 @@ router.put('/change-password', protect, adminOnly, validate(changePasswordSchema
 
   const user = await User.findById(req.user._id);
   if (!user) {
-    return sendError(res, new Error('Admin user not found.'), {
+    return sendError(res, new Error('User not found.'), {
       status: 404,
       code: 'USER_NOT_FOUND',
     });
@@ -219,7 +299,7 @@ router.put('/change-password', protect, adminOnly, validate(changePasswordSchema
   return sendSuccess(res, {}, { message: 'Password changed successfully.' });
 }));
 
-router.get('/stats', protect, adminOnly, asyncHandler(async (req, res) => {
+router.get('/stats', protect, asyncHandler(async (req, res) => {
   const [watchCount, completedCount, reviewCount, user, timeAgg] = await Promise.all([
     WatchHistory.countDocuments({ user: req.user._id }),
     WatchHistory.countDocuments({ user: req.user._id, completed: true }),

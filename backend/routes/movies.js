@@ -257,7 +257,20 @@ router.get('/', async (req, res) => {
       if (yearMax) filter.releaseYear.$lte = parseInt(yearMax, 10);
     }
     if (minRating)           filter.averageRating = { $gte: parseFloat(minRating) };
-    if (featured === 'true') filter.isFeatured    = true;
+    
+    // Strict Dark Catalog: Homepage lockdown.
+    // Default to isFeatured: true unless it's a search query or requested otherwise.
+    if (featured === 'true') {
+      filter.isFeatured = true;
+    } else if (featured === 'false') {
+      filter.isFeatured = false;
+    } else if (featured === 'all') {
+      // open catalog access
+    } else {
+      if (!search.trim()) {
+        filter.isFeatured = true;
+      }
+    }
 
     const sortOptions = {
       newest:        { createdAt: -1 },
@@ -405,6 +418,7 @@ router.get('/trending', asyncHandler(async (req, res) => {
   const filter = {
     createdAt: { $gte: sevenDaysAgo },
     releaseYear: { $gte: currentYear - 1 },
+    isFeatured: true,
     ...(category ? { category } : {}),
   };
 
@@ -416,6 +430,7 @@ router.get('/trending', asyncHandler(async (req, res) => {
 
   if (!trending.length) {
     trending = await Movie.find({
+      isFeatured: true,
       ...(category ? { category } : {}),
       releaseYear: { $gte: currentYear - 1 },
     })

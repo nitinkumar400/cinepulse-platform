@@ -688,4 +688,43 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+
+// ─────────────────────────────────────────────────────────────────────────
+// CINEPRO BROKER NATIVE BRIDGE (GET /api/watch/native/:category/:tmdbId)
+// ─────────────────────────────────────────────────────────────────────────
+router.get('/native/:category/:tmdbId', async (req, res) => {
+  try {
+    const { category, tmdbId } = req.params;
+    const { s, e } = req.query;
+    const season = s || '1';
+    const episode = e || '1';
+    const brokerUrl = process.env.CINEPRO_URL || 'http://localhost:3000';
+
+    let targetUrl;
+    if (category === 'movie') {
+      targetUrl = `${brokerUrl}/v1/movies/${tmdbId}`;
+    } else {
+      targetUrl = `${brokerUrl}/v1/tv/${tmdbId}/seasons/${season}/episodes/${episode}`;
+    }
+
+    const axios = require('axios');
+    const response = await axios.get(targetUrl, { timeout: 20000 });
+    
+    return res.json({
+      success: true,
+      streams: response.data?.sources || [],
+      subtitles: response.data?.subtitles || [],
+      diagnostics: response.data?.diagnostics || []
+    });
+  } catch (error) {
+    console.error('[WatchBridge] Error fetching from CinePro broker:', error.message);
+    return res.status(502).json({ 
+      success: false,
+      message: 'Failed to contact native CinePro broker microservice',
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router;
+

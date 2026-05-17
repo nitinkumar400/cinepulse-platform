@@ -27,6 +27,8 @@
 24. [Database Healer & Cleanup Scripts](#24-database-healer--cleanup-scripts-may-2026)
 25. [Regional AniList Importer](#25-regional-anilist-importer-may-2026)
 26. [Auto-Ingest Pipeline (GitHub Actions)](#26-auto-ingest-pipeline-github-actions-may-2026)
+27. [CinePulse Platform Overhaul (May 2026)](#27-cinepulse-platform-overhaul-may-2026)
+28. [Elite Netflix-Style UI & Dark Catalog Overhaul (May 2026)](#28-elite-netflix-style-ui--dark-catalog-overhaul-may-2026)
 
 ---
 
@@ -1667,4 +1669,96 @@ Not required anymore:
 *Platform: CinePulse (formerly CineStream)*
 *Database: 107,810+ documents (Live on Atlas)*
 *Status: Netflix-Style Overhaul + Fresh Catalog + Server Health Monitor - LIVE (Vercel daily + GitHub Actions every 30 min)*
+*Maintained by: Nitin Mishra & AI Coding Assistant*
+
+---
+
+## 28. Elite Netflix-Style UI & Dark Catalog Overhaul (May 2026)
+
+Successfully completed a major frontend & backend overhaul to transform the platform into a high-density, premium Netflix-inspired layout, while introducing a secure "Search-Only / Dark Catalog" architecture to keep non-featured movies out of core homepage views.
+
+### 1. Glassmorphic Navigation & Mega-Dropdowns
+- **Aesthetics:** Styled a top-navigation header using a dark, premium frosted glass effect (`background: rgba(15, 15, 16, 0.85); backdrop-filter: blur(14px);`).
+- **Interactive Mega Dropdowns:** Replaced default static navigation buttons with beautiful multi-column CSS Grid "Mega Dropdowns" that dynamically fade/slide-in on hover, neatly organizing Movies (Regions/Genres) and Series (Continue/Trending).
+- **Search Capsule:** Rendered a modern capsule search bar with rounded borders and responsive focus scaling.
+- **Files Modified:** `public/pages/index.html`, `public/pages/movie-details.html`, `public/css/styles.css`.
+
+### 2. 70/30 Asymmetric "Slidey" Hero Showcase
+- **Asymmetric Layout:** Swapped the legacy homepage spotlight with a premium 70/30 layout. The left column (70%) serves as a massive wide billboard, while the right column (30%) hosts an interactive "Up Next" queue.
+- **Auto-Rotation Engine (`public/js/slideyEngine.js`):** Built a zero-dependency automated slidey engine that rotates featured content every 7 seconds, pre-fetches upcoming details, handles cross-fade transitions, and lets users manually click to swap.
+- **Files Added/Modified:** `public/js/slideyEngine.js` [NEW], `public/pages/index.html`, `public/css/styles.css`.
+
+### 3. High-Density Hover Cards
+- **Micro-Interactions:** Custom `.movie-card` scaling `1.06x` on hover paired with a deep red high-contrast outer shadow glow (`rgba(229, 9, 20, 0.5)`).
+- **Dynamic Slide-up Details:** Overhauled `createMovieCard` in `public/js/app.js` to render a translucent backdrop overlay on hover. This smoothly slides up from the bottom to display the release year, category pill, and a premium center play icon.
+- **Files Modified:** `public/js/app.js`, `public/css/styles.css`.
+
+### 4. Cinematic Watch Page Restructure
+- **70/30 Side-by-Side Grid:** Migrated `movie-details.html` to a 70/30 split screen. The left 70% handles the large cinematic media player stage, movie info, detailed meta tags, and cast lists.
+- **Sticky Sidebar (30%):** Houses the Server Switching panel and the Anime/Series episode grid side-by-side, locked to `position: sticky` so users can browse seasons/episodes without losing track of playback.
+- **Files Modified:** `public/pages/movie-details.html`, `public/css/styles.css`.
+
+### 5. Premium Ingestion Engine (`scripts/seedPremium.js`)
+- **TMDB Pipeline:** Added a dedicated node script fetching high-demand content via three distinct pathways: Weekly Trending, Top Rated (7.5+), and Modern Discoveries (2024 Popular).
+- **Data Mapping & Deduplication:** Maps API data directly to the Mongoose schema (handling baseline views, 16:9 thumbnails, backdrop banners, release years, etc.) and performs a smart, duplicate-free `updateOne` upsert on `tmdbId`.
+- **Files Added:** `scripts/seedPremium.js` [NEW].
+
+### 6. Search-Only "Dark Catalog" Architecture
+- **Schema Update:** Indexed the `isFeatured` boolean flag directly in Mongoose to support lightning-fast lookups on 100k+ records.
+- **Homepage Lockdown:** Injected `{ isFeatured: true }` strictly into the backend MongoDB `.find()` query parameters in `backend/routes/movies.js` (including GET `/` and `/trending` routes) so home rails remain exclusive to handpicked features.
+- **Open Search/Browse:** Ensured search endpoints (`/api/movies/search`) and Browse grids (`/api/browse/:category`) bypass this restriction completely, allowing the complete "dark catalog" of tens of thousands of movies to remain discoverable on demand.
+- **Files Modified:** `backend/models/Movie.js`, `backend/routes/movies.js`.
+
+---
+
+## 29. CinePro Microservice Integration & Native Bridge (May 2026)
+
+Successfully integrated the separate **CinePro Broker Microservice** (running in the `cine pro org` workspace) with the main CinePulse platform, securing highly-redundant scraping pathways across 14+ providers.
+
+### 1. The Native Bridge Route
+* **Location:** `backend/routes/watch.js` -> `GET /api/watch/native/:category/:tmdbId`
+* **Purpose:** Acts as a backend proxy between the client browser and the CinePro microservice. This prevents CORS and local development sandbox security issues by proxying all requests through CinePulse on port `5001`.
+* **API Wrapper Format:** To align with client playback conventions, the bridge intercepts CinePro's raw response and formats it into the standard wrapper:
+  ```json
+  {
+    "success": true,
+    "streams": [...],
+    "subtitles": [...],
+    "diagnostics": [...]
+  }
+  ```
+
+### 2. High Latency & Timeout Adjustments
+* **The Problem:** Scraping dozens of external providers (Videasy, Popr, VidZee, VidNest, etc.) can take up to ~9.5 seconds on a cache-miss. The legacy backend router had a hardcoded `8000ms` axios request timeout, causing frequent `502 Bad Gateway` (timeout) failures.
+* **The Solution:** Raised the backend bridge axios timeout to `20000ms` (`20s`) to let CinePro fully scrape the providers, safely cache the results, and deliver healthy stream arrays without early connection termination.
+
+### 3. Local Operational Checklist for Future Agents
+When running tests or verifying playback, both servers must run concurrently:
+
+1. **Terminal 1: CinePro Broker Microservice**
+   ```bash
+   cd "C:\Users\NITIN MISHRA\Workspace\01_Development\Active\cine pro org\core"
+   npm start
+   ```
+   *(Running on port `3000`)*
+
+2. **Terminal 2: Main CinePulse Backend**
+   ```bash
+   cd "C:\Users\NITIN MISHRA\Workspace\01_Development\Active\cine-stream-platform-main.zip"
+   npm start
+   ```
+   *(Running on port `5001`)*
+
+3. **Terminal 3: Verification Sandbox**
+   ```bash
+   node scratch/verify_backend_bridge.js
+   ```
+   *(Fires a handshake request to `http://localhost:5001/api/watch/native/movie/27205` to ensure the bridge, broker, cache, and scraper array are 100% active).*
+
+---
+
+*Last Updated: May 17, 2026*
+*Platform: CinePulse (formerly CineStream)*
+*Database: 107,810+ documents (Live on Atlas)*
+*Status: Netflix-Style Overhaul + CinePro Integration + Native Bridge - 100% Operational*
 *Maintained by: Nitin Mishra & AI Coding Assistant*

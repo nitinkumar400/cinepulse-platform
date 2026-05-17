@@ -772,17 +772,19 @@ const VideoEngine = (() => {
     const existingIframe = wrapper.querySelector('iframe');
     if (existingIframe) existingIframe.style.display = 'none';
 
-    // Remove any existing native stream player and the default video element
-    const existingPlayer = document.getElementById('native-stream-player');
+     // Remove any existing native stream player and the default video element
+    const existingPlayer = document.getElementById('cinepulse-native-player') || document.getElementById('native-stream-player');
     if (existingPlayer) existingPlayer.remove();
     const defaultVideo = document.getElementById('videoPlayer');
     if (defaultVideo) defaultVideo.style.display = 'none';
 
     // Create new video element
     const videoElement = document.createElement('video');
-    videoElement.id = 'native-stream-player';
+    videoElement.id = 'cinepulse-native-player';
     videoElement.controls = true;
     videoElement.autoplay = true;
+    videoElement.crossOrigin = 'anonymous';
+    videoElement.setAttribute('playsinline', 'true');
     videoElement.style.cssText = 'width:100%; height:100%; background:#000; border-radius:8px; position:absolute; inset:0; z-index:10;';
     
     // Ensure wrapper has positioning context

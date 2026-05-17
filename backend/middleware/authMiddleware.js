@@ -89,7 +89,7 @@ const optionalProtect = async (req, res, next) => {
 
   try {
     const user = await resolveUserFromToken(token);
-    if (user && user.isActive !== false && user.role === 'admin') {
+    if (user && user.isActive !== false) {
       req.user = user;
     }
   } catch (error) {
