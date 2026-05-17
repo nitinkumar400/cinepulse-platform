@@ -272,6 +272,7 @@ const THUMB_PH  = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjY
 // Bulletproof image resolver — same policy as app.js/getImageUrl
 function mediaUrl(path, size) {
   if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) return path;
   if (path.includes('anilist.co')) return path;
   if (path.includes('image.tmdb.org')) return path;
   if (path.includes('cloudinary.com')) return path;
@@ -1041,91 +1042,6 @@ function restoreNativeShellMarkup() {
   progressTrackingReady = false;
 }
 
-async function switchPlaybackSource(index, options = {}) {
-  if (!playbackSources[index]) return;
-
-  restoreNativeShellMarkup();
-  wireNativeFallback();
-  getVideoElement()?.pause();
-
-  activeSourceIndex = index;
-  renderServerSelector();
-  const source = playbackSources[index];
-  const switchToken = ++activePlayerSwitchToken;
-  const shortcutsBtn = document.getElementById('shortcutsBtn');
-  showPlayerLoader(true, options.auto ? 'Switching server...' : 'Loading stream...');
-  setPlayerStatus(`Playing from ${source.label}`, options.auto ? 'switching' : '');
-  if (shortcutsBtn) {
-    shortcutsBtn.style.opacity = source.server === 'upload' ? '1' : '0.55';
-  }
-
-  if (source.server === 'upload') {
-    revokeProviderSubtitleUrls();
-    stopEmbedPlayback();
-    activatePlaybackSurface('native');
-    const video = getVideoElement();
-    if (!video) return;
-
-    ensureNativePlayer(currentMovie);
-    video.poster = mediaUrl(currentMovie?.thumbnailUrl) || '';
-    video.src = mediaUrl(source.playUrl || source.url);
-    video.currentTime = 0;
-    video.load();
-
-    const onCanPlay = () => {
-      if (switchToken !== activePlayerSwitchToken) return;
-      clearTimeout(switchPlaybackSource.embedTimer);
-      showPlayerLoader(false);
-      setPlayerStatus(`Now playing â€¢ ${source.quality || 'HD'}`);
-      if (startTime > 0 && video.currentTime < startTime) {
-        video.currentTime = startTime;
-      }
-      video.play().catch(() => {});
-      video.removeEventListener('canplay', onCanPlay);
-    };
-
-    video.addEventListener('canplay', onCanPlay);
-    return;
-  }
-
-  // External embed source - use popup player (embed servers block iframes)
-  showPlayerLoader(false);
-  source.status = 'ready';
-  renderServerSelector();
-
-  // Hide video player, show popup shell OR direct iframe embed shell
-  const nativeShell = getNativeShell();
-  const popupShell = document.getElementById('popupPlayerShell');
-  const embedShell = getEmbedShell();
-  const frame = getEmbedFrame();
-
-  if (nativeShell) nativeShell.classList.remove('is-active');
-  if (embedShell) {
-    embedShell.style.display = 'block';
-    embedShell.classList.add('is-active');
-  }
-
-  if (frame && source.embedUrl) {
-    frame.src = source.embedUrl;
-    if (popupShell) popupShell.style.display = 'none';
-    setPlayerStatus(`Playing from ${source.label}`);
-  } else {
-    // Fallback to popup
-    if (popupShell) {
-      popupShell.style.display = 'block';
-      popupShell.classList.add('is-active');
-      const btn = document.getElementById('btnWatchPopupMain');
-      if (btn) {
-        btn.onclick = () => window.open(source.embedUrl || source.url, '_blank', 'width=1000,height=600,noopener,noreferrer');
-      }
-    }
-    if (embedShell) {
-      embedShell.style.display = 'none';
-      embedShell.classList.remove('is-active');
-    }
-    setPlayerStatus(`Click "Watch Now" to open ${source.label}`);
-  }
-}
 
 // ══════════════════════════════════════════════════════════════════════════
 // AUTO-EMBED PLAYER — Zero-touch source generation from tmdbId
@@ -2731,10 +2647,17 @@ async function switchPlaybackSource(index, options = {}) {
     video.load();
   }
 
-  // ── SANDBOX REMOVAL FIRST — before src is set, so the provider never
-  //    sees a sandboxed parent when its scripts execute.
-  //    All our providers explicitly reject sandbox restrictions.
-  frame.removeAttribute('sandbox');
+  // ── SMART SANDBOX ENFORCEMENT — Traps redirecting servers while leaving clean servers unconstrained
+  if (source.sandboxPolicy && source.sandboxPolicy !== 'none') {
+    frame.setAttribute('sandbox', source.sandboxPolicy);
+  } else {
+    const key = String(source.server || source.sourceType || '').trim().toLowerCase();
+    if (['vidsrcio', 'vidsrc', 'vidsrcicu', 'videasy'].includes(key)) {
+      frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation');
+    } else {
+      frame.removeAttribute('sandbox');
+    }
+  }
 
   // ── iframe attributes ──
   frame.referrerPolicy = 'no-referrer';
@@ -2789,12 +2712,12 @@ async function setupPlayback(movie) {
       const controller = new AbortController();
       const signal = controller.signal;
 
-      // 6-second timeout promise
+      // 2-second timeout promise
       const timeoutPromise = new Promise((resolve) => {
         setTimeout(() => {
           controller.abort();
           resolve({ timeout: true });
-        }, 6000);
+        }, 2000);
       });
 
       // Fetch promise
@@ -2830,7 +2753,7 @@ async function setupPlayback(movie) {
             }));
           }
         } else if (raceResult && raceResult.timeout) {
-          console.warn('[Playback] Premium broker streams fetch timed out after 6000ms. Linear Fast-Fail triggered!');
+          console.warn('[Playback] Premium broker streams fetch timed out after 2000ms. Linear Fast-Fail triggered!');
         }
       } catch (err) {
         console.warn('[Playback] Failed to fetch native broker streams:', err.message);

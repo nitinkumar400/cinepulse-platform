@@ -19,18 +19,18 @@ const { substitutePattern } = require('../services/serverHealthService');
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 const PROVIDER_PRIORITY_OVERRIDES = {
-  videasy: 1,
-  vidsrc: 2,
-  vidsrcicu: 3,
-  vidnest_std: 4,
-  vidnest: 5,
-  vidnestpahe: 6,
-  animevidsrc: 7,
-  animevidsrcto: 8,
-  vidsrcio: 90,
-  embed2: 95,
-  anime2embed: 96,
-  vidlink: 99,
+  vidlink: 1,
+  vidnest_std: 2,
+  vidnest: 3,
+  vidnestpahe: 4,
+  vidsrcio: 5,
+  embed2: 6,
+  anime2embed: 7,
+  videasy: 90,
+  vidsrc: 95,
+  vidsrcicu: 99,
+  animevidsrc: 100,
+  animevidsrcto: 101,
 };
 
 function getEffectiveProviderPriority(server) {
@@ -689,6 +689,8 @@ router.get('/:id', async (req, res) => {
 });
 
 
+let cineProOfflineUntil = 0;
+
 // ─────────────────────────────────────────────────────────────────────────
 // CINEPRO BROKER NATIVE BRIDGE (GET /api/watch/native/:category/:tmdbId)
 // ─────────────────────────────────────────────────────────────────────────
@@ -700,6 +702,14 @@ router.get('/native/:category/:tmdbId', async (req, res) => {
     const episode = e || '1';
     const brokerUrl = process.env.CINEPRO_URL || 'http://localhost:3000';
 
+    if (Date.now() < cineProOfflineUntil) {
+      console.log('[WatchBridge] CinePro microservice is currently cached offline. Failing fast.');
+      return res.status(503).json({
+        success: false,
+        message: 'CinePro broker is temporarily offline'
+      });
+    }
+
     let targetUrl;
     if (category === 'movie') {
       targetUrl = `${brokerUrl}/v1/movies/${tmdbId}`;
@@ -708,7 +718,7 @@ router.get('/native/:category/:tmdbId', async (req, res) => {
     }
 
     const axios = require('axios');
-    const response = await axios.get(targetUrl, { timeout: 20000 });
+    const response = await axios.get(targetUrl, { timeout: 1500 });
     
     return res.json({
       success: true,
@@ -719,6 +729,8 @@ router.get('/native/:category/:tmdbId', async (req, res) => {
     });
   } catch (error) {
     console.error('[WatchBridge] Error fetching from CinePro broker:', error.message);
+    cineProOfflineUntil = Date.now() + 5 * 60 * 1000;
+    console.log('[WatchBridge] Marked CinePro offline for 5 minutes until:', new Date(cineProOfflineUntil).toISOString());
     return res.status(502).json({ 
       success: false,
       message: 'Failed to contact native CinePro broker microservice',

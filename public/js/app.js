@@ -344,6 +344,7 @@ const POSTER_PLACEHOLDER_URL = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIi
 
 function getImageUrl(path, size) {
   if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) return path;
   // Already-good URLs — pass through untouched
   if (path.includes('anilist.co')) return path;
   if (path.includes('image.tmdb.org')) return path;

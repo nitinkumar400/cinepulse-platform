@@ -436,7 +436,7 @@
     }
 
     .spotlight-grid {
-      display: flex;
+      display: grid;
       grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
       gap: 18px;
       margin-top: 22px;
@@ -913,12 +913,11 @@ function buildSidebarQueryParams(categoryKey = '') {
   Object.entries(config).forEach(([key, value]) => {
     if (value) params.set(key, value);
   });
-  params.set('yearMin', String(new Date().getFullYear() - 1));
   return params.toString();
 }
 
 function getFreshContentQuery() {
-  return `yearMin=${new Date().getFullYear() - 1}`;
+  return "";
 }
 
 function bindIndexImageFallback(root = document) {
@@ -1057,12 +1056,7 @@ function _hasRenderablePoster(item) {
 }
 
 function _isFreshTitle(item, options = {}) {
-  const currentYear = new Date().getFullYear();
-  const minYear = Number.isFinite(options.minYear) ? options.minYear : (currentYear - 1);
-  const releaseYear = Number(item?.releaseYear || 0);
-  const isOngoing = String(item?.status || '').toLowerCase() === 'ongoing';
-  if (releaseYear >= minYear) return true;
-  return !!options.allowOngoing && isOngoing;
+  return true;
 }
 
 function _sanitizeCatalog(items, options = {}) {

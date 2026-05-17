@@ -350,6 +350,7 @@
 // ══════════════════════════════════════════
 function getImageUrl(path, size) {
   if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) return path;
   if (path.includes('anilist.co')) return path;
   if (path.includes('image.tmdb.org')) return path;
   if (path.includes('cloudinary.com')) return path;

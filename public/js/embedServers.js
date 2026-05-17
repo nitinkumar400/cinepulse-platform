@@ -530,7 +530,15 @@ const EmbedServers = (() => {
 
     // Sort by effective priority so the player avoids known fragile providers
     // even if MongoDB still has an older priority order.
-    return sources.sort((a, b) => effectivePriority(a) - effectivePriority(b));
+    sources.sort((a, b) => effectivePriority(a) - effectivePriority(b));
+
+    // Re-assign perfect sequential labels after sorting to match the visual index
+    sources.forEach((s, idx) => {
+      s.label = `Server ${idx + 1}`;
+      s.statusLabel = `Server ${idx + 1} • ${s.serverName}`;
+    });
+
+    return sources;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
