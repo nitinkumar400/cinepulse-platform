@@ -2786,10 +2786,35 @@ async function setupPlayback(movie) {
 
     let nativeResolvedSources = [];
     if (currentTmdbId) {
+      const controller = new AbortController();
+      const signal = controller.signal;
+
+      // 6-second timeout promise
+      const timeoutPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          controller.abort();
+          resolve({ timeout: true });
+        }, 6000);
+      });
+
+      // Fetch promise
+      const fetchPromise = (async () => {
+        try {
+          const nativeRes = await fetch(`/api/watch/native/${currentCategory}/${currentTmdbId}?s=${currentSeason}&e=${currentEpisode}`, { signal });
+          if (nativeRes.ok) {
+            const payload = await nativeRes.json();
+            return { success: true, payload };
+          }
+          return { success: false };
+        } catch (err) {
+          return { success: false, error: err };
+        }
+      })();
+
       try {
-        const nativeRes = await fetch(`/api/watch/native/${currentCategory}/${currentTmdbId}?s=${currentSeason}&e=${currentEpisode}`);
-        if (nativeRes.ok) {
-          const payload = await nativeRes.json();
+        const raceResult = await Promise.race([fetchPromise, timeoutPromise]);
+        if (raceResult && raceResult.success && !raceResult.timeout) {
+          const payload = raceResult.payload;
           if (payload && Array.isArray(payload.sources) && payload.sources.length > 0) {
             nativeResolvedSources = payload.sources.map((src, idx) => ({
               id: `cinepro-${src.provider?.id || 'native'}-${idx}`,
@@ -2804,6 +2829,8 @@ async function setupPlayback(movie) {
               isCinePro: true
             }));
           }
+        } else if (raceResult && raceResult.timeout) {
+          console.warn('[Playback] Premium broker streams fetch timed out after 6000ms. Linear Fast-Fail triggered!');
         }
       } catch (err) {
         console.warn('[Playback] Failed to fetch native broker streams:', err.message);

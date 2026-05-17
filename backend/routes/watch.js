@@ -712,7 +712,8 @@ router.get('/native/:category/:tmdbId', async (req, res) => {
     
     return res.json({
       success: true,
-      streams: response.data?.sources || [],
+      sources: response.data?.sources || [], // Frontend expects this for native playback
+      streams: response.data?.sources || [], // Legacy fallback
       subtitles: response.data?.subtitles || [],
       diagnostics: response.data?.diagnostics || []
     });

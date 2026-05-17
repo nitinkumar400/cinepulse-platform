@@ -27,18 +27,18 @@ const VideoEngine = (() => {
   // Legacy priority map (kept for backward compat with upload/native sources)
   const SERVER_PRIORITY = {
     upload: 0,
-    videasy: 1,
-    vidsrc: 2,
-    vidsrcicu: 3,
-    vidnest_std: 4,
-    embed2: 95,
-    vidsrcio: 90,
-    vidlink: 99,
+    vidlink: 1,
+    vidnest_std: 2,
+    vidsrcio: 3,
+    embed2: 4,
+    videasy: 90,
+    vidsrc: 95,
+    vidsrcicu: 99,
     superembed: 100,
     autoembed: 101,
-    dailymotion: 6,
-    youtube: 7,
-    vimeo: 8,
+    dailymotion: 102,
+    youtube: 103,
+    vimeo: 104,
   };
 
   function getServerPriority(server) {
