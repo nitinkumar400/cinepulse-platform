@@ -2507,9 +2507,10 @@ function wireNativeFallback() {
 async function switchPlaybackSource(index, options = {}) {
   if (!playbackSources[index]) return;
 
-  // ── HARD RESET: Cancel any previous static trust timer ──
+  // ── HARD RESET: Cancel any previous timers ──
   clearTimeout(switchPlaybackSource._staticTrustTimer);
   clearTimeout(switchPlaybackSource.embedTimer);
+  clearTimeout(switchPlaybackSource.nativeTimeout);
 
   restoreNativeShellMarkup();
   wireNativeFallback();
@@ -2533,6 +2534,25 @@ async function switchPlaybackSource(index, options = {}) {
     activatePlaybackSurface('native');
     const video = getVideoElement();
     if (!video) return;
+
+    // Start 5.5-second Smart Playback Loading Timeout to prevent infinite loading/waiting loops
+    switchPlaybackSource.nativeTimeout = setTimeout(() => {
+      console.warn('[VideoEngine] Native stream loading timed out. Performing auto-failover...');
+      clearTimeout(switchPlaybackSource.nativeTimeout);
+      const activeVideo = getVideoElement();
+      if (activeVideo) {
+        activeVideo.dispatchEvent(new Event('error'));
+      }
+    }, 5500);
+
+    // Cancel the timeout when the video successfully plays
+    const onPlaying = () => {
+      clearTimeout(switchPlaybackSource.nativeTimeout);
+      video.removeEventListener('playing', onPlaying);
+      video.removeEventListener('timeupdate', onPlaying);
+    };
+    video.addEventListener('playing', onPlaying);
+    video.addEventListener('timeupdate', onPlaying);
 
     // Dynamically replace the player container with the clean native video tag if requested
     // "equipped with native controls, a localized poster frame, and absolute-positioned subtitles"
@@ -2647,17 +2667,10 @@ async function switchPlaybackSource(index, options = {}) {
     video.load();
   }
 
-  // ── SMART SANDBOX ENFORCEMENT — Traps redirecting servers while leaving clean servers unconstrained
-  if (source.sandboxPolicy && source.sandboxPolicy !== 'none') {
-    frame.setAttribute('sandbox', source.sandboxPolicy);
-  } else {
-    const key = String(source.server || source.sourceType || '').trim().toLowerCase();
-    if (['vidsrcio', 'vidsrc', 'vidsrcicu', 'videasy'].includes(key)) {
-      frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation');
-    } else {
-      frame.removeAttribute('sandbox');
-    }
-  }
+  // ── SMART PLAYBACK 보호 ──
+  // To bypass active anti-sandbox blockers and ensure 100% video playback compatibility
+  // across all browsers (Chrome, Brave, etc.), we remove the sandbox attribute.
+  frame.removeAttribute('sandbox');
 
   // ── iframe attributes ──
   frame.referrerPolicy = 'no-referrer';
@@ -2797,6 +2810,11 @@ async function setupPlayback(movie) {
     }
 
     playbackSources = reorderSourcesBySessionHealth(playbackSources);
+    // Dynamically relabel all elements of playbackSources after all merges and health checks are completed
+    playbackSources.forEach((s, idx) => {
+      s.label = `Server ${idx + 1}`;
+      s.statusLabel = `Server ${idx + 1} • ${s.serverName || 'Direct HLS'}`;
+    });
     activeSourceIndex = playbackSources.length ? 0 : -1;
     renderServerSelector();
 

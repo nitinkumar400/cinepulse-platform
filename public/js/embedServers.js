@@ -148,16 +148,16 @@ const EmbedServers = (() => {
   let serverStatus = {};
 
   const PROVIDER_PRIORITY_OVERRIDES = {
-    vidlink: 1,
-    vidnest_std: 2,
-    vidnest: 3,
-    vidnestpahe: 4,
-    vidsrcio: 5,
-    embed2: 6,
-    anime2embed: 7,
-    videasy: 90,
-    vidsrc: 95,
-    vidsrcicu: 99,
+    vidsrcio: 1,
+    embed2: 2,
+    videasy: 3,
+    vidsrc: 4,
+    vidlink: 5,
+    vidnest_std: 6,
+    vidnest: 7,
+    vidnestpahe: 8,
+    vidsrcicu: 9,
+    anime2embed: 10,
     animevidsrc: 100,
     animevidsrcto: 101,
   };
