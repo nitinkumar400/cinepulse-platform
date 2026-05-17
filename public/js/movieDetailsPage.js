@@ -2760,37 +2760,40 @@ async function setupPlayback(movie) {
       }
     }
 
+    // ── Global Master Hydra: build sources from EmbedServers first ──
+    let hydraSources = [];
+    if (typeof EmbedServers !== 'undefined' && typeof EmbedServers.buildHydraSources === 'function') {
+      try {
+        hydraSources = EmbedServers.buildHydraSources(
+          movie,
+          currentPlayingSeason || movie.season || 1,
+          currentPlayingEpisode || movie.episode || 1
+        );
+      } catch (hydrErr) {
+        console.warn('[Hydra] buildHydraSources failed:', hydrErr.message);
+      }
+    }
+
+    // Also try masked/uploaded sources as primary (direct video uploads)
+    playbackSources = await loadMaskedPlaybackSources(movie._id);
+
+    // Merge: uploaded sources first, then hydra embed servers, then VideoEngine fallback
+    if (hydraSources.length) {
+      const existingUrls = new Set(playbackSources.map(s => s.url || s.embedUrl || ''));
+      const freshHydra = hydraSources.filter(s => !existingUrls.has(s.url || s.embedUrl || ''));
+      playbackSources = [...playbackSources, ...freshHydra];
+    }
+
+    // Final fallback: VideoEngine if still empty
+    if (!playbackSources.length) {
+      playbackSources = (window.VideoEngine?.buildMovieSources?.(movie) || []);
+    }
+
+    // Prepend CinePro native scraper resolved direct streams at the front if available
     if (nativeResolvedSources.length > 0) {
-      playbackSources = nativeResolvedSources;
-    } else {
-      // ── Global Master Hydra: build sources from EmbedServers first ──
-      let hydraSources = [];
-      if (typeof EmbedServers !== 'undefined' && typeof EmbedServers.buildHydraSources === 'function') {
-        try {
-          hydraSources = EmbedServers.buildHydraSources(
-            movie,
-            currentPlayingSeason || movie.season || 1,
-            currentPlayingEpisode || movie.episode || 1
-          );
-        } catch (hydrErr) {
-          console.warn('[Hydra] buildHydraSources failed:', hydrErr.message);
-        }
-      }
-
-      // Also try masked/uploaded sources as primary (direct video uploads)
-      playbackSources = await loadMaskedPlaybackSources(movie._id);
-
-      // Merge: uploaded sources first, then hydra embed servers, then VideoEngine fallback
-      if (hydraSources.length) {
-        const existingUrls = new Set(playbackSources.map(s => s.url || s.embedUrl || ''));
-        const freshHydra = hydraSources.filter(s => !existingUrls.has(s.url || s.embedUrl || ''));
-        playbackSources = [...playbackSources, ...freshHydra];
-      }
-
-      // Final fallback: VideoEngine if still empty
-      if (!playbackSources.length) {
-        playbackSources = (window.VideoEngine?.buildMovieSources?.(movie) || []);
-      }
+      const existingUrls = new Set(playbackSources.map(s => s.url || s.embedUrl || ''));
+      const freshNative = nativeResolvedSources.filter(s => !existingUrls.has(s.url || s.embedUrl || ''));
+      playbackSources = [...freshNative, ...playbackSources];
     }
 
     playbackSources = reorderSourcesBySessionHealth(playbackSources);
