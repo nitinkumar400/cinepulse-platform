@@ -19,18 +19,18 @@ const { substitutePattern } = require('../services/serverHealthService');
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 const PROVIDER_PRIORITY_OVERRIDES = {
-  vidsrcio: 1,
-  embed2: 2,
-  videasy: 3,
-  vidsrc: 4,
-  vidlink: 5,
-  vidnest_std: 6,
-  vidnest: 7,
-  vidnestpahe: 8,
-  vidsrcicu: 9,
-  anime2embed: 10,
-  animevidsrc: 100,
-  animevidsrcto: 101,
+  vidlink: 1,
+  vidsrcnet: 2,
+  embed2: 3,
+  autoembed: 4,
+  vidsrcin: 5,
+  
+  // Anime & legacy fallbacks
+  vidnest: 100,
+  vidnestpahe: 101,
+  animevidsrc: 102,
+  anime2embed: 103,
+  animevidsrcto: 104,
 };
 
 function getEffectiveProviderPriority(server) {
@@ -232,11 +232,8 @@ async function buildEmbedSourcesFromConfig(movie, season = 1, episode = 1) {
   // preference) so callers can stream attempts in order.
   sources.sort((a, b) => getEffectiveProviderPriority(a) - getEffectiveProviderPriority(b));
 
-  // Assign human-readable "Server N" labels after sorting so the
-  // numbering matches final attempt order.
-  sources.forEach((s, idx) => {
-    s.label = `Server ${idx + 1}`;
-  });
+  // Remove human-readable "Server N" labels here. The frontend `setupPlayback` 
+  // will assign sequential labels after unifying with Native sources.
 
   return sources;
 }

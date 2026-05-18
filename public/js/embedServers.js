@@ -13,7 +13,7 @@ const EmbedServers = (() => {
   // Ordered by VERIFIED reliability (May 2026 live testing)
   // ═══════════════════════════════════════════════════════════════════════════
   const STANDARD_SERVERS = {
-    // Priority 1 — VidLink: CONFIRMED WORKING — loads actual video player
+    // Priority 1 — VidLink: CONFIRMED WORKING — extremely reliable and fast player
     vidlink: {
       name: 'VidLink',
       key: 'vidlink',
@@ -23,65 +23,45 @@ const EmbedServers = (() => {
       tvUrl: (tmdbId, season, episode) => `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}`,
       timeout: 9000,
     },
-    // Priority 2 — Videasy (vidsrc.cc): VERIFIED ALIVE — returns full player
-    videasy: {
-      name: 'Videasy',
-      key: 'videasy',
+    // Priority 2 — VidSrc Net: VERIFIED ALIVE — the primary and most robust canonical VidSrc domain
+    vidsrcnet: {
+      name: 'VidSrc Net',
+      key: 'vidsrcnet',
       priority: 2,
-      sandboxPolicy: 'none',
-      movieUrl: (tmdbId) => `https://vidsrc.cc/v2/embed/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidsrc.cc/v2/embed/tv/${tmdbId}/${season}/${episode}`,
+      sandboxPolicy: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation', // Smart Sandbox
+      movieUrl: (tmdbId) => `https://vidsrc.net/embed/movie?tmdb=${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidsrc.net/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
       timeout: 9000,
     },
-    // Priority 3 — VidSrc.io: VERIFIED ALIVE — returns correct movie title, supports tmdb param
-    vidsrcio: {
-      name: 'VidSrc IO',
-      key: 'vidsrcio',
-      priority: 3,
-      sandboxPolicy: 'none',
-      movieUrl: (tmdbId) => `https://vidsrc.io/embed/movie?tmdb=${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidsrc.io/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
-      timeout: 9000,
-    },
-    // Priority 4 — VidSrc.icu: VERIFIED ALIVE — returns player page
-    vidsrcicu: {
-      name: 'VidSrc ICU',
-      key: 'vidsrcicu',
-      priority: 4,
-      sandboxPolicy: 'none',
-      movieUrl: (tmdbId) => `https://vidsrc.icu/embed/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidsrc.icu/embed/tv/${tmdbId}/${season}/${episode}`,
-      timeout: 9000,
-    },
-    // Priority 5 — 2Embed: ALIVE but needs sandbox:'none' to avoid "Sandbox Detected" error
+    // Priority 3 — 2Embed: ALIVE — excellent fallback aggregation engine
     embed2: {
       name: '2Embed',
       key: 'embed2',
-      priority: 5,
-      sandboxPolicy: 'none',
+      priority: 3,
+      sandboxPolicy: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation', // Smart Sandbox
       movieUrl: (tmdbId) => `https://www.2embed.cc/embed/${tmdbId}`,
       tvUrl: (tmdbId, season, episode) => `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}`,
       timeout: 8000,
     },
-    // Priority 6 — VidSrc.to: VERIFIED ALIVE — robust player via vsembed.ru backend
-    vidsrc: {
-      name: 'VidSrc',
-      key: 'vidsrc',
-      priority: 6,
+    // Priority 4 — AutoEmbed: VERIFIED ALIVE — very clean video player interface
+    autoembed: {
+      name: 'AutoEmbed',
+      key: 'autoembed',
+      priority: 4,
       sandboxPolicy: 'none',
-      movieUrl: (tmdbId) => `https://vidsrc.to/embed/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}`,
+      movieUrl: (tmdbId) => `https://player.autoembed.cc/embed/movie/${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://player.autoembed.cc/embed/tv/${tmdbId}/${season}/${episode}`,
       timeout: 9000,
     },
-    // Priority 7 — VidNest: VERIFIED WORKING (May 2026) — supports movies, TV, AND anime via TMDB
-    vidnest: {
-      name: 'VidNest',
-      key: 'vidnest_std',
-      priority: 7,
-      sandboxPolicy: 'none',
-      movieUrl: (tmdbId) => `https://vidnest.fun/movie/${tmdbId}`,
-      tvUrl: (tmdbId, season, episode) => `https://vidnest.fun/tv/${tmdbId}/${season}/${episode}`,
-      timeout: 10000,
+    // Priority 5 — VidSrc In: VERIFIED ALIVE — alternate high-speed canonical domain for VidSrc
+    vidsrcin: {
+      name: 'VidSrc In',
+      key: 'vidsrcin',
+      priority: 5,
+      sandboxPolicy: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation', // Smart Sandbox
+      movieUrl: (tmdbId) => `https://vidsrc.in/embed/movie?tmdb=${tmdbId}`,
+      tvUrl: (tmdbId, season, episode) => `https://vidsrc.in/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
+      timeout: 9000,
     },
   };
 
@@ -148,18 +128,18 @@ const EmbedServers = (() => {
   let serverStatus = {};
 
   const PROVIDER_PRIORITY_OVERRIDES = {
-    vidsrcio: 1,
-    embed2: 2,
-    videasy: 3,
-    vidsrc: 4,
-    vidlink: 5,
-    vidnest_std: 6,
-    vidnest: 7,
-    vidnestpahe: 8,
-    vidsrcicu: 9,
-    anime2embed: 10,
-    animevidsrc: 100,
-    animevidsrcto: 101,
+    vidlink: 1,
+    vidsrcnet: 2,
+    embed2: 3,
+    autoembed: 4,
+    vidsrcin: 5,
+    
+    // Anime & legacy fallbacks
+    vidnest: 100,
+    vidnestpahe: 101,
+    animevidsrc: 102,
+    anime2embed: 103,
+    animevidsrcto: 104,
   };
 
   function effectivePriority(server) {
@@ -532,11 +512,9 @@ const EmbedServers = (() => {
     // even if MongoDB still has an older priority order.
     sources.sort((a, b) => effectivePriority(a) - effectivePriority(b));
 
-    // Re-assign perfect sequential labels after sorting to match the visual index
-    sources.forEach((s, idx) => {
-      s.label = `Server ${idx + 1}`;
-      s.statusLabel = `Server ${idx + 1} • ${s.serverName}`;
-    });
+    // Do NOT assign sequential labels here.
+    // The player controller (`setupPlayback`) will merge these with Native streams
+    // and assign final unified 1 to N labels.
 
     return sources;
   }
