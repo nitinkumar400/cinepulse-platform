@@ -505,6 +505,13 @@ userLoggedIn = !!token;
         showPlayerLoader(false);
         return;
       }
+      // Cap to exactly 5 embed servers (matching setupPlayback merge logic)
+      hydraSources = hydraSources.slice(0, 5);
+      // Apply unified sequential labels
+      hydraSources.forEach((s, idx) => {
+        s.label = `Server ${idx + 1}`;
+        s.statusLabel = `Server ${idx + 1} • ${s.serverName || s.sourceType}`;
+      });
 
       playbackSources = reorderSourcesBySessionHealth(hydraSources);
       activeSourceIndex = 0;
@@ -883,15 +890,10 @@ function wireNativeFallback() {
 
   video.dataset.multiSourceBound = 'true';
   video.addEventListener('error', () => {
-    if (activeSourceIndex < playbackSources.length - 1) {
-      showPlayerMessage('Switching server...');
-      setPlayerStatus('Current source failed. Trying another server...', 'switching');
-      switchPlaybackSource(activeSourceIndex + 1, { auto: true });
-    } else {
-      showPlayerLoader(false);
-      setPlayerStatus('Playback failed for all available servers.', 'error');
-      showPlayerMessage('No working server available right now.', 3200);
-    }
+    // Do NOT auto-switch servers. Let the user pick manually.
+    showPlayerLoader(false);
+    setPlayerStatus('This server could not load. Please try a different Server.', 'error');
+    showPlayerMessage('Server failed to load. Try another server from the list.', 4000);
   });
 }
 
@@ -2492,15 +2494,10 @@ function wireNativeFallback() {
 
   video.dataset.multiSourceBound = 'true';
   video.addEventListener('error', () => {
-    if (activeSourceIndex < playbackSources.length - 1) {
-      showPlayerMessage('Switching source...');
-      setPlayerStatus('Current source failed. Trying the next source...', 'switching');
-      switchPlaybackSource(activeSourceIndex + 1, { auto: true }).catch(() => {});
-    } else {
-      showPlayerLoader(false);
-      setPlayerStatus('Playback failed for all available sources.', 'error');
-      showPlayerMessage('No working source is available right now.', 3200);
-    }
+    // Do NOT auto-switch servers. Let the user pick manually.
+    showPlayerLoader(false);
+    setPlayerStatus('This server could not load. Please try a different Server.', 'error');
+    showPlayerMessage('Server failed to load. Try another server from the list.', 4000);
   });
 }
 
@@ -2647,21 +2644,18 @@ async function switchPlaybackSource(index, options = {}) {
     video.load();
   }
 
-  // ── SMART SANDBOX ENFORCEMENT — Traps redirecting servers while leaving clean servers unconstrained
-  if (source.sandboxPolicy && source.sandboxPolicy !== 'none') {
-    frame.setAttribute('sandbox', source.sandboxPolicy);
+  // ── UNIVERSAL SANDBOX — ALL embeds get smart sandbox to block ad redirects & notification prompts
+  // Only VidLink explicitly needs sandbox:'none' because it rejects sandboxed iframes entirely.
+  const providerKey = String(source.server || source.sourceType || '').trim().toLowerCase();
+  if (providerKey === 'vidlink') {
+    frame.removeAttribute('sandbox');
   } else {
-    const key = String(source.server || source.sourceType || '').trim().toLowerCase();
-    if (['vidsrcio', 'vidsrc', 'vidsrcicu', 'videasy'].includes(key)) {
-      frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation');
-    } else {
-      frame.removeAttribute('sandbox');
-    }
+    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation');
   }
 
   // ── iframe attributes ──
   frame.referrerPolicy = 'no-referrer';
-  frame.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture; gyroscope; accelerometer';
+  frame.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture; gyroscope; accelerometer';  // Notifications intentionally excluded
   frame.allowFullscreen = true;
   frame.setAttribute('allowfullscreen', 'true');
   frame.setAttribute('webkitallowfullscreen', 'true');

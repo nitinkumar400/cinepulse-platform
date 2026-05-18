@@ -516,7 +516,9 @@ const EmbedServers = (() => {
     // The player controller (`setupPlayback`) will merge these with Native streams
     // and assign final unified 1 to N labels.
 
-    return sources;
+    // HARD CAP: Maximum 5 embed sources. The architecture is
+    // [2 Native CinePro] + [5 Embed] = 7 total servers max.
+    return sources.slice(0, 5);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
