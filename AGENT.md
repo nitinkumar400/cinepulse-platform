@@ -32,6 +32,7 @@
 29. [CinePro Microservice Integration & Native Bridge (May 2026)](#29-cinepro-microservice-integration--native-bridge-may-2026)
 30. [Production Cloud Deployment & Keep-Alive Synchronization (May 2026)](#30-production-cloud-deployment--keep-alive-synchronization-may-2026)
 31. [Elite Stream Synchronization, Secure Sandboxing & Database Re-Seeding (May 2026)](#31-elite-stream-synchronization-secure-sandboxing--database-re-seeding-may-2026)
+32. [Elite 7-Server Architecture & Player Stability Overhaul (May 2026)](#32-elite-7-server-architecture--player-stability-overhaul-may-2026)
 
 
 ---
@@ -749,27 +750,45 @@ newserver: {
 },
 ```
 
-**Current working embed servers (as of May 2026 Live Testing):**
-| # | Server | Domain | Sandbox | Status |
-|---|--------|--------|---------|--------|
-| 1 | Videasy / VidSrc CC | `vidsrc.cc` | **none** | ✅ Primary |
-| 2 | VidSrc | `vidsrc.to` | **none** | ✅ Backup |
-| 3 | VidSrc ICU | `vidsrc.icu` | **none** | ✅ Backup |
-| 4 | VidNest | `vidnest.fun` | **none** | ✅ Backup |
-| 90 | VidSrc IO | `vidsrc.io` | **none** | ⚠️ Demoted: sandbox/provider issues |
-| 95 | 2Embed | `2embed.cc` | **none** | ⚠️ Demoted: sandbox-provider issues |
-| 99 | VidLink | `vidlink.pro` | **none** | ⚠️ Demoted to last per production testing |
+**Current Production Server Architecture (May 2026 — Strict 7-Server Layout):**
 
-**Anime Specialist Servers (anilist_id based):**
+The platform enforces a strict maximum of **7 servers** in the player dropdown:
+- **Server 1 & 2**: CinePro Native Direct Streams (ad-free HLS via `cine-pro-org.onrender.com`)
+- **Server 3–7**: External Embed Fallbacks
+
+| Priority | Server | Domain | Sandbox | Status |
+|----------|--------|--------|---------|--------|
+| 1 | VidLink | `vidlink.pro` | **none** (rejects sandbox) | ✅ Primary Embed |
+| 2 | VidSrc Net | `vidsrc.net` | Smart Sandbox | ✅ Canonical VidSrc |
+| 3 | 2Embed | `2embed.cc` | Smart Sandbox | ✅ Aggregator |
+| 4 | AutoEmbed | `player.autoembed.cc` | **none** | ✅ Clean Player |
+| 5 | VidSrc In | `vidsrc.in` | Smart Sandbox | ✅ Alternate VidSrc |
+
+**Anime Specialist Servers (anilist_id based — last-resort fallback):**
 | # | Server | Domain | Status |
 |---|--------|--------|--------|
-| 1 | Anime VidSrc | `vidsrc.cc` | ✅ Working |
-| 2 | Anime 2Embed | `2embed.cc` | ✅ Working |
-| 3 | Anime VidSrc.to | `vidsrc.to` | ✅ Working |
+| 100 | VidNest Anime | `vidnest.fun` | ✅ Working |
+| 101 | VidNest Pahe | `vidnest.fun` | ✅ Working |
+| 102 | Anime VidSrc | `vidsrc.cc` | ⚠️ Unreliable |
+| 103 | Anime 2Embed | `2embed.cc` | ⚠️ HiAnime dead |
+| 104 | Anime VidSrc.to | `vidsrc.to` | ⚠️ Inconsistent |
+
+**Smart Sandbox Policy:**
+```
+sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation"
+```
+> Blocks: `allow-top-navigation`, `allow-popups` → prevents ad redirects and notification prompts.
+> Exception: VidLink has sandbox:'none' because it rejects sandboxed iframes entirely.
+
+**CRITICAL RULES — Always follow this server sequence for movies:**
+1. CinePro Native streams MUST be Server 1 & 2 (capped to max 2).
+2. Embed servers MUST be capped to max 5 (Server 3–7).
+3. `buildHydraSources()` hard-caps output to 5 entries.
+4. NO auto-switching on error — user manually picks servers.
+5. ALL embeds get universal sandbox EXCEPT VidLink.
 
 **Dead domains (do NOT use):**
 - `nontongo.win` — Domain unstable/down
-- `autoembed.co` — Redirects to dead vidsrc.xyz
 - `vidsrc.me` — Often shows "Media not available"
 - `vidsrc.wiki` — Blocks iframe embedding
 - `player.smashy.stream` — TLS certificate mismatch
@@ -1820,6 +1839,48 @@ Perfected the decoupled streaming architecture by implementing a hybrid stream c
 
 ---
 
-*Last Updated: May 17, 2026*
+*Last Updated: May 18, 2026*
 *Platform Status: 100% Operational & Production-Hardened*
 *Maintained by: Nitin Mishra & AI Coding Assistant*
+
+---
+
+## 32. Elite 7-Server Architecture & Player Stability Overhaul (May 2026)
+
+Completely redesigned the streaming server infrastructure to enforce a strict, deterministic 7-server maximum layout with zero auto-switching and universal security sandboxing.
+
+### 1. Strict 2-Native + 5-Embed Architecture
+- **Server 1 & 2**: Always reserved for CinePro Native Direct Streams (ad-free `.m3u8` HLS via the Render-deployed microservice).
+- **Server 3–7**: Five curated, internet-favored embed providers: VidLink (`vidlink.pro`), VidSrc Net (`vidsrc.net`), 2Embed (`2embed.cc`), AutoEmbed (`player.autoembed.cc`), VidSrc In (`vidsrc.in`).
+- **Hard Cap Enforcement**: `buildHydraSources()` in `embedServers.js` now hard-caps output to exactly 5 entries with `sources.slice(0, 5)`, making it impossible for any code path to produce more than 7 total servers.
+- **Files Modified:** `public/js/embedServers.js`, `public/js/movieDetailsPage.js`, `backend/routes/watch.js`.
+
+### 2. Eliminated Auto-Server Cycling
+- **Root Cause**: Both `wireNativeFallback()` functions had `video.addEventListener('error')` handlers that automatically cycled through every server on failure, causing rapid visual thrashing in the UI.
+- **Fix**: Replaced auto-switch with a static error message: "Server failed to load. Try another server from the list." Users now manually select servers, providing a stable, predictable experience.
+- **Files Modified:** `public/js/movieDetailsPage.js` (two locations: line ~890 and line ~2496).
+
+### 3. Universal Sandbox Enforcement
+- **Root Cause**: The old sandbox logic had a fallback path (`frame.removeAttribute('sandbox')`) that removed ALL protection for unknown providers, allowing ad redirects and notification permission prompts.
+- **Fix**: ALL embed iframes now receive smart sandbox by default:
+  ```
+  sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation"
+  ```
+  This blocks `allow-top-navigation` (prevents redirect hijacking) and `allow-popups` (prevents notification prompts and ad tabs).
+- **Exception**: Only VidLink (`vidlink`) gets sandbox removed because it explicitly rejects sandboxed iframes.
+- **Files Modified:** `public/js/movieDetailsPage.js`.
+
+### 4. Episode Playback Path Fix
+- **Root Cause**: The episode playback handler (inside `loadEpisodes`) passed raw `hydraSources` directly to `playbackSources` without any truncation cap, causing 20+ servers to appear when MongoDB-loaded server configs merged with hardcoded ones.
+- **Fix**: Added `hydraSources.slice(0, 5)` and unified label assignment before assigning to `playbackSources`.
+- **Files Modified:** `public/js/movieDetailsPage.js`.
+
+### 5. Synchronized Priority Maps
+- Both frontend (`PROVIDER_PRIORITY_OVERRIDES` in `embedServers.js`) and backend (`PROVIDER_PRIORITY_OVERRIDES` in `watch.js`) now share identical priority weights:
+  - `vidlink: 1`, `vidsrcnet: 2`, `embed2: 3`, `autoembed: 4`, `vidsrcin: 5`
+  - Anime fallbacks start at priority 100+.
+
+### 6. Mega Premium Movie Seeding
+- Executed `scripts/seedMegaPremium.js` to populate the database with **7,125 unique, premium movies** across Popular, Top Rated, and Modern Discover (2022–2025) categories.
+- All images routed through `wsrv.nl` proxy for ISP bypass.
+- All records set `isFeatured: true` for immediate homepage visibility.
