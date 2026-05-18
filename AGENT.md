@@ -33,6 +33,7 @@
 30. [Production Cloud Deployment & Keep-Alive Synchronization (May 2026)](#30-production-cloud-deployment--keep-alive-synchronization-may-2026)
 31. [Elite Stream Synchronization, Secure Sandboxing & Database Re-Seeding (May 2026)](#31-elite-stream-synchronization-secure-sandboxing--database-re-seeding-may-2026)
 32. [Elite 7-Server Architecture & Player Stability Overhaul (May 2026)](#32-elite-7-server-architecture--player-stability-overhaul-may-2026)
+33. [Admin Server Management & Premium 3-Server Seeding (May 2026)](#33-admin-server-management--premium-3-server-seeding-may-2026)
 
 
 ---
@@ -1884,3 +1885,22 @@ Completely redesigned the streaming server infrastructure to enforce a strict, d
 - Executed `scripts/seedMegaPremium.js` to populate the database with **7,125 unique, premium movies** across Popular, Top Rated, and Modern Discover (2022–2025) categories.
 - All images routed through `wsrv.nl` proxy for ISP bypass.
 - All records set `isFeatured: true` for immediate homepage visibility.
+
+---
+
+## 33. Admin Server Management & Premium 3-Server Seeding (May 2026)
+
+Successfully completed the implementation of full Server CRUD capability inside the **Server Health Dashboard** and pre-registered three high-priority streaming servers in the production database.
+
+### 1. Pre-Seeded Premium Streaming Servers
+Created and executed a dedicated migration script (`scratch/add_new_servers.js`) to automatically pre-load and prioritize the 3 best ad-free / sandboxed embed providers in MongoDB, establishing a highly stable baseline for the player:
+* **Priority 1**: `VidLink` (Key: `vidlink` | `https://vidlink.pro`)
+* **Priority 2**: `VidSrc Net` (Key: `vidsrcnet` | `https://vidsrc.net`)
+* **Priority 3**: `AutoEmbed` (Key: `autoembed` | `https://player.autoembed.cc`)
+
+### 2. Full Server Deletion Capability (Dashboard UI)
+Enhanced the admin dashboard panel (`public/js/serverHealthDashboard.js`) to expose complete deletion controls directly to administrators:
+* **Trash Controls**: Added a red trash icon (`ri-delete-bin-line` icon from Remixicon) next to the controls on every server card.
+* **Double-Safety Confirmation**: Prompts a browser confirmation dialog (`confirm()`) before executing any destructive actions.
+* **REST Deletion Hook**: Dispatches a secure `DELETE /api/admin/servers/:key` API request, automatically removing the entry from MongoDB.
+* **Contiguous Auto-Renumbering**: Triggers a backend sorting and priority shift phase upon deletion to guarantee the priority sequence invariant ([1..N]) remains perfectly gapless and contiguous.

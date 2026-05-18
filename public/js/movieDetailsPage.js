@@ -493,44 +493,19 @@ userLoggedIn = !!token;
       currentPlayingSeason = parseInt(season);
       currentPlayingEpisode = parseInt(episode);
 
-      // ── Direct to Hydra embed servers — no Consumet (dead) ──
-      // Build sources immediately from EmbedServers for this episode
-      let hydraSources = [];
-      if (typeof EmbedServers !== 'undefined' && typeof EmbedServers.buildHydraSources === 'function') {
-        hydraSources = EmbedServers.buildHydraSources(currentMovie, season, episode);
-      }
-
-      if (hydraSources.length === 0) {
-        showPlayerMessage('No streaming servers available for this episode.', 3000);
-        showPlayerLoader(false);
-        return;
-      }
-      // Cap to exactly 5 embed servers (matching setupPlayback merge logic)
-      hydraSources = hydraSources.slice(0, 5);
-      // Apply unified sequential labels
-      hydraSources.forEach((s, idx) => {
-        s.label = `Server ${idx + 1}`;
-        s.statusLabel = `Server ${idx + 1} • ${s.serverName || s.sourceType}`;
-      });
-
-      playbackSources = reorderSourcesBySessionHealth(hydraSources);
-      activeSourceIndex = 0;
-      
       // Update UI active state
       document.querySelectorAll('.episode-card').forEach(c => {
          c.style.borderColor = 'var(--border)';
          const isAnimeMatch = c.dataset.animeSeason == season && c.dataset.animeEp == episode;
          const textMatch = c.textContent.includes(`Season ${season}`) && c.textContent.includes(`Episode ${episode}`);
          if (isAnimeMatch || (c.dataset.epId && textMatch)) {
-           c.style.borderColor = 'var(--accent)';
+            c.style.borderColor = 'var(--accent)';
          }
       });
 
-      // Reset the static trust timer for the new stream
-      if (typeof switchPlaybackSource !== 'undefined' && switchPlaybackSource._staticTrustTimer) {
-        clearTimeout(switchPlaybackSource._staticTrustTimer);
-      }
-      
+      // Run master setupPlayback which queries CinePro + merges external embeds (enforcing 4+3 architecture)
+      await setupPlayback(currentMovie);
+
       // Update the URL silently for bookmarking/sharing
       const url = new URL(window.location);
       url.searchParams.set('id', currentMovieId);
@@ -538,12 +513,7 @@ userLoggedIn = !!token;
       url.searchParams.set('episode', episode);
       window.history.pushState({}, '', url);
 
-      renderServerSelector();
-      switchPlaybackSource(0);
-
       // ── Netflix-style Next Episode button for embed players ──
-      // Since cross-origin iframes block 'ended' events, we show a
-      // persistent "Next Episode" button after the player loads.
       _scheduleNextEpButton(season, episode);
 
       if (typeof window.renderEpisodeNavigation === 'function') {
@@ -556,7 +526,6 @@ userLoggedIn = !!token;
       showPlayerMessage('Failed to initialize episode stream.');
     }
   };
-
   // ── NEXT EPISODE FLOATING BUTTON (embed mode) ──
   // Cross-origin iframes block 'ended' events so we can't auto-detect
   // when an episode finishes. Instead, show a persistent "Next Episode"
@@ -2522,14 +2491,41 @@ async function switchPlaybackSource(index, options = {}) {
   setPlayerStatus(`Now playing • Server ${serverNum} • ${source.serverName || source.label}`, options.auto ? 'switching' : '');
   if (shortcutsBtn) {
     shortcutsBtn.style.opacity = source.server === 'upload' ? '1' : '0.55';
-  }
-
-  if (source.server === 'upload') {
+  }  if (source.server === 'upload') {
     revokeProviderSubtitleUrls();
     stopEmbedPlayback();
     activatePlaybackSurface('native');
     const video = getVideoElement();
     if (!video) return;
+
+    // ── Placeholder Guard: Render premium offline card if stream is not available ──
+    if (source.isPlaceholder || !source.url) {
+      showPlayerLoader(false);
+      setPlayerStatus(`Server Offline`, 'error');
+      const nativeShell = getNativeShell();
+      if (nativeShell) {
+        const serverNum = index + 1;
+        nativeShell.innerHTML = `
+          <div class="player-error-state" style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            background: linear-gradient(135deg, #141414, #070707);
+            color: #fff;
+            padding: 30px;
+            text-align: center;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.06);
+          ">
+            <i class="ri-wifi-off-line" style="font-size: 54px; color: var(--accent, #e50914); margin-bottom: 15px; text-shadow: 0 0 15px rgba(229,9,20,0.4);"></i>
+            <h3 style="margin: 0 0 10px 0; font-size: 20px; font-weight: 600; letter-spacing: 0.5px;">CinePro Server ${serverNum} Offline</h3>
+            <p style="margin: 0; font-size: 14px; color: rgba(255,255,255,0.6); max-width: 360px; line-height: 1.5;">This premium stream is currently unavailable. Please select one of the high-speed servers (Server 5, 6, 7) below.</p>
+          </div>`;
+      }
+      return;
+    }
 
     // Dynamically replace the player container with the clean native video tag if requested
     // "equipped with native controls, a localized poster frame, and absolute-positioned subtitles"
@@ -2783,32 +2779,58 @@ async function setupPlayback(movie) {
       playbackSources = (window.VideoEngine?.buildMovieSources?.(movie) || []);
     }
 
-    // ── Enforce Architecture: First 2 servers Native, rest Embeds ──
-    // 1. Take up to 2 Native sources
-    const selectedNative = nativeResolvedSources.slice(0, 2);
+        // ── Enforce Architecture: First 4 servers CinePro premium Native, rest Embeds ──
+    // 1. Take up to 4 Native sources from CinePro
+    const selectedNative = nativeResolvedSources.slice(0, 4);
     
+    // Pad to exactly 4 items so that slots 1-4 are always reserved for CinePro
+    while (selectedNative.length < 4) {
+      const idx = selectedNative.length;
+      selectedNative.push({
+        id: 'cinepro-placeholder-' + idx,
+        server: 'upload',
+        sourceType: 'hls',
+        url: '',
+        playUrl: '',
+        label: 'CinePro Server ' + (idx + 1),
+        statusLabel: 'CinePro Server ' + (idx + 1),
+        isCinePro: true,
+        isPlaceholder: true
+      });
+    }
+
     // 2. Take Embed sources (exclude duplicates of native URLs)
-    const existingNativeUrls = new Set(selectedNative.map(s => s.url || s.embedUrl || ''));
+    const existingNativeUrls = new Set(selectedNative.filter(s => s.url).map(s => s.url || s.embedUrl || ''));
     let validEmbeds = playbackSources.filter(s => !existingNativeUrls.has(s.url || s.embedUrl || ''));
     
-    // 3. We want exactly 5 Embeds if we have them
-    validEmbeds = validEmbeds.slice(0, 5);
+    // 3. We want exactly 3 Embeds if we have them (VidLink, VidSrc Net, AutoEmbed)
+    validEmbeds = validEmbeds.slice(0, 3);
 
     // 4. Merge them into a strict sequence (Native first, then Embeds)
     playbackSources = [...selectedNative, ...validEmbeds];
 
     // 5. Apply unified Server labels from 1 to N
     playbackSources.forEach((s, idx) => {
-      s.label = `Server ${idx + 1}`;
+      const serverNum = idx + 1;
+      s.label = 'Server ' + serverNum;
       if (s.isCinePro) {
-         s.statusLabel = s.quality ? `Direct Stream • ${s.quality}` : `Direct Stream`;
+        if (s.isPlaceholder) {
+          s.statusLabel = 'Server ' + serverNum + ' • Offline';
+        } else {
+          s.statusLabel = s.quality ? 'Direct Stream • ' + s.quality : 'Direct Stream';
+        }
       } else {
-         s.statusLabel = `Server ${idx + 1} • ${s.serverName || s.sourceType}`;
+        s.statusLabel = 'Server ' + serverNum + ' • ' + (s.serverName || s.sourceType);
       }
     });
 
     playbackSources = reorderSourcesBySessionHealth(playbackSources);
-    activeSourceIndex = playbackSources.length ? 0 : -1;
+    
+    // 6. Intelligent Autoplay Indexing: Start on the first working (non-placeholder) source
+    let defaultIndex = playbackSources.findIndex(s => !s.isPlaceholder);
+    if (defaultIndex === -1) defaultIndex = playbackSources.length ? 0 : -1;
+    activeSourceIndex = defaultIndex;
+    
     renderServerSelector();
 
     document.getElementById('loginGate').style.display = 'none';

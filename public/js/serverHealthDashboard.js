@@ -596,6 +596,13 @@
               <input type="checkbox" ${enabled ? 'checked' : ''} aria-label="Enable or disable ${_escapeHtml(server.name)}">
               <span class="slider"></span>
             </label>
+            <button type="button"
+                    class="reorder-btn delete-server-btn"
+                    title="Delete Server"
+                    aria-label="Delete ${_escapeHtml(server.name)}"
+                    style="margin-left: 8px; border-color: #ef4444; background: #7f1d1d; color: #fca5a5; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0;">
+              <i class="ri-delete-bin-line" style="font-size: 14px; pointer-events: none;"></i>
+            </button>
           </div>
         </div>
         <div class="server-card-body">
@@ -797,6 +804,8 @@
         _handleReorder(card, -1);
       } else if (btn.classList.contains('down')) {
         _handleReorder(card, 1);
+      } else if (btn.classList.contains('delete-server-btn')) {
+        _handleDelete(card);
       }
     });
 
@@ -945,6 +954,52 @@
       _showToast(`Failed to update server: ${err && err.message ? err.message : 'unknown error'}`, 'error');
     } finally {
       input.disabled = false;
+    }
+  }
+
+  /**
+   * Handle a server deletion. Invokes DELETE /api/admin/servers/:key.
+   * On success, removes the card from the UI, shifts priorities,
+   * and triggers a toast message.
+   */
+  async function _handleDelete(card) {
+    const key = card.getAttribute('data-key');
+    if (!key) return;
+
+    const cached = _serversCache.find((s) => s.key === key);
+    const serverName = cached ? cached.name : key;
+
+    if (!confirm(`Are you sure you want to delete the server "${serverName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const res = await _apiFetch(`${API_BASE_PATH}/${encodeURIComponent(key)}`, {
+        method: 'DELETE',
+      });
+      const payload = await _readJsonResponse(res);
+
+      if (!res.ok || !payload || payload.success === false) {
+        const message = (payload && payload.message) || `Request failed (${res.status})`;
+        throw new Error(message);
+      }
+
+      // Remove from cache and re-render
+      _serversCache = _serversCache.filter((s) => s.key !== key);
+      
+      // Re-fetch the canonical list so any server-side priority shifts
+      // (Property 1) are reflected exactly as MongoDB stored them.
+      try {
+        _serversCache = await _fetchServers();
+      } catch (refetchErr) {
+        // Keep the optimistic cache; surface a soft warning only.
+        console.warn('[ServerHealthDashboard] delete refetch failed:', refetchErr && refetchErr.message);
+      }
+      
+      _render();
+      _showToast(`Server "${serverName}" deleted`, 'success');
+    } catch (err) {
+      _showToast(`Failed to delete server: ${err && err.message ? err.message : 'unknown error'}`, 'error');
     }
   }
 

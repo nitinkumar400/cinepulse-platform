@@ -105,8 +105,8 @@
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\middleware\\authMiddleware.js": {
-    "mtime": 1778695418.4040828,
-    "ast_hash": "5785a53796a3c2e9126be08f788ffeda",
+    "mtime": 1778978950.0098248,
+    "ast_hash": "8e6d8391e045de5a8a965a6fe30fdb87",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\middleware\\errorHandler.js": {
@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\models\\Movie.js": {
-    "mtime": 1778706849.3137267,
-    "ast_hash": "2983ce6cd26babb1ed527f6769201b52",
+    "mtime": 1779009251.8965366,
+    "ast_hash": "ba5eca35b31f36aaf6fe85b34b6bf07e",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\models\\Notification.js": {
@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\routes\\auth.js": {
-    "mtime": 1778429649.0162032,
-    "ast_hash": "1ccd8b3109ed3005907bd80828652485",
+    "mtime": 1778978963.7661452,
+    "ast_hash": "27f6c43705e2fcb8bfc5899c662f5aa3",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\routes\\browse.js": {
@@ -230,8 +230,8 @@
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\routes\\movies.js": {
-    "mtime": 1778965585.6556363,
-    "ast_hash": "1c09203b344b710773585644f17da88d",
+    "mtime": 1779010615.4809659,
+    "ast_hash": "a960f0de42ad003c55402a1d5a0659ca",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\routes\\notifications.js": {
@@ -270,8 +270,8 @@
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\routes\\watch.js": {
-    "mtime": 1778965683.3627143,
-    "ast_hash": "e9d743b98cc29a44be6d2be2b3b1668d",
+    "mtime": 1779086406.5311108,
+    "ast_hash": "dac509d3fad88c150ad78ae617a0efb8",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\schemas\\authSchemas.js": {
@@ -295,8 +295,8 @@
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\services\\recommendationService.js": {
-    "mtime": 1778423443.817503,
-    "ast_hash": "1618f913bea2159636c25a8af0939e2c",
+    "mtime": 1779010625.716909,
+    "ast_hash": "ff07d5f816801735909abcacffb02a14",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\backend\\services\\serverConfigService.js": {
@@ -640,8 +640,8 @@
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\js\\app.js": {
-    "mtime": 1778973881.8078523,
-    "ast_hash": "2839bcf72fecf3d333a01d2e22aebb78",
+    "mtime": 1779013291.5573204,
+    "ast_hash": "b4acb0ef7b1d7b4dd4e74c28f73644c1",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\js\\browse.js": {
@@ -655,13 +655,13 @@
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\js\\embedServers.js": {
-    "mtime": 1778973888.8216395,
-    "ast_hash": "3a6db17d5cdca5372946e424598a32d0",
+    "mtime": 1779086270.8348322,
+    "ast_hash": "c76d20d3fb62947163cb464cc1b4436b",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\js\\movieDetailsPage.js": {
-    "mtime": 1778942133.0332692,
-    "ast_hash": "fb9b8c9af877a32f6b5da1773ca16504",
+    "mtime": 1779086390.6301694,
+    "ast_hash": "d65faed212f435b637ea273213a0367c",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\js\\notifications.js": {
@@ -689,14 +689,19 @@
     "ast_hash": "b6f66d15af00601ae1174b29991962dd",
     "semantic_hash": ""
   },
+  "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\js\\slideyEngine.js": {
+    "mtime": 1778975564.6221187,
+    "ast_hash": "3fdae7e049a33d3a09eb397242926fc1",
+    "semantic_hash": ""
+  },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\js\\videoEngine.js": {
-    "mtime": 1778973888.8259065,
-    "ast_hash": "6e7022e75673ecadb2c0aae660ee75a5",
+    "mtime": 1779011649.282223,
+    "ast_hash": "4f0e107dfef517997cd0f80c9d4a65ed",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\js\\videoPlayer.js": {
-    "mtime": 1778429661.7049038,
-    "ast_hash": "8555ceb2c1a0d3130f7a06678faaec8c",
+    "mtime": 1779001471.303949,
+    "ast_hash": "951e884e1b7761d0b78f577910b4dce3",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\js\\videoUtils.js": {
@@ -704,9 +709,24 @@
     "ast_hash": "e5be8a6d754ac9cba3a3e623a31ef289",
     "semantic_hash": ""
   },
+  "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scratch\\audit_data_alignment.js": {
+    "mtime": 1779009310.8603628,
+    "ast_hash": "b462040a01b37e4547f73a5eeb5db40c",
+    "semantic_hash": ""
+  },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scratch\\delete_no_posters.js": {
     "mtime": 1778967389.852854,
     "ast_hash": "fad388ae12200c54af7dc09948683539",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scratch\\patch_details_page.js": {
+    "mtime": 1779086379.647325,
+    "ast_hash": "b8a3c85b4a149c22d33f5fdf1fd3674f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scratch\\rewrite_details.py": {
+    "mtime": 1778975616.4699183,
+    "ast_hash": "86e4586bf0c7bcffdb7a40a0887a9318",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scratch\\update_index.js": {
@@ -714,9 +734,19 @@
     "ast_hash": "948ed49b872e2b4336e1c021f91c29e2",
     "semantic_hash": ""
   },
+  "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scratch\\verify_backend_bridge.js": {
+    "mtime": 1778999143.2873533,
+    "ast_hash": "c0c1801dc5d4dd3ea81caffda8469ed9",
+    "semantic_hash": ""
+  },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scripts\\autoIngest.js": {
     "mtime": 1778912884.576154,
     "ast_hash": "5532d4801515059cf1da2651ce7042dc",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scripts\\checkAddedMovies.js": {
+    "mtime": 1778978994.2319896,
+    "ast_hash": "49bd2d393909b983fd64ab491db89919",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scripts\\cleanupOrphanedAnime.js": {
@@ -734,9 +764,24 @@
     "ast_hash": "e5a2a78bfac7b7cb5552704b02b22c94",
     "semantic_hash": ""
   },
+  "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scripts\\makeFeatured.js": {
+    "mtime": 1778979004.435127,
+    "ast_hash": "798a8c90ee3fa605aa9fb2258467ddc5",
+    "semantic_hash": ""
+  },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scripts\\mass_seed.js": {
     "mtime": 1778706856.9320128,
     "ast_hash": "9b6c63cecfc9a3aa518b96371f2fd53f",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scripts\\seedMegaPremium.js": {
+    "mtime": 1779017845.147346,
+    "ast_hash": "5b852ebee4d4cc859524218514f9a4cb",
+    "semantic_hash": ""
+  },
+  "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\scripts\\seedPremium.js": {
+    "mtime": 1779009282.1645722,
+    "ast_hash": "22eb2554993ad4a81f338a6486f7205f",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\tests\\aiCacheService.test.js": {
@@ -770,8 +815,8 @@
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\AGENT.md": {
-    "mtime": 1778965796.5461464,
-    "ast_hash": "6dd91f1b47b422c76822dc4cb485283b",
+    "mtime": 1779078479.1012125,
+    "ast_hash": "bb63e435e0066a49ba69f7a71af7af80",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\DEPLOY.md": {
@@ -1010,18 +1055,18 @@
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\pages\\index.html": {
-    "mtime": 1778971436.034784,
-    "ast_hash": "606c58e019a5ecb5b47ce7e11b4ea1dd",
+    "mtime": 1779013339.0435586,
+    "ast_hash": "1a604e5019178fa75705c6f9a53ced79",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\pages\\login.html": {
-    "mtime": 1778683970.7408595,
-    "ast_hash": "32f4c4f1625f366b22a7bc0dd641a4ee",
+    "mtime": 1778978983.5293489,
+    "ast_hash": "b7081aac709b7c6da307468035a39777",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\pages\\movie-details.html": {
-    "mtime": 1778879714.9467022,
-    "ast_hash": "09dc1f7f6337e073942c72d46c914e0d",
+    "mtime": 1778977900.2827694,
+    "ast_hash": "72459a8afcfaf33eb6f291a54dab6c45",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\pages\\offline.html": {
@@ -1040,8 +1085,8 @@
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\pages\\search.html": {
-    "mtime": 1778942298.584853,
-    "ast_hash": "006c8c5f3b34477e1a3b436a39ce2857",
+    "mtime": 1779013300.6343665,
+    "ast_hash": "1769bd227d943e9b456e3fd3530f9b27",
     "semantic_hash": ""
   },
   "C:\\Users\\NITIN MISHRA\\Workspace\\01_Development\\Active\\cine-stream-platform-main.zip\\public\\pages\\tmdb-import.html": {

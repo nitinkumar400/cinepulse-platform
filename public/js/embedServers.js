@@ -130,8 +130,8 @@ const EmbedServers = (() => {
   const PROVIDER_PRIORITY_OVERRIDES = {
     vidlink: 1,
     vidsrcnet: 2,
-    embed2: 3,
-    autoembed: 4,
+    autoembed: 3,
+    embed2: 4,
     vidsrcin: 5,
     
     // Anime & legacy fallbacks
@@ -516,9 +516,9 @@ const EmbedServers = (() => {
     // The player controller (`setupPlayback`) will merge these with Native streams
     // and assign final unified 1 to N labels.
 
-    // HARD CAP: Maximum 5 embed sources. The architecture is
-    // [2 Native CinePro] + [5 Embed] = 7 total servers max.
-    return sources.slice(0, 5);
+    // HARD CAP: Maximum 3 embed sources. The architecture is
+    // [4 Native CinePro] + [3 Embed] = 7 total servers max.
+    return sources.slice(0, 3);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -21,8 +21,8 @@ const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 const PROVIDER_PRIORITY_OVERRIDES = {
   vidlink: 1,
   vidsrcnet: 2,
-  embed2: 3,
-  autoembed: 4,
+  autoembed: 3,
+  embed2: 4,
   vidsrcin: 5,
   
   // Anime & legacy fallbacks
@@ -715,7 +715,7 @@ router.get('/native/:category/:tmdbId', async (req, res) => {
     }
 
     const axios = require('axios');
-    const response = await axios.get(targetUrl, { timeout: 1500 });
+    const response = await axios.get(targetUrl, { timeout: 20000 });
     
     return res.json({
       success: true,
